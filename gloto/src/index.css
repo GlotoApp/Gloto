@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+@theme {
+  /* 🌤️ FONDOS (capas suaves, nada plano) */
+  --color-slate-950: #f9fafb;
+  /* Fondo general (gris muy muy claro) */
+  --color-slate-900: #ffffff;
+  /* Cards principales */
+  --color-slate-800: #f1f5f9;
+  /* Secciones / hover suaves */
+  --color-slate-700: #e2e8f0;
+  /* Bordes elegantes */
+
+  /* 🍊 ACENTOS (más suaves y modernos) */
+  --color-sky-500: #ff6b2c;
+  /* Naranja principal (más amigable) */
+  --color-sky-400: #fcd34d;
+  /* Amarillo claro */
+  --color-sky-600: #ef4444;
+  /* Rojo más suave */
+
+  /* ✨ INTERACCIONES */
+  --color-sky-700: #dc2626;
+  /* Hover rojo */
+  --color-sky-300: #fef3c7;
+  /* Hover amarillo muy suave */
+
+  /* 🧠 TEXTOS */
+  --color-white: #0f172a;
+  /* Negro elegante (más suave que el tuyo) */
+  --color-slate-400: #64748b;
+  /* Texto secundario */
+  --color-slate-300: #94a3b8;
+  /* Placeholder */
+}
+
+body {
+  background-color: var(--color-slate-950);
+  color: var(--color-white);
+  font-family: 'Inter', sans-serif;
+}
