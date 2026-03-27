@@ -13,7 +13,7 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      // 1. Intentamos el login en Auth de Supabase
+      // 1. Login en Auth de Supabase
       const {
         data: { user },
         error: authError,
@@ -24,27 +24,48 @@ export default function AdminLogin() {
 
       if (authError) throw authError;
 
-      // 2. Verificamos el ROL en la tabla de perfiles que actualizamos
+      // 2. Traemos el perfil completo (incluyendo el negocio)
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("role")
+        .select("*, businesses(*)")
         .eq("id", user.id)
         .single();
 
-      if (profileError) throw new Error("No se pudo verificar el perfil");
+      if (profileError || !profile)
+        throw new Error("No se pudo verificar el perfil");
 
-      // 3. Si el rol NO es admin, cerramos la sesión y damos error
-      if (profile?.role !== "admin") {
+      // 3. Definimos los roles permitidos en este portal (Cualquier empleado)
+      const allowedRoles = [
+        "admin",
+        "cocinero",
+        "cajero",
+        "mesero",
+        "repartidor",
+        "superadmin",
+      ];
+
+      if (!allowedRoles.includes(profile.role)) {
         await supabase.auth.signOut();
         alert(
-          "ACCESO DENEGADO: Esta cuenta no tiene permisos de administrador.",
+          "ACCESO DENEGADO: No tienes permisos para acceder al portal de negocios.",
         );
         setLoading(false);
         return;
       }
 
-      // 4. Si todo está bien, vamos al Admin
-      navigate("/admin");
+      // 4. GUARDADO INSTANTÁNEO: Guardamos en sessionStorage
+      // para que el AuthProvider lo detecte sin ir a la red
+      sessionStorage.setItem("gloto_profile", JSON.stringify(profile));
+
+      // 5. REDIRECCIÓN SEGÚN ROL (Contexto de trabajo)
+      if (profile.role === "superadmin") {
+        navigate("/super-admin/dashboard");
+      } else if (profile.role === "cocinero") {
+        navigate(`/kitchen/${profile.business_id}`);
+      } else {
+        // Admins, Cajeros y Meseros van al panel principal por defecto
+        navigate("/admin");
+      }
     } catch (error) {
       alert("Error de acceso: " + error.message);
     } finally {
@@ -59,7 +80,7 @@ export default function AdminLogin() {
           Gloto Business
         </h1>
         <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2">
-          Portal exclusivo para socios
+          Portal de Gestión de Negocios
         </p>
       </div>
 
@@ -69,11 +90,11 @@ export default function AdminLogin() {
       >
         <div className="space-y-1">
           <label className="text-[10px] font-black uppercase text-slate-500 ml-2">
-            Email Corporativo
+            Email de Usuario
           </label>
           <input
             type="email"
-            placeholder="admin@gloto.com"
+            placeholder="usuario@negocio.com"
             className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-sky-500 text-white transition-all"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -99,7 +120,7 @@ export default function AdminLogin() {
           disabled={loading}
           className="w-full bg-sky-500 hover:bg-sky-400 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-sky-500/20 uppercase text-xs tracking-widest active:scale-95 disabled:opacity-50 mt-4"
         >
-          {loading ? "Verificando Credenciales..." : "Entrar al Panel"}
+          {loading ? "Verificando..." : "Entrar a mi Puesto"}
         </button>
       </form>
     </div>

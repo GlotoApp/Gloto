@@ -39,7 +39,7 @@ export default function Checkout() {
           business_id: businessId,
           total_price: total,
           status: "pending",
-          payment_method: paymentMethod, // Guardamos el método seleccionado
+          payment_method: paymentMethod,
         })
         .select()
         .single();
@@ -53,8 +53,8 @@ export default function Checkout() {
         quantity: item.quantity,
         unit_price: item.price,
         subtotal: item.price * item.quantity,
-        options: item.selectedOptions || [], // Guardamos los extras
-        notes: item.notes || "", // Guardamos la instrucción
+        options: item.selectedOptions || [],
+        notes: item.notes || "",
       }));
 
       const { error: itemsError } = await supabase
@@ -63,11 +63,9 @@ export default function Checkout() {
 
       if (itemsError) throw itemsError;
 
-      alert(
-        "¡Pedido enviado con éxito! Gloto está notificando al restaurante.",
-      );
+      // --- CAMBIO AQUÍ: Redirección al Status en lugar de al Home ---
       clearCart();
-      navigate("/");
+      navigate(`/order-status/${order.id}`);
     } catch (error) {
       console.error("Error:", error);
       alert("No pudimos procesar el pedido.");
@@ -131,7 +129,6 @@ export default function Checkout() {
                       {item.name}
                     </h3>
 
-                    {/* Render de Opciones/Extras */}
                     <div className="mt-2 flex flex-wrap gap-1">
                       {item.selectedOptions?.map((opt) => (
                         <span
@@ -143,7 +140,6 @@ export default function Checkout() {
                       ))}
                     </div>
 
-                    {/* Render de Notas */}
                     {item.notes && (
                       <p className="mt-2 text-[11px] text-slate-400 italic bg-slate-50 p-2 rounded-lg border-l-2 border-slate-200">
                         "{item.notes}"
@@ -184,7 +180,6 @@ export default function Checkout() {
         {/* COLUMNA DERECHA: Pago */}
         <div className="lg:sticky lg:top-16 h-fit">
           <div className="bg-slate-50 rounded-[3rem] p-10 border border-slate-100 shadow-sm">
-            {/* Selector de Método de Pago */}
             <div className="mb-10">
               <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 mb-6 text-center">
                 Método de Pago

@@ -1,39 +1,59 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Marketplace from "./pages/Marketplace";
-import Auth from "./pages/Auth";
-import BusinessDetail from "./pages/BusinessDetail";
-import { AuthProvider } from "./app/AuthProvider";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+// Componentes de Layout
 import Navbar from "./components/Navbar";
+import ProtectedRoute from "./components/ProtectedRoute"; // Asegúrate de que la ruta sea correcta
+
+// Páginas de Cliente
+import Marketplace from "./pages/Marketplace";
+import BusinessDetail from "./pages/BusinessDetail";
 import Checkout from "./pages/Checkout";
-import Kitchen from "./pages/Kitchen";
-import Admin from "./pages/Admin";
+import Auth from "./pages/Auth";
+import OrderStatus from "./pages/OrderStatus";
+import OrdersHistory from "./pages/OrdersHistory";
+
+// Páginas de Administración de Negocio
 import AdminLogin from "./pages/AdminLogin";
+import Admin from "./pages/Admin";
+import Kitchen from "./pages/Kitchen";
+
+// Páginas de Super Admin
+import SuperAdminLogin from "./pages/SuperAdminLogin";
+import SuperAdmin from "./pages/SuperAdmin";
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <main className="min-h-screen bg-slate-950">
-          <Routes>
-            {/* --- RUTAS DE CLIENTE (Llevan Navbar) --- */}
-            <Route
-              path="/"
-              element={
-                <>
-                  <Navbar />
-                  <Marketplace />
-                </>
-              }
-            />
-            <Route
-              path="/business/:slug"
-              element={
-                <>
-                  <Navbar />
-                  <BusinessDetail />
-                </>
-              }
-            />
+    <BrowserRouter>
+      <main className="min-h-screen bg-slate-950">
+        <Routes>
+          {/* --- RUTAS PÚBLICAS / CLIENTE --- */}
+          <Route
+            path="/"
+            element={
+              <>
+                <Navbar />
+                <Marketplace />
+              </>
+            }
+          />
+          <Route
+            path="/business/:slug"
+            element={
+              <>
+                <Navbar />
+                <BusinessDetail />
+              </>
+            }
+          />
+          <Route path="/auth" element={<Auth />} />
+
+          {/* Rutas de cliente que requieren estar logueado */}
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={["customer", "admin", "superadmin"]}
+              />
+            }
+          >
             <Route
               path="/checkout"
               element={
@@ -43,20 +63,42 @@ function App() {
                 </>
               }
             />
+            <Route path="/order-status/:orderId" element={<OrderStatus />} />
+            <Route path="/my-orders" element={<OrdersHistory />} />
+          </Route>
 
-            {/* --- RUTAS LIMPIAS (Sin Navbar de cliente) --- */}
+          {/* --- RUTAS DE NEGOCIO (ADMIN/EMPLEADOS) --- */}
+          <Route path="/portal" element={<AdminLogin />} />
 
-            {/* Login/Registro */}
-            <Route path="/auth" element={<Auth />} />
-
-            {/* Cocina: Necesita pantalla completa, sin distracciones */}
-            <Route path="/kitchen/:businessId" element={<Kitchen />} />
-            <Route path="/portal" element={<AdminLogin />} />
+          <Route
+            element={
+              <ProtectedRoute
+                allowedRoles={[
+                  "admin",
+                  "cocinero",
+                  "cajero",
+                  "mesero",
+                  "superadmin",
+                ]}
+              />
+            }
+          >
             <Route path="/admin" element={<Admin />} />
-          </Routes>
-        </main>
-      </BrowserRouter>
-    </AuthProvider>
+            <Route path="/kitchen/:businessId" element={<Kitchen />} />
+          </Route>
+
+          {/* --- RUTAS DE SUPER ADMIN --- */}
+          <Route path="/SuperAdminLogin" element={<SuperAdminLogin />} />
+
+          <Route element={<ProtectedRoute allowedRoles={["superadmin"]} />}>
+            <Route path="/super-admin/dashboard" element={<SuperAdmin />} />
+          </Route>
+
+          {/* Redirección por defecto si la ruta no existe */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </main>
+    </BrowserRouter>
   );
 }
 

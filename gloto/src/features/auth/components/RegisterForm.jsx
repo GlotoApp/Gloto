@@ -1,15 +1,29 @@
 import { useState } from "react";
 import { useAuthActions } from "../hooks/useAuthActions";
+import { useNavigate } from "react-router-dom";
 
 export default function RegisterForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const { signUp, loading, error } = useAuthActions();
+  const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await signUp(email, password, fullName);
+    const result = await signUp(email, password, fullName);
+
+    if (result?.user) {
+      const tempProfile = {
+        id: result.user.id,
+        full_name: fullName,
+        role: "customer",
+        avatar_url: null,
+      };
+
+      sessionStorage.setItem("gloto_profile", JSON.stringify(tempProfile));
+      navigate("/");
+    }
   };
 
   return (
@@ -19,6 +33,8 @@ export default function RegisterForm() {
 
         <input
           type="text"
+          name="full_name" // Añadido
+          autoComplete="name" // Añadido
           placeholder="Nombre completo"
           className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-white focus:outline-none focus:border-sky-500 transition-colors"
           value={fullName}
@@ -28,6 +44,8 @@ export default function RegisterForm() {
 
         <input
           type="email"
+          name="email" // Añadido
+          autoComplete="email" // Añadido
           placeholder="Correo electrónico"
           className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-white focus:outline-none focus:border-sky-500 transition-colors"
           value={email}
@@ -37,6 +55,8 @@ export default function RegisterForm() {
 
         <input
           type="password"
+          name="password" // Añadido
+          autoComplete="new-password" // Añadido (Para registros nuevos)
           placeholder="Contraseña"
           className="bg-slate-950 border border-slate-700 p-3 rounded-lg text-white focus:outline-none focus:border-sky-500 transition-colors"
           value={password}

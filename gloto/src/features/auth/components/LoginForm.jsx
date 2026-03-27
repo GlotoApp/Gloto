@@ -11,14 +11,34 @@ export default function LoginForm() {
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
 
-    if (error) alert(error.message);
-    else navigate("/"); // Si entra bien, va al Marketplace
-    setLoading(false);
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("*, businesses(*)")
+        .eq("id", user.id)
+        .single();
+
+      if (profile) {
+        sessionStorage.setItem("gloto_profile", JSON.stringify(profile));
+      }
+
+      navigate("/");
+    } catch (error) {
+      alert(error.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -28,6 +48,8 @@ export default function LoginForm() {
     >
       <input
         type="email"
+        name="email" // Añadido
+        autoComplete="username" // Añadido
         placeholder="Tu email"
         className="w-full p-3 rounded-lg bg-slate-950 border border-slate-800 text-white"
         onChange={(e) => setEmail(e.target.value)}
@@ -35,6 +57,8 @@ export default function LoginForm() {
       />
       <input
         type="password"
+        name="password" // Añadido
+        autoComplete="current-password" // Añadido (Soluciona el error de consola)
         placeholder="Tu contraseña"
         className="w-full p-3 rounded-lg bg-slate-950 border border-slate-800 text-white"
         onChange={(e) => setPassword(e.target.value)}
