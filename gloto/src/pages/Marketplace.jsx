@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../shared/lib/supabase";
 import { useAuth } from "../app/AuthProvider";
 import { useNavigate } from "react-router-dom";
+import CartFloatingBar from "../components/CartFloatingBar";
 
 export default function Marketplace() {
   const { profile, loading: authLoading } = useAuth();
@@ -91,7 +92,7 @@ export default function Marketplace() {
         </header>
 
         {/* INPUT DE BÚSQUEDA CENTRADO */}
-        <div className="flex justify-center mb-8">
+        <div className="flex justify-center mb-5">
           <div className="relative w-full max-w-md">
             <input
               type="text"
@@ -107,7 +108,7 @@ export default function Marketplace() {
         </div>
 
         {/* CATEGORÍAS TIPO PILLS SIN BORDES PESADOS */}
-        <div className="flex gap-2 overflow-x-auto pb-3 no-scrollbar">
+        <div className="flex gap-2 overflow-x-auto pb-5 no-scrollbar">
           {categories.map((cat) => (
             <button
               key={cat}
@@ -136,10 +137,10 @@ export default function Marketplace() {
                 <div
                   key={biz.id}
                   onClick={() => navigate(`/business/${biz.slug}`)}
-                  className="group flex items-center gap-5 p-3 rounded-2xl cursor-pointer hover:bg-slate-900/40 transition-all"
+                  className="group flex items-center gap-5  rounded-2xl cursor-pointer hover:bg-slate-900/40 transition-all"
                 >
                   {/* IMAGEN: Miniatura limpia (Usa placeholder si cover_url es null) */}
-                  <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 relative">
+                  <div className="w-28 h-28 md:w-24 md:h-24 flex-shrink-0 relative">
                     <img
                       src={
                         biz.cover_url ||
@@ -190,6 +191,7 @@ export default function Marketplace() {
               ))}
         </div>
       </div>
+      <CartFloatingBar />
     </div>
   );
 }

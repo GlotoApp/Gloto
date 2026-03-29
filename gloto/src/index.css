@@ -32,6 +32,12 @@
   /* Texto secundario */
   --color-slate-300: #94a3b8;
   /* Placeholder */
+
+  /*verde*/
+  --color-green: #0BDA51;
+
+  /*blanco*/
+  --color-blancopuro: #ffffff;
 }
 
 body {

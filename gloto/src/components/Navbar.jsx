@@ -136,7 +136,7 @@ export default function Navbar() {
                 </button>
 
                 {showNotifs && (
-                  <div className="absolute right-0 mt-4 w-80 bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200">
+                  <div className="absolute right-(-10) mt-4 w-80 bg-white rounded-[2rem] shadow-2xl border border-slate-100 overflow-hidden animate-in fade-in zoom-in duration-200">
                     <div className="p-5 border-b border-slate-50 flex justify-between items-center">
                       <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                         Notificaciones
