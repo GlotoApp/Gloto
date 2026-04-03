@@ -22,7 +22,15 @@ export default function RegisterForm() {
       };
 
       sessionStorage.setItem("gloto_profile", JSON.stringify(tempProfile));
-      navigate("/");
+
+      // Revisar si hay una URL guardada para redirigir
+      const redirectUrl = localStorage.getItem("redirectAfterLogin");
+      if (redirectUrl) {
+        localStorage.removeItem("redirectAfterLogin");
+        navigate(redirectUrl);
+      } else {
+        navigate("/");
+      }
     }
   };
 

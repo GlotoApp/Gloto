@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { supabase } from "../shared/lib/supabase";
 import { useNavigate } from "react-router-dom";
+import { ChefHat, Users } from "lucide-react";
 
-export default function AdminLogin() {
+export default function EmployeeLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -34,11 +35,13 @@ export default function AdminLogin() {
       if (profileError || !profile)
         throw new Error("No se pudo verificar el perfil");
 
-      // 3. Este portal es SOLO para administradores (dueños de negocios)
-      if (profile.role !== "admin") {
+      // 3. Definimos los roles permitidos para empleados (NO admin, NO superadmin)
+      const allowedRoles = ["cocinero", "cajero", "mesero", "repartidor"];
+
+      if (!allowedRoles.includes(profile.role)) {
         await supabase.auth.signOut();
         alert(
-          "ACCESO DENEGADO: Este portal es solo para administradores. Si eres empleado, usa el portal de empleados.",
+          "ACCESO DENEGADO: Tu cuenta no tiene permisos de empleado. Por favor, contacta al administrador.",
         );
         setLoading(false);
         return;
@@ -47,8 +50,14 @@ export default function AdminLogin() {
       // 4. GUARDADO INSTANTÁNEO: Guardamos en sessionStorage
       sessionStorage.setItem("gloto_profile", JSON.stringify(profile));
 
-      // 5. Redirigir al dashboard de administrador
-      navigate("/admin");
+      // 5. REDIRECCIÓN SEGÚN ROL
+      if (profile.role === "cocinero") {
+        // Los cocineros van a la cocina
+        navigate(`/kitchen/${profile.business_id}`);
+      } else {
+        // Cajeros, Meseros y Repartidores van al dashboard de empleados
+        navigate("/employee-dashboard");
+      }
     } catch (error) {
       alert("Error de acceso: " + error.message);
     } finally {
@@ -59,11 +68,15 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6">
       <div className="mb-8 text-center">
-        <h1 className="text-4xl font-black italic text-sky-500 tracking-tighter uppercase">
-          Gloto Admin
+        <div className="flex items-center justify-center gap-2 mb-4">
+          <ChefHat className="text-orange-500" size={32} />
+          <Users className="text-orange-500" size={32} />
+        </div>
+        <h1 className="text-4xl font-black italic text-orange-500 tracking-tighter uppercase">
+          Gloto Empleados
         </h1>
         <p className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mt-2">
-          Portal de Administración de Negocios
+          Portal de Acceso para Personal
         </p>
       </div>
 
@@ -77,8 +90,8 @@ export default function AdminLogin() {
           </label>
           <input
             type="email"
-            placeholder="usuario@negocio.com"
-            className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-sky-500 text-white transition-all"
+            placeholder="empleado@negocio.com"
+            className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-orange-500 text-white transition-all"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
@@ -92,7 +105,7 @@ export default function AdminLogin() {
           <input
             type="password"
             placeholder="••••••••"
-            className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-sky-500 text-white transition-all"
+            className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl outline-none focus:border-orange-500 text-white transition-all"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
@@ -101,14 +114,14 @@ export default function AdminLogin() {
 
         <button
           disabled={loading}
-          className="w-full bg-sky-500 hover:bg-sky-400 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-sky-500/20 uppercase text-xs tracking-widest active:scale-95 disabled:opacity-50 mt-4"
+          className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs transition-all mt-6"
         >
-          {loading ? "Verificando..." : "Entrar a mi Puesto"}
+          {loading ? "Validando..." : "Acceder como Empleado"}
         </button>
       </form>
 
-      <div className="mt-8 text-center text-slate-500 text-xs space-y-2">
-        <p>¿Eres empleado? <span className="text-orange-400 hover:text-orange-300 cursor-pointer font-bold" onClick={() => navigate("/employee-login")}>Acceso Empleados</span></p>
+      <div className="mt-8 text-center text-slate-500 text-xs">
+        <p>¿Eres propietario? <span className="text-sky-400 hover:text-sky-300 cursor-pointer" onClick={() => navigate("/portal")}>Acceso Administrador</span></p>
       </div>
     </div>
   );

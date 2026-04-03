@@ -2,7 +2,6 @@ import { useEffect, useState, useMemo } from "react";
 import { supabase } from "../shared/lib/supabase";
 import { useAuth } from "../app/AuthProvider";
 import { useNavigate } from "react-router-dom";
-import CartFloatingBar from "../components/CartFloatingBar";
 
 export default function Marketplace() {
   const { profile, loading: authLoading } = useAuth();
@@ -191,7 +190,6 @@ export default function Marketplace() {
               ))}
         </div>
       </div>
-      <CartFloatingBar />
     </div>
   );
 }

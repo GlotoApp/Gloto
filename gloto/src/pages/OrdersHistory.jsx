@@ -7,6 +7,8 @@ import {
   Clock,
   CheckCircle2,
   Utensils,
+  ArrowLeft,
+  ReceiptText,
 } from "lucide-react";
 
 export default function OrdersHistory() {
@@ -28,86 +30,95 @@ export default function OrdersHistory() {
       return;
     }
 
-    // Traemos las órdenes y el nombre del negocio (usando la relación business_id)
     const { data, error } = await supabase
       .from("orders")
-      .select(
-        `
-        *,
-        businesses (
-          name
-        )
-      `,
-      )
+      .select(`*, businesses ( name )`)
       .eq("customer_id", user.id)
       .order("created_at", { ascending: false });
 
     if (error) console.error("Error fetching orders:", error);
     else setOrders(data || []);
-
     setLoading(false);
   };
 
-  // Configuración de colores y textos por estado
   const statusConfig = {
     pending: {
       label: "Pendiente",
-      color: "text-amber-500",
-      bg: "bg-amber-50",
-      icon: <Clock size={16} />,
+      color: "text-amber-400",
+      bg: "bg-amber-400/10",
+      icon: <Clock size={18} />,
     },
     preparing: {
       label: "En Cocina",
-      color: "text-sky-500",
-      bg: "bg-sky-50",
-      icon: <Utensils size={16} className="animate-bounce" />,
+      color: "text-sky-400",
+      bg: "bg-sky-400/10",
+      icon: <Utensils size={18} className="animate-pulse" />,
     },
     ready: {
-      label: "Listo para recoger",
-      color: "text-green-500",
-      bg: "bg-green-50",
-      icon: <CheckCircle2 size={16} />,
+      label: "¡Listo!",
+      color: "text-green-400",
+      bg: "bg-green-400/10",
+      icon: <CheckCircle2 size={18} />,
     },
     completed: {
       label: "Entregado",
-      color: "text-slate-400",
-      bg: "bg-slate-50",
-      icon: <Package size={16} />,
+      color: "text-slate-500",
+      bg: "bg-slate-800",
+      icon: <Package size={18} />,
     },
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-sky-500 rounded-full animate-spin"></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-950">
+        <div className="relative w-12 h-12">
+          <div className="absolute inset-0 border-4 border-sky-500/20 rounded-full"></div>
+          <div className="absolute inset-0 border-4 border-t-sky-500 rounded-full animate-spin"></div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-white pt-32 pb-20 px-6">
-      <div className="max-w-2xl mx-auto">
-        <header className="mb-10 text-center md:text-left">
-          <h1 className="text-4xl md:text-5xl font-black italic uppercase tracking-tighter text-slate-900">
-            Mis <span className="text-sky-500">Pedidos</span>
+    <div className="min-h-screen bg-slate-950 pb-24">
+      {/* Navbar Superior */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/80 backdrop-blur-lg border-b border-slate-900 px-6 py-4">
+        <div className="max-w-2xl mx-auto flex items-center gap-4">
+          <button
+            onClick={() => navigate(-1)}
+            className="p-2 hover:bg-slate-900 rounded-full transition-colors"
+          >
+            <ArrowLeft className="text-white" size={24} />
+          </button>
+          <h2 className="text-white font-black uppercase italic tracking-tighter text-xl">
+            Mi Actividad
+          </h2>
+        </div>
+      </nav>
+
+      <div className="max-w-2xl mx-auto pt-28 px-6">
+        <header className="mb-10">
+          <h1 className="text-2xl font-black italic uppercase tracking-tighter text-white leading-none">
+            Historial de <br />
+            <span className="text-sky-500 text-2xl">Pedidos</span>
           </h1>
-          <p className="text-slate-400 font-bold text-[10px] uppercase tracking-[0.2em] mt-2">
-            Historial de actividad en Gloto
-          </p>
+          <div className="h-1 w-20 bg-sky-500 mt-4 rounded-full"></div>
         </header>
 
-        <div className="space-y-4">
+        <div className="grid gap-4">
           {orders.length === 0 ? (
-            <div className="text-center py-24 bg-slate-50/50 rounded-[3rem] border-2 border-dashed border-slate-100">
-              <Package className="mx-auto text-slate-200 mb-4" size={48} />
-              <p className="text-slate-400 font-bold uppercase text-[10px] tracking-widest">
-                Aún no has realizado pedidos
+            <div className="text-center py-20 bg-slate-900/50 rounded-[2.5rem] border-2 border-dashed border-slate-800">
+              <div className="w-20 h-20 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-6">
+                <ReceiptText className="text-slate-600" size={40} />
+              </div>
+              <p className="text-slate-400 font-bold uppercase text-xs tracking-[0.2em]">
+                No hay pedidos registrados
               </p>
               <button
                 onClick={() => navigate("/")}
-                className="mt-6 text-sky-500 font-black uppercase text-xs hover:underline"
+                className="mt-6 bg-white text-slate-950 px-8 py-3 rounded-full font-black uppercase text-xs hover:scale-105 transition-transform"
               >
-                Explorar restaurantes
+                Empezar a comer
               </button>
             </div>
           ) : (
@@ -118,45 +129,61 @@ export default function OrdersHistory() {
                 <button
                   key={order.id}
                   onClick={() => navigate(`/order-status/${order.id}`)}
-                  className="w-full flex items-center justify-between p-6 bg-white border border-slate-100 rounded-[2rem] hover:shadow-2xl hover:shadow-sky-100/50 hover:border-sky-100 transition-all duration-300 group"
+                  className="w-full relative overflow-hidden group bg-slate-900 border border-slate-800 rounded-[2rem] p-5 transition-all hover:border-sky-500/50 hover:bg-slate-900/80 active:scale-[0.98]"
                 >
-                  <div className="flex items-center gap-5">
-                    {/* Icono de estado */}
-                    <div
-                      className={`w-12 h-12 rounded-2xl flex items-center justify-center ${status.bg} ${status.color} transition-colors`}
-                    >
-                      {status.icon}
-                    </div>
-
-                    <div className="text-left">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full ${status.bg} ${status.color}`}
-                        >
-                          {status.label}
-                        </span>
-                        <span className="text-[9px] font-bold text-slate-300 uppercase">
-                          {new Date(order.created_at).toLocaleDateString()}
-                        </span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      {/* Badge con Icono */}
+                      <div
+                        className={`w-14 h-14 rounded-2xl flex items-center justify-center ${status.bg} ${status.color} shadow-inner transition-transform group-hover:rotate-6`}
+                      >
+                        {status.icon}
                       </div>
 
-                      <h3 className="font-black uppercase italic text-lg leading-tight text-slate-800">
-                        {order.businesses?.name || "Restaurante"}
-                      </h3>
+                      <div className="text-left">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span
+                            className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${status.bg} ${status.color}`}
+                          >
+                            {status.label}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-500">
+                            {new Date(order.created_at).toLocaleDateString(
+                              "es-CO",
+                              { day: "numeric", month: "short" },
+                            )}
+                          </span>
+                        </div>
 
-                      <p className="text-xs font-bold text-slate-400 mt-1">
-                        Total:{" "}
-                        <span className="text-slate-900">
-                          ${order.total_price.toLocaleString()}
-                        </span>
-                      </p>
+                        <h3 className="font-black uppercase text-xs text-white group-hover:text-sky-500 transition-colors truncate max-w-[200px]">
+                          {order.businesses?.name || "Restaurante"}
+                        </h3>
+
+                        <div className="flex items-center gap-2 mt-1">
+                          <p className="text-xs font-bold text-slate-400">
+                            {order.total_price > 0
+                              ? `$${Number(order.total_price).toLocaleString("es-CO")}`
+                              : "Precio Variable"}
+                          </p>
+                          <span className="w-1 h-1 bg-slate-700 rounded-full"></span>
+                          <p className="text-[10px] text-slate-600 font-medium">
+                            #{order.id.slice(0, 8)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-2">
+                      <div className="p-2 bg-slate-800 rounded-full text-slate-400 group-hover:text-white group-hover:bg-sky-500 transition-all">
+                        <ChevronRight size={20} />
+                      </div>
                     </div>
                   </div>
 
-                  <ChevronRight
-                    className="text-slate-200 group-hover:text-sky-500 group-hover:translate-x-1 transition-all"
-                    size={20}
-                  />
+                  {/* Efecto decorativo de fondo */}
+                  <div className="absolute -right-4 -bottom-4 opacity-[0.03] text-white group-hover:opacity-[0.05] transition-opacity">
+                    <ReceiptText size={100} />
+                  </div>
                 </button>
               );
             })

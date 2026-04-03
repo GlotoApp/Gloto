@@ -33,7 +33,14 @@ export default function LoginForm() {
         sessionStorage.setItem("gloto_profile", JSON.stringify(profile));
       }
 
-      navigate("/");
+      // Revisar si hay una URL guardada para redirigir
+      const redirectUrl = localStorage.getItem("redirectAfterLogin");
+      if (redirectUrl) {
+        localStorage.removeItem("redirectAfterLogin");
+        navigate(redirectUrl);
+      } else {
+        navigate("/");
+      }
     } catch (error) {
       alert(error.message);
     } finally {

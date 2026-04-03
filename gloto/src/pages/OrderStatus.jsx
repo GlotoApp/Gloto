@@ -7,6 +7,10 @@ import {
   ChefHat,
   PackageCheck,
   ArrowLeft,
+  MessageCircle,
+  MapPin,
+  Receipt,
+  HelpCircle,
 } from "lucide-react";
 
 export default function OrderStatus() {
@@ -18,7 +22,6 @@ export default function OrderStatus() {
   useEffect(() => {
     if (!orderId) return;
 
-    // 1. Cargar estado inicial
     const fetchOrder = async () => {
       const { data } = await supabase
         .from("orders")
@@ -31,7 +34,6 @@ export default function OrderStatus() {
 
     fetchOrder();
 
-    // 2. Suscribirse a cambios REALTIME de ESTE pedido
     const channel = supabase
       .channel(`order-tracking-${orderId}`)
       .on(
@@ -43,7 +45,6 @@ export default function OrderStatus() {
           filter: `id=eq.${orderId}`,
         },
         (payload) => {
-          console.log("Cambio de estado detectado:", payload.new.status);
           setOrder((prev) => ({ ...prev, status: payload.new.status }));
         },
       )
@@ -56,119 +57,183 @@ export default function OrderStatus() {
 
   if (loading)
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center font-black italic uppercase">
-        Rastreando Pedido...
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center">
+        <div className="w-16 h-16 border-4 border-sky-500/10 border-t-sky-500 rounded-full animate-spin mb-4" />
+        <span className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-500 animate-pulse">
+          Sincronizando...
+        </span>
       </div>
     );
-  if (!order)
-    return <div className="p-20 text-center">Pedido no encontrado.</div>;
 
-  // Configuración de visualización por estado
   const statusConfig = {
     pending: {
       label: "Recibido",
-      icon: <Clock className="animate-pulse" />,
-      color: "text-amber-500",
-      bg: "bg-amber-50",
-      desc: "Esperando que el restaurante confirme.",
+      icon: <Clock size={40} />,
+      color: "text-amber-400",
+      bg: "from-amber-500/20 to-transparent",
+      desc: "El restaurante está revisando tu pedido.",
+      step: 0,
     },
     preparing: {
       label: "En Cocina",
-      icon: <ChefHat className="animate-bounce" />,
-      color: "text-sky-500",
-      bg: "bg-sky-50",
-      desc: "El chef está preparando tu comida.",
+      icon: <ChefHat size={40} />,
+      color: "text-sky-400",
+      bg: "from-sky-500/20 to-transparent",
+      desc: "Tu comida se está preparando en este momento.",
+      step: 1,
     },
     ready: {
       label: "¡Listo!",
-      icon: <PackageCheck className="scale-125" />,
-      color: "text-green-500",
-      bg: "bg-green-50",
-      desc: "Tu pedido está listo para entrega.",
+      icon: <PackageCheck size={40} />,
+      color: "text-green-400",
+      bg: "from-green-500/20 to-transparent",
+      desc: "¡Todo listo! Tu pedido espera por ti.",
+      step: 2,
     },
     completed: {
       label: "Entregado",
-      icon: <CheckCircle2 />,
-      color: "text-slate-900",
-      bg: "bg-slate-100",
-      desc: "¡Gracias por elegir Gloto!",
+      icon: <CheckCircle2 size={40} />,
+      color: "text-slate-400",
+      bg: "from-slate-500/10 to-transparent",
+      desc: "Pedido finalizado. ¡Que lo disfrutes!",
+      step: 3,
     },
   };
 
   const currentStatus = statusConfig[order.status] || statusConfig.pending;
+  const steps = ["pending", "preparing", "ready", "completed"];
+  const currentStepIndex = steps.indexOf(order.status);
 
   return (
-    <div className="min-h-screen bg-white text-black p-6 md:p-16">
-      <div className="max-w-xl mx-auto">
-        <button
-          onClick={() => navigate("/")}
-          className="mb-12 flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-400"
-        >
-          <ArrowLeft size={14} /> Volver al Inicio
-        </button>
+    <div className="min-h-screen bg-slate-950 text-white font-sans selection:bg-sky-500/30">
+      {/* HEADER DE NAVEGACIÓN */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-slate-950/60 backdrop-blur-xl border-b border-white/5 px-6 py-4">
+        <div className="max-w-xl mx-auto flex items-center justify-between">
+          <button
+            onClick={() => navigate("/")}
+            className="p-2.5 bg-slate-900 rounded-2xl hover:bg-slate-800 transition-all border border-white/5"
+          >
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex flex-col items-end">
+            <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest leading-none">
+              Orden
+            </span>
+            <span className="font-mono text-sm text-sky-500 font-bold tracking-tighter">
+              #{order.id.slice(0, 8).toUpperCase()}
+            </span>
+          </div>
+        </div>
+      </nav>
 
-        <header className="mb-12">
-          <span className="text-[10px] font-black uppercase tracking-[0.3em] text-sky-500 mb-2 block">
-            Estado del Pedido
-          </span>
-          <h1 className="text-5xl font-black italic uppercase tracking-tighter leading-none mb-4">
-            #{order.id.slice(0, 5)}
+      <main className="max-w-xl mx-auto pt-28 px-6 pb-24">
+        {/* TITULAR DINÁMICO */}
+        <header className="mb-8">
+          <h1 className="text-2xl font-black italic uppercase tracking-tighter leading-none mb-3">
+            Tu <span className="text-sky-500 italic">Pedido</span>
           </h1>
-          <p className="text-slate-500 font-bold uppercase text-xs tracking-tight">
-            Restaurante:{" "}
-            <span className="text-black">{order.businesses?.name}</span>
-          </p>
+          <div className="flex items-center gap-3 bg-slate-900/50 self-start px-4 py-2 rounded-2xl border border-white/5">
+            <MapPin size={14} className="text-sky-500" />
+            <span className="text-xs font-black uppercase tracking-tight">
+              {order.businesses?.name}
+            </span>
+          </div>
         </header>
 
-        {/* CARD DE ESTADO DINÁMICA */}
+        {/* HERO CARD (STATUS) */}
         <div
-          className={`${currentStatus.bg} rounded-[3rem] p-10 border border-slate-100 mb-8 transition-all duration-500`}
+          className={`relative overflow-hidden rounded-[2.5rem] p-8 border border-white/10 mb-6 bg-gradient-to-br ${currentStatus.bg} transition-all duration-1000`}
         >
-          <div className={`${currentStatus.color} mb-6 flex justify-center`}>
-            {/* Renderizamos el icono con el tamaño escalado */}
-            {window.cloneElement?.(currentStatus.icon, { size: 64 }) || (
-              <div className="text-6xl">{currentStatus.icon}</div>
-            )}
-          </div>
-
-          <h2
-            className={`text-4xl font-black italic uppercase tracking-tighter text-center mb-2 ${currentStatus.color}`}
-          >
-            {currentStatus.label}
-          </h2>
-          <p className="text-center text-slate-600 font-medium px-4">
-            {currentStatus.desc}
-          </p>
-        </div>
-
-        {/* LÍNEA DE TIEMPO VISUAL */}
-        <div className="flex justify-between items-center px-4 relative">
-          <div className="absolute top-1/2 left-0 w-full h-1 bg-slate-100 -translate-y-1/2 z-0"></div>
-          {["pending", "preparing", "ready", "completed"].map((s, index) => (
+          <div className="flex items-center gap-6 relative z-10">
             <div
-              key={s}
-              className={`relative z-10 w-4 h-4 rounded-full transition-all duration-700 ${
-                order.status === s ||
-                index <=
-                  ["pending", "preparing", "ready", "completed"].indexOf(
-                    order.status,
-                  )
-                  ? "bg-sky-500 scale-125"
-                  : "bg-slate-200"
-              }`}
-            />
-          ))}
+              className={`p-5 rounded-[2rem] bg-slate-950/50 backdrop-blur-md border border-white/10 ${currentStatus.color} shadow-2xl`}
+            >
+              {currentStatus.icon}
+            </div>
+            <div>
+              <h2
+                className={`text-2xl font-black italic uppercase tracking-tighter leading-none mb-1 ${currentStatus.color}`}
+              >
+                {currentStatus.label}
+              </h2>
+              <p className="text-slate-400 text-xs font-bold leading-snug max-w-[180px]">
+                {currentStatus.desc}
+              </p>
+            </div>
+          </div>
+          {/* Decoración de fondo */}
+          <div className="absolute top-0 right-0 p-4 opacity-10">
+            <Receipt size={80} className="-rotate-12" />
+          </div>
         </div>
 
-        <div className="mt-20 border-t border-slate-100 pt-10 text-center">
-          <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-4">
-            ¿Algún problema con tu pedido?
-          </p>
-          <button className="text-xs font-black uppercase italic underline decoration-sky-500 decoration-2 underline-offset-4">
-            Contactar Soporte Gloto
+        {/* PROGRESS TRACKER */}
+        <div className="bg-slate-900/30 backdrop-blur-sm rounded-[2rem] p-8 border border-white/5 mb-8">
+          <div className="relative flex justify-between">
+            {/* Línea Base */}
+            <div className="absolute top-2.5 left-0 w-full h-[3px] bg-slate-800 rounded-full" />
+            {/* Línea Activa */}
+            <div
+              className="absolute top-2.5 left-0 h-[3px] bg-sky-500 rounded-full transition-all duration-1000 shadow-[0_0_15px_rgba(14,165,233,0.6)]"
+              style={{ width: `${(currentStepIndex / 3) * 100}%` }}
+            />
+
+            {steps.map((s, i) => (
+              <div key={s} className="relative z-10 flex flex-col items-center">
+                <div
+                  className={`w-6 h-6 rounded-full border-[3px] transition-all duration-500 ${
+                    i <= currentStepIndex
+                      ? "bg-sky-500 border-slate-950 scale-110"
+                      : "bg-slate-900 border-slate-800"
+                  } ${i === currentStepIndex ? "animate-pulse ring-4 ring-sky-500/20" : ""}`}
+                />
+                <span
+                  className={`text-[8px] font-black uppercase mt-3 tracking-tighter ${
+                    i <= currentStepIndex ? "text-white" : "text-slate-600"
+                  }`}
+                >
+                  {statusConfig[s].label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* DETALLE DEL PEDIDO (Lo que faltaba) */}
+        <div className="grid grid-cols-1 gap-4 mb-8">
+          <div className="bg-slate-900/40 border border-white/5 rounded-3xl p-6 flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                Monto Total
+              </p>
+              <p className="text-xl font-black italic text-sky-500">
+                ${Number(order.total_price).toLocaleString()}
+              </p>
+            </div>
+            <div className="h-10 w-[1px] bg-white/10" />
+            <div className="text-right">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                Método
+              </p>
+              <p className="text-xs font-bold uppercase tracking-tight text-white">
+                Efectivo / App
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* ACCIONES RÁPIDAS */}
+        <div className="flex gap-3">
+          <button className="flex-1 flex items-center justify-center gap-3 py-5 bg-white text-slate-950 rounded-3xl font-black uppercase text-xs hover:scale-[1.02] active:scale-[0.98] transition-all">
+            <MessageCircle size={18} strokeWidth={3} />
+            Soporte
+          </button>
+          <button className="flex-1 flex items-center justify-center gap-3 py-5 bg-slate-900 text-white border border-white/5 rounded-3xl font-black uppercase text-xs hover:bg-slate-800 transition-all">
+            <HelpCircle size={18} strokeWidth={2} />
+            Ayuda
           </button>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

@@ -20,8 +20,9 @@ export default function ProtectedRoute({ allowedRoles }) {
   }
 
   // 2. Si terminó de cargar y no hay usuario, mandarlo al login
-  // Nota: puedes cambiar "/auth" por la página de login que prefieras
+  // Guardamos la URL actual para redirigir después del login
   if (!user) {
+    localStorage.setItem("redirectAfterLogin", window.location.pathname);
     return <Navigate to="/auth" replace />;
   }
 
