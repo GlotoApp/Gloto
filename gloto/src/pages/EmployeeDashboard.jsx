@@ -170,23 +170,49 @@ export default function EmployeeDashboard() {
           </h3>
 
           {profile?.role === "cajero" && (
-            <div className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-orange-500/50 transition-colors cursor-pointer">
-              <h4 className="text-orange-500 font-black mb-2">
-                💰 Gestión de Pagos
-              </h4>
-              <p className="text-slate-400 text-sm">
-                Aquí se mostrarán los pedidos pendientes de pago
-              </p>
-            </div>
+            <>
+              <div
+                onClick={() => navigate(`/pos/${profile.business_id}`)}
+                className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-orange-500/50 transition-colors cursor-pointer"
+              >
+                <h4 className="text-orange-500 font-black mb-2">
+                  🛒 Sistema POS
+                </h4>
+                <p className="text-slate-400 text-sm">
+                  Crea pedidos y gestiona ventas desde el restaurante
+                </p>
+              </div>
+              <div className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-orange-500/50 transition-colors cursor-pointer">
+                <h4 className="text-orange-500 font-black mb-2">
+                  💰 Gestión de Pagos
+                </h4>
+                <p className="text-slate-400 text-sm">
+                  Aquí se mostrarán los pedidos pendientes de pago
+                </p>
+              </div>
+            </>
           )}
 
           {profile?.role === "mesero" && (
-            <div className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-sky-500/50 transition-colors cursor-pointer">
-              <h4 className="text-sky-500 font-black mb-2">📋 Mis Pedidos</h4>
-              <p className="text-slate-400 text-sm">
-                Vista de pedidos para atender a clientes
-              </p>
-            </div>
+            <>
+              <div
+                onClick={() => navigate(`/pos/${profile.business_id}`)}
+                className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-sky-500/50 transition-colors cursor-pointer"
+              >
+                <h4 className="text-sky-500 font-black mb-2">
+                  🛒 Tomar Pedido
+                </h4>
+                <p className="text-slate-400 text-sm">
+                  Crea pedidos para clientes desde el restaurante
+                </p>
+              </div>
+              <div className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-sky-500/50 transition-colors cursor-pointer">
+                <h4 className="text-sky-500 font-black mb-2">📋 Mis Pedidos</h4>
+                <p className="text-slate-400 text-sm">
+                  Vista de pedidos para atender a clientes
+                </p>
+              </div>
+            </>
           )}
 
           {profile?.role === "repartidor" && (

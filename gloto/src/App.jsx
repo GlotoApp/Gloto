@@ -10,6 +10,7 @@ import OrdersHistory from "./pages/OrdersHistory";
 import Admin from "./pages/Admin";
 import EmployeeDashboard from "./pages/EmployeeDashboard";
 import Kitchen from "./pages/Kitchen";
+import POS from "./pages/POS";
 import SuperAdmin from "./pages/SuperAdmin";
 
 function App() {
@@ -41,6 +42,7 @@ function App() {
           <Route path="/admin" element={<Admin />} />
           <Route path="/employee-dashboard" element={<EmployeeDashboard />} />
           <Route path="/kitchen/:businessId" element={<Kitchen />} />
+          <Route path="/pos/:businessId" element={<POS />} />
           <Route path="/super-admin/dashboard" element={<SuperAdmin />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
