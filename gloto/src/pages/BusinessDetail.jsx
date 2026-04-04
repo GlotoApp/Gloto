@@ -27,21 +27,43 @@ export default function BusinessDetail() {
   useEffect(() => {
     async function loadData() {
       setLoading(true);
-      const { data: biz } = await supabase
-        .from("businesses")
-        .select("*")
-        .eq("slug", slug)
-        .maybeSingle();
-      if (biz) {
-        setBusiness(biz);
-        const { data: prods } = await supabase
-          .from("products")
-          .select("*")
-          .eq("business_id", biz.id)
-          .order("name");
-        setProducts(prods || []);
+      try {
+        const { data: biz, error: bizError } = await supabase
+          .from("businesses")
+          .select(
+            "id,name,slug,description,category,cover_url,address,lat,lng,phone,email,rating,is_active,is_open,open_hours,plan,settings,created_at,owner_id",
+          )
+          .eq("slug", slug)
+          .maybeSingle();
+
+        if (bizError) {
+          console.error("Error cargando negocio:", bizError);
+          setLoading(false);
+          return;
+        }
+
+        if (biz) {
+          setBusiness(biz);
+          const { data: prods, error: prodsError } = await supabase
+            .from("products")
+            .select(
+              "id,business_id,category_id,name,description,price,image_url,is_available,created_at,category",
+            )
+            .eq("business_id", biz.id)
+            .order("name");
+
+          if (prodsError) {
+            console.error("Error cargando productos:", prodsError);
+            setProducts([]);
+          } else {
+            setProducts(prods || []);
+          }
+        }
+      } catch (err) {
+        console.error("Error en loadData:", err);
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     }
     loadData();
   }, [slug]);

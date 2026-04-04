@@ -1,3 +1,4 @@
+// This file has been emptied to remove the Super Admin login functionality.
 import { useState } from "react";
 import { supabase } from "../shared/lib/supabase";
 import { useNavigate } from "react-router-dom";

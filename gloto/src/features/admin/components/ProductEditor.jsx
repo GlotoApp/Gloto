@@ -38,11 +38,16 @@ export default function ProductEditor({ businessId, productId, onBack }) {
       // 1. Cargar datos del producto
       const { data: product, error: pError } = await supabase
         .from("products")
-        .select("*")
+        .select(
+          "id,business_id,category_id,name,description,price,image_url,is_available,created_at,category",
+        )
         .eq("id", productId)
         .single();
 
-      if (pError) throw pError;
+      if (pError) {
+        console.error("Product error:", pError);
+        throw pError;
+      }
       setFormData(product);
       setImagePreview(product.image_url);
 

@@ -96,10 +96,6 @@ export default function ProductModal({ product, onClose }) {
   const decrement = () => setQuantity((prev) => (prev > 1 ? prev - 1 : 1));
 
   const handleAdd = () => {
-    if (!user) {
-      setShowLoginModal(true);
-      return;
-    }
     addToCart(product, selectedOptions, notes, quantity);
     onClose();
   };
@@ -306,54 +302,7 @@ export default function ProductModal({ product, onClose }) {
         </button>
       </div>
 
-      {/* MODAL DE LOGIN */}
-      {showLoginModal && (
-        <div className="fixed inset-0 z-[110] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl animate-in scale-in">
-            <div className="p-8 text-center">
-              <button
-                onClick={() => setShowLoginModal(false)}
-                className="absolute top-4 right-4 p-2 hover:bg-slate-100 rounded-full transition-colors"
-              >
-                <X size={24} className="text-slate-400" />
-              </button>
-
-              <div className="mb-6">
-                <div className="w-16 h-16 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto mb-4 text-3xl">
-                  🔐
-                </div>
-                <h2 className="text-2xl font-black italic uppercase tracking-tighter text-slate-900">
-                  Inicia Sesión
-                </h2>
-                <p className="text-sm text-slate-500 font-bold mt-2">
-                  Debes iniciar sesión para agregar productos
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  onClick={() => {
-                    localStorage.setItem(
-                      "redirectAfterLogin",
-                      window.location.pathname,
-                    );
-                    navigate("/auth");
-                  }}
-                  className="w-full bg-sky-500 hover:bg-sky-600 text-white font-black py-4 rounded-2xl uppercase text-xs tracking-widest transition-all active:scale-95"
-                >
-                  Iniciar Sesión
-                </button>
-                <button
-                  onClick={() => setShowLoginModal(false)}
-                  className="w-full border-2 border-slate-200 hover:border-slate-300 text-slate-900 font-black py-4 rounded-2xl uppercase text-xs tracking-widest transition-all"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* MODAL DE LOGIN ELIMINADO: ahora se puede agregar al carrito sin iniciar sesión */}
     </div>
   );
 }

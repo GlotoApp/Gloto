@@ -43,27 +43,17 @@ export default function Checkout() {
     setIsSubmitting(true);
 
     try {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-
-      if (authError || !user) {
-        setShowLoginModal(true);
-        return;
-      }
-
       const businessId = cart[0].business_id;
 
-      // 1. Insertar la Orden principal
+      // 1. Insertar la Orden principal (sin customer_id)
       const { data: order, error: orderError } = await supabase
         .from("orders")
         .insert({
-          customer_id: user.id,
           business_id: businessId,
           total_price: total,
           status: "pending",
           payment_method: paymentMethod,
+          delivery_type: deliveryType,
         })
         .select()
         .single();
@@ -265,19 +255,19 @@ export default function Checkout() {
               <div className="grid grid-cols-1 gap-2">
                 {[
                   {
-                    id: "pickup",
+                    id: "Recoger",
                     label: "Recoger",
                     desc: "Retira directamente en nuestro local",
                     icon: <Home size={16} />,
                   },
                   {
-                    id: "point",
+                    id: "En Punto",
                     label: "En Punto",
                     desc: "Entrega en mesa o punto de encuentro",
                     icon: <MapPin size={16} />,
                   },
                   {
-                    id: "delivery",
+                    id: "Domicilio",
                     label: "Domicilio",
                     desc: "Envío rápido hasta tu ubicación",
                     icon: <Package size={16} />,
@@ -339,19 +329,19 @@ export default function Checkout() {
               <div className="grid grid-cols-1 gap-2">
                 {[
                   {
-                    id: "cash",
+                    id: "Efectivo",
                     label: "Efectivo",
                     desc: "Pago contra entrega",
                     icon: <Banknote size={16} />,
                   },
                   {
-                    id: "card",
+                    id: "Tarjeta",
                     label: "Datáfono",
                     desc: "Tarjeta Crédito / Débito",
                     icon: <CreditCard size={16} />,
                   },
                   {
-                    id: "transfer",
+                    id: "Transferencia",
                     label: "Transferencia",
                     desc: "Nequi / Daviplata / Bancolombia",
                     icon: <Smartphone size={16} />,

@@ -26,14 +26,19 @@ export default function Admin() {
     try {
       const { data, error } = await supabase
         .from("businesses")
-        .select("*")
+        .select("id,name,owner_id")
         .eq("owner_id", user.id)
         .maybeSingle();
 
-      if (error) throw error;
-      setBusiness(data);
+      if (error) {
+        console.error("Error cargando negocio:", error);
+        setBusiness(null);
+      } else {
+        setBusiness(data);
+      }
     } catch (err) {
       console.error("Error cargando negocio:", err);
+      setBusiness(null);
     } finally {
       setLoading(false);
     }

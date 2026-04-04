@@ -15,14 +15,27 @@ export default function InventoryManager({
   }, [businessId]);
 
   const fetchProducts = async () => {
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("business_id", businessId)
-      .order("created_at", { ascending: false });
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "id,business_id,category_id,name,description,price,image_url,is_available,created_at,category",
+        )
+        .eq("business_id", businessId)
+        .order("created_at", { ascending: false });
 
-    if (!error) setProducts(data);
-    setLoading(false);
+      if (error) {
+        console.error("Products error:", error);
+        setProducts([]);
+      } else {
+        setProducts(data || []);
+      }
+    } catch (err) {
+      console.error("Error en fetchProducts:", err);
+      setProducts([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = async (id, e) => {

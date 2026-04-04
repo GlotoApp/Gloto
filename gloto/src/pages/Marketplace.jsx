@@ -19,13 +19,20 @@ export default function Marketplace() {
       try {
         const { data, error } = await supabase
           .from("businesses")
-          .select("*")
+          .select(
+            "id,name,slug,category,cover_url,is_open,rating,description,plan,is_active",
+          )
           .eq("is_active", true)
           .order("name");
-        if (error) throw error;
-        setBusinesses(data || []);
+        if (error) {
+          console.error("Database error:", error);
+          setBusinesses([]);
+        } else {
+          setBusinesses(data || []);
+        }
       } catch (err) {
         console.error("Error:", err.message);
+        setBusinesses([]);
       } finally {
         setFetching(false);
       }

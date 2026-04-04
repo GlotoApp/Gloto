@@ -16,13 +16,24 @@ export default function NotificationsPanel({
   const fetchNotifications = async () => {
     if (!userId) return;
     setLoading(true);
-    const { data } = await supabase
-      .from("notifications")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-    setNotifications(data || []);
-    setLoading(false);
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .select("id,user_id,title,message,type,is_read,created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+      if (error) {
+        console.error("Notifications error:", error);
+        setNotifications([]);
+      } else {
+        setNotifications(data || []);
+      }
+    } catch (err) {
+      console.error("Error en fetchNotifications:", err);
+      setNotifications([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {

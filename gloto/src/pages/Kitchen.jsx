@@ -1,154 +1,233 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { supabase } from "../shared/lib/supabase";
+
+// --- CONFIGURACIÓN DE IDENTIDAD VISUAL (MÉTODOS DE ENTREGA) ---
+const DELIVERY_STYLES = {
+  Domicilio: {
+    bg: "bg-purple-500",
+    text: "text-purple-400",
+    badge: "bg-purple-500/10 border-purple-500/20",
+    glow: "shadow-[0_0_20px_rgba(168,85,247,0.4)]",
+    light: "text-purple-400/50 hover:text-purple-400 hover:bg-purple-500/5",
+  },
+  Recoger: {
+    bg: "bg-blue-500",
+    text: "text-blue-400",
+    badge: "bg-blue-500/10 border-blue-500/20",
+    glow: "shadow-[0_0_20px_rgba(59,130,246,0.4)]",
+    light: "text-blue-400/50 hover:text-blue-400 hover:bg-blue-500/5",
+  },
+  "En Punto": {
+    bg: "bg-amber-500",
+    text: "text-amber-400",
+    badge: "bg-amber-500/10 border-amber-500/20",
+    glow: "shadow-[0_0_20px_rgba(245,158,11,0.4)]",
+    light: "text-amber-400/50 hover:text-amber-400 hover:bg-amber-500/5",
+  },
+};
+
+// --- COMPONENTES DE UI ATÓMICOS ---
+
+const StatusBadge = ({ type }) => {
+  const style = DELIVERY_STYLES[type] || {
+    text: "text-slate-400",
+    badge: "bg-slate-500/10 border-slate-500/20",
+  };
+  return (
+    <span
+      className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter border ${style.text} ${style.badge}`}
+    >
+      {type}
+    </span>
+  );
+};
+
+const Timer = ({ startTime }) => {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const seconds = Math.floor((new Date() - new Date(startTime)) / 1000);
+      setElapsed(seconds);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [startTime]);
+
+  const format = (s) => {
+    const mins = Math.floor(s / 60);
+    const secs = s % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  return (
+    <div
+      className={`font-mono font-black text-xs ${elapsed > 600 ? "text-red-500 animate-pulse" : "text-slate-400"}`}
+    >
+      {format(elapsed)}
+    </div>
+  );
+};
+
+// --- COMPONENTE PRINCIPAL ---
 
 export default function Kitchen() {
   const { businessId } = useParams();
   const [orders, setOrders] = useState([]);
   const [businessName, setBusinessName] = useState("Cargando...");
   const [loading, setLoading] = useState(true);
-
+  const [updatingOrder, setUpdatingOrder] = useState(null);
+  const [activeFilters, setActiveFilters] = useState([
+    "Domicilio",
+    "Recoger",
+    "En Punto",
+  ]);
   const audioRef = useRef(new Audio("/notification.mp3"));
 
   useEffect(() => {
     if (!businessId) return;
 
-    const fetchBusinessInfo = async () => {
-      const { data, error } = await supabase
+    const fetchInitialData = async () => {
+      const { data } = await supabase
         .from("businesses")
         .select("name")
         .eq("id", businessId)
         .single();
-      if (!error && data) setBusinessName(data.name);
+      if (data) setBusinessName(data.name);
+      await fetchOrders();
     };
 
-    fetchBusinessInfo();
-    fetchOrders();
+    fetchInitialData();
 
     const channel = supabase
       .channel(`kds-${businessId}`)
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "orders",
           filter: `business_id=eq.${businessId}`,
         },
-        () => {
-          playNotification();
-          fetchOrders();
-        },
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "orders",
-          filter: `business_id=eq.${businessId}`,
-        },
-        () => fetchOrders(),
+        fetchOrders,
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => supabase.removeChannel(channel);
   }, [businessId]);
 
-  const playNotification = () => {
-    audioRef.current
-      .play()
-      .catch((err) => console.log("Audio bloqueado:", err));
-  };
-
   const fetchOrders = async () => {
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("orders")
-      .select(`*, order_items (*, products ( name ))`)
+      .select(`*, order_items (options, notes, *, products ( name, price ))`)
       .eq("business_id", businessId)
       .neq("status", "completed")
       .order("created_at", { ascending: true });
 
-    if (!error) setOrders(data);
+    if (data) setOrders(data);
     setLoading(false);
   };
 
   const updateStatus = async (orderId, newStatus) => {
-    await supabase
+    const previousOrders = [...orders];
+    setUpdatingOrder(orderId);
+    setOrders((prev) =>
+      prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)),
+    );
+
+    const { error } = await supabase
       .from("orders")
       .update({ status: newStatus })
       .eq("id", orderId);
+    if (error) {
+      setOrders(previousOrders);
+      console.error("Error al actualizar estado");
+    }
+    setUpdatingOrder(null);
   };
 
-  const columnNew = orders.filter((o) => o.status === "pending");
-  const columnPreparing = orders.filter((o) => o.status === "preparing");
-  const columnReady = orders.filter((o) => o.status === "ready");
+  const filteredOrders = useMemo(
+    () => orders.filter((o) => activeFilters.includes(o.delivery_type)),
+    [orders, activeFilters],
+  );
 
   if (loading)
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center font-black text-sky-500 animate-pulse text-2xl">
-        GLOTO KDS...
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center font-black text-sky-500 animate-pulse text-4xl tracking-tighter ">
+        GLOTO KDS
       </div>
     );
 
   return (
-    <div
-      className="min-h-screen bg-slate-950 text-white flex flex-col"
-      onClick={() => {
-        audioRef.current
-          .play()
-          .then(() => {
-            audioRef.current.pause();
-            audioRef.current.currentTime = 0;
-          })
-          .catch(() => {});
-      }}
-    >
-      <header className="p-6 border-b border-white/5 flex justify-between items-center bg-slate-900/50 backdrop-blur-md">
-        <div>
-          <h1 className="text-3xl font-black uppercase italic tracking-tighter text-sky-400">
-            {businessName}
-          </h1>
-          <p className="text-[9px] text-sky-500/50 font-bold uppercase">
-            Click para activar sonido 🔔
-          </p>
-        </div>
-        <div className="bg-white/5 px-6 py-2 rounded-2xl border border-white/10 text-center">
-          <span className="block text-[10px] text-slate-500 font-black">
-            PEDIDOS ACTIVOS
-          </span>
-          <span className="text-2xl font-black">{orders.length}</span>
+    <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden selection:bg-sky-500/30 font-sans">
+      {/* HEADER TACTICAL */}
+      <header className="px-8 py-6 flex justify-between items-center bg-slate-900/40 backdrop-blur-2xl border-b border-white/5 shadow-2xl z-50">
+        <div className="flex justify-between items-center gap-8 w-full">
+          <div className="flex flex-col">
+            <h1 className="text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-white uppercase ">
+              {businessName}
+            </h1>
+          </div>
+
+          {/* NAVEGACIÓN DE FILTROS SINCRONIZADA */}
+          <nav className="flex gap-2 p-1.5 rounded-2xl border border-white/10 backdrop-blur-md">
+            {["Domicilio", "Recoger", "En Punto"].map((type) => {
+              const isActive = activeFilters.includes(type);
+              const style = DELIVERY_STYLES[type];
+              return (
+                <button
+                  key={type}
+                  onClick={() =>
+                    setActiveFilters((prev) =>
+                      prev.includes(type)
+                        ? prev.filter((t) => t !== type)
+                        : [...prev, type],
+                    )
+                  }
+                  className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase transition-all duration-300 border border-transparent ${
+                    isActive
+                      ? `${style.bg} text-white ${style.glow}`
+                      : `${style.light}`
+                  }`}
+                >
+                  {type}
+                </button>
+              );
+            })}
+          </nav>
         </div>
       </header>
 
-      <main className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-6 p-6 overflow-hidden">
+      {/* KDS GRID */}
+      <main className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-0 divide-x divide-white/5 overflow-hidden">
         <KDSColumn
           title="Nuevos"
-          orders={columnNew}
-          accentColor="bg-amber-400"
-          btnText="Empezar Cocina"
+          orders={filteredOrders.filter((o) => o.status === "pending")}
+          accent="text-amber-400"
+          btnText="Empezar A Cocinar"
           btnColor="bg-amber-500"
           onNext={(id) => updateStatus(id, "preparing")}
+          updatingOrder={updatingOrder}
         />
         <KDSColumn
-          title="En Proceso"
-          orders={columnPreparing}
-          accentColor="bg-sky-500"
+          title="En Cocina"
+          orders={filteredOrders.filter((o) => o.status === "preparing")}
+          accent="text-sky-400"
           btnText="Pedido Listo"
           btnColor="bg-sky-500"
           onNext={(id) => updateStatus(id, "ready")}
           onBack={(id) => updateStatus(id, "pending")}
+          updatingOrder={updatingOrder}
         />
         <KDSColumn
-          title="Para Entrega"
-          orders={columnReady}
-          accentColor="bg-green-500"
-          btnText="Despachar"
-          btnColor="bg-green-600"
+          title="Despacho"
+          orders={filteredOrders.filter((o) => o.status === "ready")}
+          accent="text-emerald-400"
+          btnText="Entregar"
+          btnColor="bg-emerald-500"
           onNext={(id) => updateStatus(id, "completed")}
           onBack={(id) => updateStatus(id, "preparing")}
+          updatingOrder={updatingOrder}
         />
       </main>
     </div>
@@ -158,101 +237,140 @@ export default function Kitchen() {
 function KDSColumn({
   title,
   orders,
-  accentColor,
+  accent,
   btnText,
   btnColor,
   onNext,
   onBack,
+  updatingOrder,
 }) {
   return (
-    <div className="flex flex-col bg-slate-900/40 rounded-[2.5rem] border border-white/5 overflow-hidden shadow-2xl">
-      <div className="p-6 flex items-center justify-between border-b border-white/5 bg-slate-900/30">
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-3 h-3 rounded-full ${accentColor} animate-pulse`}
-          />
-          <h2 className="font-black uppercase italic text-lg tracking-tight">
-            {title}
-          </h2>
-        </div>
-        <span className="bg-white/10 px-4 py-1 rounded-full text-xs font-black">
-          {orders.length}
-        </span>
+    <div className="flex flex-col h-full bg-slate-950/20 overflow-hidden">
+      <div className="p-6 flex items-center justify-between bg-slate-900/10 backdrop-blur-sm border-b border-white/5">
+        <h2
+          className={`text-xl font-black uppercase tracking-tighter ${accent}`}
+        >
+          {title}{" "}
+          <span className="ml-2 text-slate-600 text-sm font-mono">
+            / {orders.length}
+          </span>
+        </h2>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar bg-gradient-to-b from-transparent to-black/20">
         {orders.map((order) => (
           <div
             key={order.id}
-            className="bg-white rounded-[2.5rem] p-6 text-black shadow-xl border-t-[12px] border-slate-200"
+            className="group relative bg-white rounded-[2.5rem] overflow-hidden shadow-[0_30px_60px_-15px_rgba(0,0,0,0.7)] transform transition-all duration-500"
           >
-            {/* Cabecera del Ticket */}
-            <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-3">
-              <span className="text-sm font-black bg-slate-900 text-white px-3 py-1 rounded-full uppercase">
-                #{order.id.slice(0, 5).toUpperCase()}
-              </span>
-              {onBack && (
-                <button
-                  onClick={() => onBack(order.id)}
-                  className="text-[10px] font-black text-slate-400 hover:text-red-600 flex items-center gap-1 transition-colors uppercase"
-                >
-                  <span>↺</span> Regresar
-                </button>
-              )}
-            </div>
+            {/* LÍNEA DE ESTADO SUPERIOR */}
+            <div
+              className={`h-3 w-full ${DELIVERY_STYLES[order.delivery_type]?.bg || "bg-slate-200"}`}
+            />
 
-            {/* Ítems del Pedido */}
-            <div className="space-y-4 mb-6">
-              {order.order_items.map((item) => (
-                <div key={item.id} className="border-l-4 border-slate-100 pl-4">
-                  <p className="font-black text-xl uppercase italic leading-none">
-                    {item.quantity}x {item.products?.name}
-                  </p>
-
-                  {/* Opciones del Producto */}
-                  {item.options?.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-2">
-                      {item.options.map((opt) => (
-                        <span
-                          key={opt.id}
-                          className="text-[10px] font-bold text-sky-700 bg-sky-50 px-2 py-0.5 rounded border border-sky-100 uppercase"
-                        >
-                          + {opt.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* INDICACIONES POR PRODUCTO */}
-                  {item.notes && (
-                    <div className="mt-2 p-2 bg-amber-50 border border-amber-200 rounded-xl">
-                      <p className="text-[11px] font-black text-amber-700 leading-tight">
-                        👉 NOTA: {item.notes.toUpperCase()}
-                      </p>
-                    </div>
-                  )}
+            <div className="p-5">
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <Timer startTime={order.created_at} />
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-black text-slate-900 uppercase">
+                      #{order.id.slice(0, 8)}
+                    </span>
+                    <StatusBadge type={order.delivery_type} />
+                  </div>
                 </div>
-              ))}
-            </div>
-
-            {/* INDICACIONES GENERALES DEL PEDIDO */}
-            {order.notes && (
-              <div className="mb-6 p-4 bg-red-600 rounded-2xl text-white animate-pulse">
-                <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1 italic">
-                  Instrucción Especial Cliente:
-                </p>
-                <p className="text-sm font-black leading-tight uppercase italic underline decoration-2 underline-offset-4">
-                  "{order.notes}"
-                </p>
+                {onBack && (
+                  <button
+                    onClick={() => onBack(order.id)}
+                    className="p-2 rounded-xl hover:bg-slate-100 text-slate-300 hover:text-red-500 transition-all active:scale-90"
+                  >
+                    ↺
+                  </button>
+                )}
               </div>
-            )}
 
-            <button
-              onClick={() => onNext(order.id)}
-              className={`w-full ${btnColor} text-white py-5 rounded-[2rem] font-black uppercase text-sm tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-xl`}
-            >
-              {btnText}
-            </button>
+              {/* LISTA DE PRODUCTOS */}
+              <div className="space-y-4 mb-8">
+                {order.order_items?.map((item) => {
+                  let options = [];
+                  try {
+                    options =
+                      typeof item.options === "string"
+                        ? JSON.parse(item.options)
+                        : item.options || [];
+                  } catch {
+                    options = [];
+                  }
+
+                  const optionsTotal = options.reduce(
+                    (acc, opt) => acc + (Number(opt.extra_price) || 0),
+                    0,
+                  );
+                  const unitPrice =
+                    Number(item.unit_price) + optionsTotal ||
+                    Number(item.products?.price) ||
+                    0;
+
+                  return (
+                    <div key={item.id} className="flex flex-col gap-2">
+                      <div className="flex items-center gap-3">
+                        {/* Cantidad Resaltada */}
+                        <span className="font-black text-slate-900 text-3xl min-w-[35px]">
+                          {item.quantity}
+                        </span>
+
+                        {/* Producto */}
+                        <span className="font-black text-slate-900 text-2x1 uppercase tracking-tighter flex-1 leading-none">
+                          {item.products?.name || "Producto"}
+                        </span>
+
+                        {/* Precio con estilo OrderStatus */}
+                        <span className="text-[12px] font-black text-blancopuro px-2 py-1 rounded-lg  bg-blancopuro/10">
+                          ${unitPrice.toLocaleString("es-CO")}
+                        </span>
+                      </div>
+
+                      {/* DETALLES EN COLUMNA (Opciones y Notas) */}
+                      <div className="ml-10 flex flex-col gap-2">
+                        {options.length > 0 && (
+                          <div className="flex flex-col border-l-2 border-orange-400 pl-3">
+                            <span className="text-[9px] font-black text-orange-600 uppercase tracking-widest">
+                              Opciones:
+                            </span>
+                            <span className="text-[11px] text-slate-600 font-bold">
+                              {options.map((opt) => opt.name).join(", ")}
+                            </span>
+                          </div>
+                        )}
+
+                        {item.notes && item.notes.trim() !== "" && (
+                          <div className="flex flex-col border-l-2 border-amber-400 pl-3">
+                            <span className="text-[9px] font-black text-amber-600 uppercase tracking-widest">
+                              Indicaciones:
+                            </span>
+                            <span className="text-[11px] text-slate-500 italic font-medium leading-tight">
+                              {item.notes}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                onClick={() => onNext(order.id)}
+                disabled={!!updatingOrder}
+                className={`w-full ${btnColor} text-white py-3 rounded-[1.8rem] font-black uppercase text-sm shadow-2xl transition-all hover:brightness-110 active:scale-[0.98] disabled:opacity-50 flex items-center justify-center`}
+              >
+                {updatingOrder === order.id ? (
+                  <div className="w-6 h-6 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  btnText
+                )}
+              </button>
+            </div>
           </div>
         ))}
       </div>

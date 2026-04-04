@@ -23,9 +23,10 @@ export default function OrderStatus() {
     if (!orderId) return;
 
     const fetchOrder = async () => {
+      // Trae la orden, los items y los productos
       const { data } = await supabase
         .from("orders")
-        .select(`*, businesses(name)`)
+        .select(`*, businesses(name), order_items(*, products(name))`)
         .eq("id", orderId)
         .single();
       setOrder(data);
@@ -199,25 +200,106 @@ export default function OrderStatus() {
           </div>
         </div>
 
-        {/* DETALLE DEL PEDIDO (Lo que faltaba) */}
+        {/* DETALLE DEL PEDIDO: Productos, método de pago y entrega */}
         <div className="grid grid-cols-1 gap-4 mb-8">
-          <div className="bg-slate-900/40 border border-white/5 rounded-3xl p-6 flex items-center justify-between">
-            <div>
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                Monto Total
-              </p>
-              <p className="text-xl font-black italic text-sky-500">
-                ${Number(order.total_price).toLocaleString()}
-              </p>
-            </div>
-            <div className="h-10 w-[1px] bg-white/10" />
-            <div className="text-right">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
-                Método
-              </p>
-              <p className="text-xs font-bold uppercase tracking-tight text-white">
-                Efectivo / App
-              </p>
+          <div className="bg-slate-900/40 border border-white/5 rounded-3xl p-6">
+            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
+              Productos pedidos
+            </p>
+            <ul className="space-y-2">
+              {order.order_items?.map((item) => {
+                let options = [];
+                try {
+                  if (typeof item.options === "string") {
+                    options = JSON.parse(item.options);
+                  } else if (Array.isArray(item.options)) {
+                    options = item.options;
+                  }
+                } catch {}
+                // Calcular el precio unitario con extras
+                const optionsTotal = options.reduce(
+                  (acc, opt) => acc + (Number(opt.extra_price) || 0),
+                  0,
+                );
+                const unitPrice =
+                  Number(item.unit_price) + optionsTotal ||
+                  Number(item.unit_price) ||
+                  0;
+                return (
+                  <li
+                    key={item.id}
+                    className="flex flex-col gap-1 bg-slate-900/60 rounded-xl p-3 border border-white/10"
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="font-black text-white text-base bg-sky-500/80 rounded-lg px-2 py-0.5">
+                        {item.quantity}x
+                      </span>
+                      <span className="font-bold text-sky-400 text-base">
+                        {item.products?.name || "Producto"}
+                      </span>
+                      <span className="ml-auto text-xs font-bold text-green-400 bg-green-900/40 rounded-lg px-2 py-0.5">
+                        ${unitPrice.toLocaleString("es-CO")}
+                      </span>
+                    </div>
+                    {(options.length > 0 ||
+                      (item.notes && item.notes.trim() !== "")) && (
+                      <div className="ml-2 flex flex-col gap-1 mt-1">
+                        {options.length > 0 && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-xs font-bold text-orange-400 whitespace-nowrap">
+                              Opciones:
+                            </span>
+                            <span className="text-xs text-orange-200">
+                              {options.map((opt) => opt.name).join(", ")}
+                            </span>
+                          </div>
+                        )}
+                        {item.notes && item.notes.trim() !== "" && (
+                          <div className="flex items-start gap-2">
+                            <span className="text-xs font-bold text-sky-400 whitespace-nowrap">
+                              Indicaciones:
+                            </span>
+                            <span className="text-xs text-slate-300 italic">
+                              {item.notes}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="h-px bg-white/10 my-4" />
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Monto Total
+                </p>
+                <p className="text-xl font-black italic text-sky-500">
+                  ${Number(order.total_price).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Método de Pago
+                </p>
+                <p className="text-xs font-bold uppercase tracking-tight text-white">
+                  {order.payment_method
+                    ? order.payment_method
+                    : "No especificado"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">
+                  Método de Entrega
+                </p>
+                <p className="text-xs font-bold uppercase tracking-tight text-white">
+                  {order.delivery_type
+                    ? order.delivery_type
+                    : "No especificado"}
+                </p>
+              </div>
             </div>
           </div>
         </div>

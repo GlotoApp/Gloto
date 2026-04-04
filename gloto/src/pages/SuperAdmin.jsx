@@ -41,25 +41,41 @@ export default function SuperAdmin() {
 
   async function fetchEverything() {
     setLoading(true);
-    const { data: biz } = await supabase
-      .from("businesses")
-      .select("*")
-      .order("created_at", { ascending: false });
-    const { data: orders } = await supabase
-      .from("orders")
-      .select("total_price");
+    try {
+      const { data: biz, error: bizError } = await supabase
+        .from("businesses")
+        .select("id,name,slug,category,plan,is_active,created_at")
+        .order("created_at", { ascending: false });
 
-    const revenue =
-      orders?.reduce((acc, curr) => acc + Number(curr.total_price || 0), 0) ||
-      0;
+      if (bizError) {
+        console.error("Error cargando negocios:", bizError);
+        setBusinesses([]);
+        setStats({ totalRevenue: 0, totalOrders: 0, activeBiz: 0 });
+        setLoading(false);
+        return;
+      }
 
-    setBusinesses(biz || []);
-    setStats({
-      totalRevenue: revenue,
-      totalOrders: orders?.length || 0,
-      activeBiz: biz?.filter((b) => b.is_active).length || 0,
-    });
-    setLoading(false);
+      const { data: orders } = await supabase
+        .from("orders")
+        .select("total_price");
+
+      const revenue =
+        orders?.reduce((acc, curr) => acc + Number(curr.total_price || 0), 0) ||
+        0;
+
+      setBusinesses(biz || []);
+      setStats({
+        totalRevenue: revenue,
+        totalOrders: orders?.length || 0,
+        activeBiz: biz?.filter((b) => b.is_active).length || 0,
+      });
+    } catch (err) {
+      console.error("Error:", err.message);
+      setBusinesses([]);
+      setStats({ totalRevenue: 0, totalOrders: 0, activeBiz: 0 });
+    } finally {
+      setLoading(false);
+    }
   }
 
   const handleLogout = async () => {

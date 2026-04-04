@@ -23,11 +23,14 @@ export default function EmployeeDashboard() {
     try {
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .select("*")
+        .select("id,role,business_id,full_name")
         .eq("id", user.id)
         .single();
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error("Profile error:", profileError);
+        throw profileError;
+      }
       setProfile(profileData);
 
       // Obtener nombre del negocio
@@ -121,17 +124,21 @@ export default function EmployeeDashboard() {
         </div>
 
         {/* Profile Card */}
-        <div className={`p-6 rounded-2xl border border-white/10 ${roleInfo.bg} mb-8`}>
+        <div
+          className={`p-6 rounded-2xl border border-white/10 ${roleInfo.bg} mb-8`}
+        >
           <div className="flex items-center gap-4">
-            <div className={`p-4 rounded-xl bg-slate-900 border border-white/10 ${roleInfo.color}`}>
+            <div
+              className={`p-4 rounded-xl bg-slate-900 border border-white/10 ${roleInfo.color}`}
+            >
               <RoleIcon size={32} />
             </div>
             <div>
-              <h2 className="text-2xl font-black text-white">{roleInfo.title}</h2>
+              <h2 className="text-2xl font-black text-white">
+                {roleInfo.title}
+              </h2>
               <p className="text-slate-400 text-sm">{roleInfo.description}</p>
-              <p className="text-xs text-slate-500 mt-2">
-                {user?.email}
-              </p>
+              <p className="text-xs text-slate-500 mt-2">{user?.email}</p>
             </div>
           </div>
         </div>
@@ -139,44 +146,66 @@ export default function EmployeeDashboard() {
         {/* Quick Stats */}
         <div className="grid grid-cols-2 gap-4 mb-8">
           <div className="bg-slate-900 border border-white/5 p-6 rounded-xl">
-            <div className="text-slate-400 text-xs uppercase font-bold mb-2">Rol</div>
-            <div className="text-2xl font-black text-white capitalize">{profile?.role}</div>
+            <div className="text-slate-400 text-xs uppercase font-bold mb-2">
+              Rol
+            </div>
+            <div className="text-2xl font-black text-white capitalize">
+              {profile?.role}
+            </div>
           </div>
           <div className="bg-slate-900 border border-white/5 p-6 rounded-xl">
-            <div className="text-slate-400 text-xs uppercase font-bold mb-2">Negocio</div>
-            <div className="text-xl font-black text-sky-400">{businessName || "-"}</div>
+            <div className="text-slate-400 text-xs uppercase font-bold mb-2">
+              Negocio
+            </div>
+            <div className="text-xl font-black text-sky-400">
+              {businessName || "-"}
+            </div>
           </div>
         </div>
 
         {/* Acciones según rol */}
         <div className="space-y-4">
-          <h3 className="text-lg font-black text-white uppercase">Acciones Disponibles</h3>
+          <h3 className="text-lg font-black text-white uppercase">
+            Acciones Disponibles
+          </h3>
 
           {profile?.role === "cajero" && (
             <div className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-orange-500/50 transition-colors cursor-pointer">
-              <h4 className="text-orange-500 font-black mb-2">💰 Gestión de Pagos</h4>
-              <p className="text-slate-400 text-sm">Aquí se mostrarán los pedidos pendientes de pago</p>
+              <h4 className="text-orange-500 font-black mb-2">
+                💰 Gestión de Pagos
+              </h4>
+              <p className="text-slate-400 text-sm">
+                Aquí se mostrarán los pedidos pendientes de pago
+              </p>
             </div>
           )}
 
           {profile?.role === "mesero" && (
             <div className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-sky-500/50 transition-colors cursor-pointer">
               <h4 className="text-sky-500 font-black mb-2">📋 Mis Pedidos</h4>
-              <p className="text-slate-400 text-sm">Vista de pedidos para atender a clientes</p>
+              <p className="text-slate-400 text-sm">
+                Vista de pedidos para atender a clientes
+              </p>
             </div>
           )}
 
           {profile?.role === "repartidor" && (
             <div className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-green-500/50 transition-colors cursor-pointer">
-              <h4 className="text-green-500 font-black mb-2">🚗 Entregas Pendientes</h4>
-              <p className="text-slate-400 text-sm">Pedidos listos para entrega con rutas optimizadas</p>
+              <h4 className="text-green-500 font-black mb-2">
+                🚗 Entregas Pendientes
+              </h4>
+              <p className="text-slate-400 text-sm">
+                Pedidos listos para entrega con rutas optimizadas
+              </p>
             </div>
           )}
 
           {/* Universal options */}
           <div className="bg-slate-900 border border-white/10 p-6 rounded-xl hover:border-slate-700 transition-colors cursor-pointer">
             <h4 className="text-slate-300 font-black mb-2">📱 Mi Perfil</h4>
-            <p className="text-slate-400 text-sm">Edita tu información personal</p>
+            <p className="text-slate-400 text-sm">
+              Edita tu información personal
+            </p>
           </div>
         </div>
 

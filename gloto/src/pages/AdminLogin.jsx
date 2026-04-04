@@ -1,63 +1,3 @@
-import { useState } from "react";
-import { supabase } from "../shared/lib/supabase";
-import { useNavigate } from "react-router-dom";
-
-export default function AdminLogin() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-
-    try {
-      // 1. Login en Auth de Supabase
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (authError) throw authError;
-
-      // 2. Traemos el perfil completo (incluyendo el negocio)
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("*, businesses(*)")
-        .eq("id", user.id)
-        .single();
-
-      if (profileError || !profile)
-        throw new Error("No se pudo verificar el perfil");
-
-      // 3. Este portal es SOLO para administradores (dueños de negocios)
-      if (profile.role !== "admin") {
-        await supabase.auth.signOut();
-        alert(
-          "ACCESO DENEGADO: Este portal es solo para administradores. Si eres empleado, usa el portal de empleados.",
-        );
-        setLoading(false);
-        return;
-      }
-
-      // 4. GUARDADO INSTANTÁNEO: Guardamos en sessionStorage
-      sessionStorage.setItem("gloto_profile", JSON.stringify(profile));
-
-      // 5. Redirigir al dashboard de administrador
-      navigate("/admin");
-    } catch (error) {
-      alert("Error de acceso: " + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6">
       <div className="mb-8 text-center">
         <h1 className="text-4xl font-black italic text-sky-500 tracking-tighter uppercase">
           Gloto Admin
@@ -108,7 +48,15 @@ export default function AdminLogin() {
       </form>
 
       <div className="mt-8 text-center text-slate-500 text-xs space-y-2">
-        <p>¿Eres empleado? <span className="text-orange-400 hover:text-orange-300 cursor-pointer font-bold" onClick={() => navigate("/employee-login")}>Acceso Empleados</span></p>
+        <p>
+          ¿Eres empleado?{" "}
+          <span
+            className="text-orange-400 hover:text-orange-300 cursor-pointer font-bold"
+            onClick={() => navigate("/employee-login")}
+          >
+            Acceso Empleados
+          </span>
+        </p>
       </div>
     </div>
   );
