@@ -4,15 +4,29 @@
 <head>
   <meta charset="UTF-8" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- viewport-fit=cover es excelente para manejar el notch en iPhone -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Gloto</title>
+
+  <!-- Icono para iOS (Asegúrate de que sea PNG 180x180px en /public) -->
+  <link rel="apple-touch-icon" href="gloto/public/favicon.svg">
+
+  <!-- 1. Estándar Moderno (Soluciona el aviso de 'deprecated') -->
+  <meta name="mobile-web-app-capable" content="yes">
+
+  <!-- 2. Compatibilidad con versiones previas de iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+
+  <!-- Configuración visual de la App -->
+  <meta name="apple-mobile-web-app-title" content="Gloto">
+  <meta name="application-name" content="Gloto">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
   <link
     href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Inter:wght@400;500;600&display=swap"
     rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
     rel="stylesheet" />
-  <link rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-25..0" />
 </head>
 
 <body>

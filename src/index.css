@@ -53,3 +53,32 @@ body {
 .view-animate {
     animation: fade-in 0.4s ease-out forwards;
 }
+
+
+/* Estilo de Scroll Personalizado para Sidebar */
+.custom-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-sidebar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.3) 0%, rgba(139, 92, 246, 0.2) 100%);
+    border-radius: 10px;
+    transition: all 0.3s ease;
+    border: 1px solid rgba(168, 85, 247, 0.2);
+}
+
+.custom-sidebar::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.6) 0%, rgba(139, 92, 246, 0.4) 100%);
+    box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
+    border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+/* Ajuste para Firefox */
+.custom-sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(168, 85, 247, 0.3) transparent;
+}

@@ -213,7 +213,7 @@ const POS = () => {
   };
 
   const deliveryLabels = {
-    pickup: { label: "Recoger", icon: "takeout_dining" },
+    pickup: { label: "Recoger", icon: "flag" },
     table: { label: "Mesa", icon: "table_bar" },
     delivery: { label: "Domicilio", icon: "local_shipping" },
     point: { label: "En Punto", icon: "location_on" },

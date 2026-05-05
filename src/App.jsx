@@ -11,6 +11,7 @@ import Catalogo from "../modulos/pos/Catalogo";
 import Inventario from "../modulos/pos/inventario"; // He puesto la i minúscula según tu última lista
 import Estadisticas from "../modulos/pos/Estadisticas";
 import Utilidades from "../modulos/pos/Utilidades"; // Corregida a U mayúscula
+import Planes from "../modulos/pos/Planes";
 import Configuracion from "../modulos/pos/Configuracion";
 
 function App() {
@@ -29,6 +30,7 @@ function App() {
           <Route path="horarios" element={<Horarios />} />
           <Route path="estadisticas" element={<Estadisticas />} />
           <Route path="utilidades" element={<Utilidades />} />
+          <Route path="planes" element={<Planes />} />
           <Route path="configuracion" element={<Configuracion />} />
           <Route path="nomina" element={<Nomina />} />
         </Route>

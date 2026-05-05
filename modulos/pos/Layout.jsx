@@ -12,11 +12,11 @@ const Layout = () => {
         toggleSidebar={() => setIsSidebarExpanded((prev) => !prev)}
       />
       <main
-        className={`flex-1 p-0 overflow-y-auto min-h-screen ml-20 ${
-          isSidebarExpanded ? "ml-64" : "ml-20"
+        className={`flex-1 p-0 overflow-y-auto min-h-screen ${
+          isSidebarExpanded ? "ml-0" : "ml-20"
         }`}
       >
-        <Outlet />
+        <Outlet context={{ isSidebarExpanded }} />
       </main>
     </div>
   );

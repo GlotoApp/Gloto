@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useOutletContext } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Lock,
@@ -382,7 +383,7 @@ function MesaNode({
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 6, scale: 0.9 }}
               transition={{ duration: 0.13 }}
-              className="absolute -top-14 left-1/2 -translate-x-1/2 flex gap-1.5 z-[200]"
+              className="absolute -top-14 left-1/2 -translate-x-1/2 flex gap-1.5 z-[45]"
             >
               <button
                 onClick={(e) => {
@@ -421,7 +422,7 @@ function MesaNode({
 
         {/* Edit handle */}
         {isEditMode && (
-          <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center z-50 shadow-lg">
+          <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center z-45 shadow-lg">
             <GripVertical size={10} className="text-white" />
           </div>
         )}
@@ -891,7 +892,7 @@ function PanelLateral({ mesa, onClose, onUpdate, onDelete, onToast }) {
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ type: "spring", stiffness: 300, damping: 34 }}
-      className="absolute right-0 top-0 bottom-0 w-[380px] bg-[#060606]/98 backdrop-blur-3xl border-l border-white/6 z-[150] flex flex-col shadow-[-60px_0_120px_rgba(0,0,0,0.9)]"
+      className="absolute right-0 top-0 bottom-0 w-[380px] bg-[#060606]/98 backdrop-blur-3xl border-l border-white/6 z-[45] flex flex-col shadow-[-60px_0_120px_rgba(0,0,0,0.9)]"
     >
       <PanelBody
         mesa={mesa}
@@ -909,7 +910,7 @@ function PanelLateral({ mesa, onClose, onUpdate, onDelete, onToast }) {
 function BottomSheet({ mesa, onClose, onUpdate, onDelete, onToast }) {
   return (
     <motion.div
-      className="fixed inset-0 z-[300] flex flex-col justify-end"
+      className="fixed inset-0 z-[45] flex flex-col justify-end"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -950,6 +951,9 @@ function BottomSheet({ mesa, onClose, onUpdate, onDelete, onToast }) {
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function MesasPOS() {
+  const { isSidebarExpanded } = useOutletContext() || {
+    isSidebarExpanded: false,
+  };
   const [mesas, setMesas] = useState(INITIAL_MESAS);
   const [isEditMode, setIsEditMode] = useState(false);
   const [detailMesa, setDetailMesa] = useState(null);
@@ -1066,7 +1070,7 @@ export default function MesasPOS() {
   return (
     <div className="relative h-screen w-full bg-black overflow-hidden select-none flex font-sans">
       {/* KPIs */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[110] flex  gap-1 justify-center px-2 max-w-full overflow-x-auto">
+      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[45] flex  gap-1 justify-center px-2 max-w-full overflow-x-auto">
         {[
           { label: "Libres", value: kpis.libres, color: "bg-gray-500" },
           { label: "Ocupadas", value: kpis.ocupadas, color: "bg-orange-500" },
@@ -1094,7 +1098,7 @@ export default function MesasPOS() {
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="absolute top-14 left-1/2 -translate-x-1/2 z-[200] px-5 py-2 bg-white/8 backdrop-blur-xl border border-white/12 rounded-full text-xs font-bold text-white shadow-2xl whitespace-nowrap pointer-events-none"
+            className="absolute top-14 left-1/2 -translate-x-1/2 z-[45] px-5 py-2 bg-white/8 backdrop-blur-xl border border-white/12 rounded-full text-xs font-bold text-white shadow-2xl whitespace-nowrap pointer-events-none"
           >
             {toast}
           </motion.div>
@@ -1103,7 +1107,7 @@ export default function MesasPOS() {
 
       {/* Minimap — solo PC */}
       {!isMobile && (
-        <div className="absolute bottom-6 left-6 z-[120] p-3 bg-black/85 backdrop-blur-2xl border border-white/8 rounded-2xl shadow-2xl">
+        <div className="absolute bottom-6 left-6 z-[45] p-3 bg-black/85 backdrop-blur-2xl border border-white/8 rounded-2xl shadow-2xl">
           <p className="text-[7px] font-black uppercase tracking-widest text-blue-400 mb-2 flex items-center gap-1">
             <MapIcon size={8} /> Radar de Posición
           </p>
@@ -1146,7 +1150,7 @@ export default function MesasPOS() {
 
       {/* ── Controles PC: columna derecha ── */}
       {!isMobile && (
-        <div className="absolute right-5 top-1/2 -translate-y-1/2 z-[120] flex flex-col items-center gap-2.5">
+        <div className="absolute right-5 top-1/2 -translate-y-1/2 z-[45] flex flex-col items-center gap-2.5">
           <div className="flex flex-col gap-0.5 p-1.5 bg-black/85 backdrop-blur-3xl border border-white/8 rounded-[1.25rem] shadow-2xl">
             {[
               {
@@ -1217,7 +1221,7 @@ export default function MesasPOS() {
 
       {/* ── Controles Móvil: barra inferior ── */}
       {isMobile && (
-        <div className="absolute bottom-0 left-0 right-0 z-[120] px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] bg-black/92 backdrop-blur-2xl border-t border-white/8 flex items-center gap-2 shadow-2xl overflow-x-auto">
+        <div className="absolute bottom-0 left-0 right-0 z-[45] px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] bg-black/92 backdrop-blur-2xl border-t border-white/8 flex items-center gap-2 shadow-2xl overflow-x-auto">
           <button
             onClick={() => setIsEditMode((v) => !v)}
             className={`flex-1 py-3.5 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${isEditMode ? "bg-blue-600/25 border border-blue-500/40 text-blue-300" : "bg-white/5 border border-white/8 text-slate-400"}`}
@@ -1253,7 +1257,7 @@ export default function MesasPOS() {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className={`absolute z-[130] bg-black/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-4 w-56 ${
+            className={`absolute z-[45] bg-black/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-4 w-56 ${
               isMobile
                 ? "bottom-24 left-1/2 -translate-x-1/2"
                 : "right-20 top-1/2 -translate-y-1/2"
@@ -1295,9 +1299,16 @@ export default function MesasPOS() {
 
       {/* Canvas */}
       <motion.div
-        className="flex-1"
+        className={`flex-1 transition-all duration-300 ${
+          isMobile && isSidebarExpanded ? "blur-md pointer-events-none" : ""
+        }`}
         style={{
           cursor: isEditMode ? "default" : isMobile ? "default" : "grab",
+          backgroundColor: "black",
+          backgroundImage: isEditMode
+            ? "radial-gradient(circle, rgba(255,255,255,0.2) 1.5px, transparent 1.5px)"
+            : "radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px)",
+          backgroundSize: "60px 60px",
         }}
         drag={!isEditMode}
         dragConstraints={{
@@ -1314,13 +1325,7 @@ export default function MesasPOS() {
       >
         <div
           ref={constraintsRef}
-          className="w-[5000px] h-[5000px] relative"
-          style={{
-            backgroundColor: "black",
-            backgroundImage:
-              "radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px)",
-            backgroundSize: "60px 60px",
-          }}
+          className="w-[5000px] h-[5000px] relative z-10"
         >
           <AnimatePresence>
             {mesas.map((mesa) => (
@@ -1368,7 +1373,9 @@ export default function MesasPOS() {
       <AnimatePresence>
         {isEditMode && (
           <motion.div
-            className="flex-1 origin-center" // Añadimos origin-center para que el zoom sea simétrico
+            className={`flex-1 origin-center transition-all duration-300 ${
+              isMobile && isSidebarExpanded ? "blur-md pointer-events-none" : ""
+            }`}
             style={{
               cursor: isEditMode ? "default" : isMobile ? "default" : "grab",
               // MOVEMOS EL FONDO AQUÍ:
@@ -1397,7 +1404,7 @@ export default function MesasPOS() {
             {/* El contenedor interno ahora es transparente para mostrar el fondo del padre */}
             <div
               ref={constraintsRef}
-              className="w-[5000px] h-[5000px] relative"
+              className="w-[5000px] h-[5000px] relative z-10"
             >
               <AnimatePresence>
                 {mesas.map((mesa) => (
@@ -1416,6 +1423,19 @@ export default function MesasPOS() {
               </AnimatePresence>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Overlay blur para móvil cuando sidebar está expandido */}
+      <AnimatePresence>
+        {isMobile && isSidebarExpanded && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3 }}
+            className="absolute inset-0 bg-black/30 backdrop-blur-sm z-40 pointer-events-none"
+          />
         )}
       </AnimatePresence>
     </div>
