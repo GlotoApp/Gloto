@@ -176,9 +176,8 @@ const POS = () => {
   const [showInfo, setShowInfo] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobilePanel, setMobilePanel] = useState("products");
-  const [showAddToast, setShowAddToast] = useState(false);
-  const [addedProductName, setAddedProductName] = useState("");
-  const addToastTimer = useRef(null);
+  const [toastItems, setToastItems] = useState([]);
+  const toastTimers = useRef({});
 
   // Estado para el item que cambia de color
   const [highlightItem, setHighlightItem] = useState(null);
@@ -309,35 +308,39 @@ const POS = () => {
       selectedCategory === "all" || p.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+  const addProductToast = (name) => {
+    const id = Date.now() + Math.random(); // ID único para cada burbuja
+
+    // Agregamos el nuevo toast a la lista
+    setToastItems((prev) => [...prev, { id, name, exiting: false }]);
+
+    // Programamos el inicio del desvanecimiento (fade-out) a los 2.2s
+    setTimeout(() => {
+      setToastItems((prev) =>
+        prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
+      );
+
+      // Eliminamos el elemento del DOM después de que termine la animación (400ms después)
+      setTimeout(() => {
+        setToastItems((prev) => prev.filter((t) => t.id !== id));
+      }, 400);
+    }, 2200);
+  };
 
   const addToCart = (product) => {
+    // 1. DISPARAR EL TOAST UNA SOLA VEZ AL INICIO
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      addProductToast(product.name);
+    }
     setCart((prevCart) => {
       const existingItem = prevCart.find(
         (item) => item.id === product.id && !item.note,
       );
 
       if (existingItem) {
-        // DISPARAR CAMBIO DE COLOR
+        // Efectos visuales de resaltado
         setHighlightItem(existingItem.cartId);
-        setTimeout(() => setHighlightItem(null), 500); // Un poco más largo para notar el color
-        setTimeout(() => {
-          const element = document.querySelector(
-            `[data-cart-id="${existingItem.cartId}"]`,
-          );
-          if (element) {
-            element.scrollIntoView({ behavior: "smooth", block: "center" });
-          }
-        }, 100);
-
-        if (typeof window !== "undefined" && window.innerWidth < 1024) {
-          setAddedProductName(product.name);
-          setShowAddToast(true);
-          window.clearTimeout(addToastTimer.current);
-          addToastTimer.current = window.setTimeout(
-            () => setShowAddToast(false),
-            1600,
-          );
-        }
+        setTimeout(() => setHighlightItem(null), 500);
 
         return prevCart.map((item) =>
           item.cartId === existingItem.cartId
@@ -346,25 +349,10 @@ const POS = () => {
         );
       }
 
+      // Si es un producto nuevo
       const cartId = Date.now();
       setHighlightItem(cartId);
       setTimeout(() => setHighlightItem(null), 500);
-      setTimeout(() => {
-        const element = document.querySelector(`[data-cart-id="${cartId}"]`);
-        if (element) {
-          element.scrollIntoView({ behavior: "smooth", block: "center" });
-        }
-      }, 100);
-
-      if (typeof window !== "undefined" && window.innerWidth < 1024) {
-        setAddedProductName(product.name);
-        setShowAddToast(true);
-        window.clearTimeout(addToastTimer.current);
-        addToastTimer.current = window.setTimeout(
-          () => setShowAddToast(false),
-          1600,
-        );
-      }
 
       return [...prevCart, { ...product, cartId, qty: 1, note: "" }];
     });
@@ -488,12 +476,39 @@ const POS = () => {
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-4 h-screen bg-black text-white font-sans selection:bg-violet-500/30 pb-20 lg:pb-0">
-        {showAddToast && (
-          <div className="fixed top-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl border border-emerald-400/30 bg-emerald-600/95 px-4 py-3 text-white text-sm font-black shadow-xl shadow-emerald-900/30 animate-in slide-in-from-top-2 duration-300">
-            {" "}
-            + {addedProductName}
-          </div>
-        )}
+        {/* Stacked product toasts - mobile only */}
+        {/* Contenedor de Toasts con Orden Invertido - Mobile */}
+        <div className="lg:hidden fixed top-6 left-0 right-0 z-50 flex flex-col-reverse items-center gap-2 pointer-events-none px-6">
+          {toastItems.map((toast) => (
+            <div
+              key={toast.id}
+              className={`flex items-center gap-3 rounded-2xl border border-emerald-400/20 bg-emerald-600/90 backdrop-blur-md px-5 py-3 text-white shadow-xl transition-all duration-400 ${
+                toast.exiting
+                  ? "opacity-0 -translate-y-4 scale-90"
+                  : "opacity-100 translate-y-0 scale-100"
+              }`}
+              style={{
+                // Mantenemos la animación de entrada desde arriba
+                animation: !toast.exiting
+                  ? "slideInFromTop 0.3s cubic-bezier(0.34,1.56,0.64,1) both"
+                  : "",
+              }}
+            >
+              <span className="material-symbols-outlined text-base text-emerald-200">
+                check_circle
+              </span>
+              <span className="text-[11px] font-black uppercase tracking-wider">
+                {toast.name} añadido
+              </span>
+            </div>
+          ))}
+        </div>
+        <style>{`
+          @keyframes slideInFromTop {
+            from { opacity: 0; transform: translateY(-16px) scale(0.92); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+          }
+        `}</style>
         {/* Listado de Productos */}
         <div
           className={`${mobilePanel !== "products" ? "hidden" : "block"} lg:block lg:col-span-2 overflow-y-auto`}

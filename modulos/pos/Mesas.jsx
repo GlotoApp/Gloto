@@ -2,17 +2,11 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useOutletContext } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Lock,
-  Unlock,
   X,
-  ZoomIn,
-  ZoomOut,
-  Target,
   Receipt,
   RotateCcw,
   CheckCircle2,
   Plus,
-  Map as MapIcon,
   Search,
   Trash2,
   ChefHat,
@@ -22,15 +16,13 @@ import {
   Edit3,
   Check,
   Users,
-  GripVertical,
+  Calendar,
+  Phone,
+  Mail,
+  Clock,
 } from "lucide-react";
 
-// ─── Detección de dispositivo ─────────────────────────────────────────────────
-const isTouchDevice = () =>
-  typeof window !== "undefined" &&
-  ("ontouchstart" in window || navigator.maxTouchPoints > 0);
-
-// ─── Constantes ───────────────────────────────────────────────────────────────
+// ─── Data ─────────────────────────────────────────────────────────────────────
 const MENU_ITEMS = [
   { nombre: "Pizza Pepperoni", precio: 45000, categoria: "Platos" },
   { nombre: "Pizza Margarita", precio: 38000, categoria: "Platos" },
@@ -46,32 +38,39 @@ const MENU_ITEMS = [
   { nombre: "Brownie", precio: 15000, categoria: "Postres" },
 ];
 
-const ESTADO_CONFIG = {
+const ESTADO = {
   libre: {
-    color: "#4b5563",
-    bg: "#111827",
+    color: "#6b7280",
+    glow: "#6b728030",
+    border: "#6b728060",
     label: "Libre",
-    dot: "bg-gray-500",
-    ring: "rgba(75,85,99,0.4)",
+    pulse: false,
   },
   ocupada: {
     color: "#f97316",
-    bg: "#431407",
+    glow: "#f9731622",
+    border: "#f9731665",
     label: "Ocupada",
-    dot: "bg-orange-500",
-    ring: "rgba(249,115,22,0.4)",
+    pulse: false,
+  },
+  reservada: {
+    color: "#3b82f6",
+    glow: "#3b82f622",
+    border: "#3b82f665",
+    label: "Reservada",
+    pulse: true,
   },
   sucio: {
     color: "#ef4444",
-    bg: "#450a0a",
-    label: "Sucio",
-    dot: "bg-red-500",
-    ring: "rgba(239,68,68,0.4)",
+    glow: "#ef444422",
+    border: "#ef444455",
+    label: "Limpiar",
+    pulse: true,
   },
 };
 
 let NEXT_ID = 11;
-const makeMesa = (x, y) => {
+const newMesa = () => {
   const id = NEXT_ID++;
   return {
     id,
@@ -80,10 +79,16 @@ const makeMesa = (x, y) => {
     personas: 0,
     startTime: null,
     total: 0,
-    x,
-    y,
     comanda: [],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   };
 };
 
@@ -95,13 +100,19 @@ const INITIAL_MESAS = [
     personas: 4,
     startTime: Date.now() - 2700000,
     total: 125000,
-    x: 1500,
-    y: 1500,
     comanda: [
       { id: 1, item: "Pizza Pepperoni", precio: 45000, qty: 2 },
       { id: 2, item: "Cerveza Club", precio: 12000, qty: 3 },
     ],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 2,
@@ -110,10 +121,16 @@ const INITIAL_MESAS = [
     personas: 0,
     startTime: null,
     total: 0,
-    x: 1900,
-    y: 1500,
     comanda: [],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 3,
@@ -122,10 +139,16 @@ const INITIAL_MESAS = [
     personas: 0,
     startTime: null,
     total: 0,
-    x: 1500,
-    y: 1900,
     comanda: [],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 4,
@@ -134,10 +157,16 @@ const INITIAL_MESAS = [
     personas: 2,
     startTime: Date.now() - 4200000,
     total: 85000,
-    x: 1900,
-    y: 1900,
     comanda: [{ id: 1, item: "Pasta Carbonara", precio: 38000, qty: 1 }],
     nota: "Sin sal",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 5,
@@ -146,10 +175,16 @@ const INITIAL_MESAS = [
     personas: 0,
     startTime: null,
     total: 0,
-    x: 2300,
-    y: 1500,
     comanda: [],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 6,
@@ -158,13 +193,19 @@ const INITIAL_MESAS = [
     personas: 6,
     startTime: Date.now() - 1500000,
     total: 210000,
-    x: 2300,
-    y: 1900,
     comanda: [
       { id: 1, item: "Parrillada Familiar", precio: 150000, qty: 1 },
       { id: 2, item: "Jarra de Jugo", precio: 25000, qty: 2 },
     ],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 7,
@@ -173,10 +214,16 @@ const INITIAL_MESAS = [
     personas: 0,
     startTime: null,
     total: 0,
-    x: 1500,
-    y: 2300,
     comanda: [],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 8,
@@ -185,10 +232,16 @@ const INITIAL_MESAS = [
     personas: 0,
     startTime: null,
     total: 0,
-    x: 1900,
-    y: 2300,
     comanda: [],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 9,
@@ -197,10 +250,16 @@ const INITIAL_MESAS = [
     personas: 3,
     startTime: Date.now() - 1800000,
     total: 95000,
-    x: 2300,
-    y: 2300,
     comanda: [{ id: 1, item: "Hamburguesa Master", precio: 35000, qty: 2 }],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
   {
     id: 10,
@@ -209,238 +268,189 @@ const INITIAL_MESAS = [
     personas: 0,
     startTime: null,
     total: 0,
-    x: 2700,
-    y: 1500,
     comanda: [],
     nota: "",
+    reserva: {
+      nombre: "",
+      telefono: "",
+      email: "",
+      hora: "",
+      personas: 0,
+      activa: false,
+    },
   },
 ];
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
-const fmtCOP = (n) => `$${Number(n).toLocaleString("es-CO")}`;
-const calcTotal = (comanda) =>
-  comanda.reduce((s, i) => s + i.precio * i.qty, 0);
+const fmt = (n) => `$${Number(n).toLocaleString("es-CO")}`;
+const calc = (c) => c.reduce((s, i) => s + i.precio * i.qty, 0);
 
 function useTimer(startTime) {
-  const [elapsed, setElapsed] = useState(0);
+  const [t, setT] = useState(0);
   useEffect(() => {
     if (!startTime) {
-      setElapsed(0);
+      setT(0);
       return;
     }
-    const tick = () => setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    const tick = () => setT(Math.floor((Date.now() - startTime) / 1000));
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [startTime]);
-  const h = Math.floor(elapsed / 3600);
-  const m = Math.floor((elapsed % 3600) / 60);
-  const s = elapsed % 60;
+  const h = Math.floor(t / 3600),
+    m = Math.floor((t % 3600) / 60),
+    s = t % 60;
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
 }
 
-function useIsMobile() {
-  const [mobile, setMobile] = useState(() =>
-    typeof window !== "undefined"
-      ? window.innerWidth < 768 || isTouchDevice()
-      : false,
-  );
-  useEffect(() => {
-    const check = () => setMobile(window.innerWidth < 768 || isTouchDevice());
-    window.addEventListener("resize", check);
-    return () => window.removeEventListener("resize", check);
-  }, []);
-  return mobile;
-}
-
-// ─── Mesa Node ────────────────────────────────────────────────────────────────
-function MesaNode({
-  mesa,
-  isActive,
-  isEditMode,
-  isMobile,
-  onTap,
-  onHoverAction,
-  onDragEnd,
-  constraintsRef,
-}) {
-  const timer = useTimer(mesa.startTime);
-  const cfg = ESTADO_CONFIG[mesa.estado];
-  const isOcc = mesa.estado === "ocupada";
-  const [hovered, setHovered] = useState(false);
-  const showInline = !isMobile && hovered && !isEditMode;
-
+// ─── Add Mesa Tile ────────────────────────────────────────────────────────────
+function AddMesaTile({ onAdd }) {
   return (
-    <motion.div
-      drag={isEditMode}
-      dragConstraints={constraintsRef}
-      dragMomentum={false}
-      dragElastic={0}
-      onDragEnd={(_, info) => onDragEnd(mesa.id, info.offset)}
-      initial={{ x: mesa.x, y: mesa.y, scale: 0.8, opacity: 0 }}
-      animate={{ x: mesa.x, y: mesa.y, scale: 1, opacity: 1 }}
-      transition={{ type: "spring", stiffness: 220, damping: 24 }}
-      onHoverStart={() => !isMobile && setHovered(true)}
-      onHoverEnd={() => !isMobile && setHovered(false)}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (!isEditMode) onTap(mesa);
-      }}
-      className="absolute flex items-center justify-center"
+    <motion.button
+      onClick={onAdd}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      className="relative flex flex-col items-center justify-center rounded-2xl overflow-hidden transition-all duration-100 focus:outline-none"
       style={{
-        width: 164,
-        height: 164,
-        cursor: isEditMode ? "grab" : "pointer",
-        touchAction: isEditMode ? "none" : "manipulation",
+        background: "linear-gradient(145deg, #22c55e15, #0c0c0c)",
+        border: "1.5px dashed #22c55e50",
+        minHeight: 130,
       }}
     >
-      <div className="relative flex items-center justify-center">
-        {/* Sillas */}
-        {isOcc &&
-          Array.from({ length: Math.min(mesa.personas, 10) }).map((_, i) => {
-            const angle = (i * 360) / Math.min(mesa.personas, 10);
-            return (
-              <motion.div
-                key={i}
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: i * 0.04 }}
-                className="absolute w-5 h-5 rounded-full border border-white/20 bg-white/8 z-10 flex items-center justify-center"
-                style={{
-                  transform: `rotate(${angle}deg) translateY(-60px)`,
-                  transformOrigin: "center",
-                }}
-              >
-                <div className="w-2 h-2 rounded-full bg-white/50" />
-              </motion.div>
-            );
-          })}
-
-        {/* Círculo mesa */}
-        <motion.div
-          whileHover={!isMobile ? { scale: 1.07 } : {}}
-          whileTap={{ scale: 0.95 }}
-          className="w-24 h-24 rounded-full border-2 flex flex-col items-center justify-center shadow-2xl relative z-20"
+      <div className="flex flex-col items-center gap-2">
+        <div
+          className="w-12 h-12 rounded-full flex items-center justify-center"
           style={{
-            borderColor: cfg.color,
-            background: `radial-gradient(circle at 35% 35%, ${cfg.bg}dd, #080808)`,
-            boxShadow: `0 0 ${isActive || hovered ? "40px" : "20px"} ${cfg.ring}, 0 10px 40px #000`,
-            transition: "box-shadow 0.3s",
+            background: "#22c55e20",
+            border: "2px solid #22c55e60",
           }}
         >
-          {isActive && (
-            <motion.div
-              className="absolute inset-0 rounded-full pointer-events-none"
-              style={{ border: `2px solid ${cfg.color}` }}
-              animate={{ scale: [1, 1.3, 1], opacity: [1, 0, 1] }}
-              transition={{ repeat: Infinity, duration: 1.8 }}
-            />
-          )}
-          <span className="text-xl font-black text-white tracking-tight z-10">
-            #{mesa.numero}
+          <Plus size={24} className="text-emerald-400" />
+        </div>
+        <span className="text-xs font-black text-emerald-600/80 uppercase tracking-widest">
+          Nueva Mesa
+        </span>
+      </div>
+    </motion.button>
+  );
+}
+
+// ─── Mesa Tile ────────────────────────────────────────────────────────────────
+function MesaTile({ mesa, onOpen }) {
+  const cfg = ESTADO[mesa.estado];
+  const timer = useTimer(mesa.startTime);
+  const total = calc(mesa.comanda);
+  const isOcc = mesa.estado === "ocupada";
+  const isSuc = mesa.estado === "sucio";
+
+  return (
+    <button
+      onClick={() => onOpen(mesa)}
+      className="relative flex flex-col rounded-2xl overflow-hidden transition-transform duration-100 active:scale-[0.95] focus:outline-none text-left"
+      style={{
+        background: `linear-gradient(145deg, ${cfg.glow}, #0c0c0c)`,
+        border: `1.5px solid ${cfg.border}`,
+        minHeight: 130,
+      }}
+    >
+      {/* Color bar top */}
+      <div
+        className="h-[3px] w-full"
+        style={{ background: cfg.color, opacity: isOcc ? 1 : 0.4 }}
+      />
+
+      {/* Pulse dot */}
+      {(isSuc || mesa.estado === "reservada") && (
+        <span className="absolute top-3 right-3 flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+        </span>
+      )}
+
+      <div className="flex flex-col flex-1 p-3 gap-2">
+        {/* Number row */}
+        <div className="flex items-start justify-between">
+          <span className="text-2xl font-black tracking-tighter text-white leading-none">
+            {mesa.numero}
           </span>
+          <span
+            className="text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-md"
+            style={{ background: `${cfg.color}22`, color: cfg.color }}
+          >
+            {cfg.label}
+          </span>
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 flex flex-col justify-end gap-1">
           {isOcc && (
             <>
-              <span
-                className="text-[8px] font-bold uppercase z-10"
-                style={{ color: cfg.color }}
-              >
-                {mesa.personas} pax
-              </span>
-              <span className="text-[8px] font-mono text-white/35 mt-0.5 z-10">
+              <div className="flex items-center gap-1 text-slate-500">
+                <Users size={9} />
+                <span className="text-[9px] font-bold">
+                  {mesa.personas} persona{mesa.personas !== 1 && "s"}
+                </span>
+              </div>
+              <div className="text-[9px] font-mono text-slate-600 tabular-nums">
                 {timer}
+              </div>
+            </>
+          )}
+          {mesa.estado === "reservada" && mesa.reserva?.activa && (
+            <>
+              <span className="text-[9px] font-bold text-blue-400 truncate">
+                {mesa.reserva.nombre}
+              </span>
+              <span className="text-[8px] text-slate-500 flex items-center gap-1">
+                <Clock size={7} /> {mesa.reserva.hora}
               </span>
             </>
           )}
-          {mesa.estado === "sucio" && (
-            <span className="text-[8px] text-red-400 font-black mt-1 z-10 animate-pulse">
-              LIMPIAR
+          {isSuc && (
+            <span className="text-[9px] font-black text-red-500 uppercase tracking-wide">
+              Limpiar
             </span>
           )}
-        </motion.div>
-
-        {/* Total badge */}
-        {isOcc && mesa.total > 0 && (
-          <div
-            className="absolute -bottom-8 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded-full text-[9px] font-black whitespace-nowrap z-30"
-            style={{
-              background: `${cfg.color}18`,
-              border: `1px solid ${cfg.color}40`,
-              color: cfg.color,
-            }}
-          >
-            {fmtCOP(mesa.total)}
-          </div>
-        )}
-
-        {/* PC: acciones inline al hover */}
-        <AnimatePresence>
-          {showInline && (
-            <motion.div
-              initial={{ opacity: 0, y: 6, scale: 0.9 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 6, scale: 0.9 }}
-              transition={{ duration: 0.13 }}
-              className="absolute -top-14 left-1/2 -translate-x-1/2 flex gap-1.5 z-[45]"
-            >
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onHoverAction(mesa, "detail");
-                }}
-                className="bg-blue-600 hover:bg-blue-500 px-3 py-1.5 rounded-full shadow-xl text-white text-[9px] font-black uppercase tracking-wide transition-colors"
-              >
-                Ver
-              </button>
-              {mesa.estado === "libre" && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onHoverAction(mesa, "sentar");
-                  }}
-                  className="bg-orange-600/90 hover:bg-orange-500 px-3 py-1.5 rounded-full shadow-xl text-white text-[9px] font-black uppercase tracking-wide transition-colors"
-                >
-                  Sentar
-                </button>
-              )}
-              {mesa.estado === "sucio" && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onHoverAction(mesa, "limpiar");
-                  }}
-                  className="bg-green-700 hover:bg-green-600 px-3 py-1.5 rounded-full shadow-xl text-white text-[9px] font-black uppercase tracking-wide transition-colors"
-                >
-                  Limpia
-                </button>
-              )}
-            </motion.div>
+          {mesa.estado === "libre" && (
+            <span className="text-[9px] text-slate-700 font-bold">
+              Disponible
+            </span>
           )}
-        </AnimatePresence>
+        </div>
 
-        {/* Edit handle */}
-        {isEditMode && (
-          <div className="absolute -top-2 -right-2 w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center z-45 shadow-lg">
-            <GripVertical size={10} className="text-white" />
-          </div>
+        {/* Total */}
+        {isOcc && total > 0 && (
+          <div className="text-sm font-black text-white">{fmt(total)}</div>
         )}
       </div>
-    </motion.div>
+    </button>
   );
 }
 
-// ─── Shared panel body ────────────────────────────────────────────────────────
-function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
+// ─── Panel Body ───────────────────────────────────────────────────────────────
+function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
   const [tab, setTab] = useState("comanda");
   const [busqueda, setBusqueda] = useState("");
   const [editNota, setEditNota] = useState(false);
   const [nota, setNota] = useState(mesa.nota || "");
   const [personas, setPersonas] = useState(mesa.personas);
+  const [showReservaForm, setShowReservaForm] = useState(false);
+  const [reservaNombre, setReservaNombre] = useState(
+    mesa.reserva?.nombre || "",
+  );
+  const [reservaTelefono, setReservaTelefono] = useState(
+    mesa.reserva?.telefono || "",
+  );
+  const [reservaEmail, setReservaEmail] = useState(mesa.reserva?.email || "");
+  const [reservaHora, setReservaHora] = useState(mesa.reserva?.hora || "");
+  const [reservaPersonas, setReservaPersonas] = useState(
+    mesa.reserva?.personas || 1,
+  );
   const timer = useTimer(mesa.startTime);
-  const cfg = ESTADO_CONFIG[mesa.estado];
-  const total = calcTotal(mesa.comanda);
+  const cfg = ESTADO[mesa.estado];
+  const total = calc(mesa.comanda);
   const menuFiltrado = MENU_ITEMS.filter((i) =>
     i.nombre.toLowerCase().includes(busqueda.toLowerCase()),
   );
@@ -461,7 +471,7 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
             qty: 1,
           },
         ];
-    onUpdate({ ...mesa, comanda: newComanda, total: calcTotal(newComanda) });
+    onUpdate({ ...mesa, comanda: newComanda, total: calc(newComanda) });
     onToast(`✓ ${menuItem.nombre}`);
   };
 
@@ -474,7 +484,7 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
         : mesa.comanda.map((c) =>
             c.id === id ? { ...c, qty: c.qty + delta } : c,
           );
-    onUpdate({ ...mesa, comanda: newComanda, total: calcTotal(newComanda) });
+    onUpdate({ ...mesa, comanda: newComanda, total: calc(newComanda) });
   };
 
   const handleEstado = (s) => {
@@ -496,12 +506,12 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
         nota: "",
       });
       onToast("Mesa liberada");
-      if (isMobile) onClose();
+      onClose();
     } else onUpdate({ ...mesa, estado: s, startTime: null, personas: 0 });
   };
 
   const handleCobrar = () => {
-    onToast(`💳 ${fmtCOP(total)} cobrado — Mesa ${mesa.numero}`);
+    onToast(`💳 ${fmt(total)} cobrado — Mesa ${mesa.numero}`);
     onUpdate({
       ...mesa,
       estado: "sucio",
@@ -514,85 +524,182 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
     onClose();
   };
 
-  const btnSize = isMobile ? 12 : 9;
-  const qtySize = isMobile ? 8 : 6;
-  const itemSize = isMobile ? "py-3.5" : "py-2.5";
-  const addBtnH = isMobile ? "py-4" : "py-2.5";
+  const handleCrearReserva = () => {
+    if (!reservaNombre || !reservaTelefono || !reservaHora) {
+      onToast("⚠️ Completa los campos requeridos");
+      return;
+    }
+    onUpdate({
+      ...mesa,
+      estado: "reservada",
+      reserva: {
+        nombre: reservaNombre,
+        telefono: reservaTelefono,
+        email: reservaEmail,
+        hora: reservaHora,
+        personas: reservaPersonas,
+        activa: true,
+      },
+    });
+    setShowReservaForm(false);
+    onToast(`✓ Reserva creada para ${reservaNombre}`);
+  };
+
+  const handleCancelarReserva = () => {
+    onUpdate({
+      ...mesa,
+      estado: "libre",
+      reserva: {
+        nombre: "",
+        telefono: "",
+        email: "",
+        hora: "",
+        personas: 0,
+        activa: false,
+      },
+    });
+    setShowReservaForm(false);
+    onToast("Reserva cancelada");
+  };
+
+  const handleConvertirReservaEnClientes = () => {
+    if (mesa.reserva?.activa) {
+      onUpdate({
+        ...mesa,
+        estado: "ocupada",
+        personas: mesa.reserva.personas,
+        startTime: Date.now(),
+        reserva: { ...mesa.reserva, activa: false },
+      });
+      onToast(`✓ ${mesa.reserva.nombre} sentado`);
+    }
+  };
 
   return (
     <>
       {/* Header */}
-      <div
-        className={`${isMobile ? "px-5 pb-3" : "px-7 pt-7 pb-4"} border-b border-white/6 flex-shrink-0`}
-      >
-        {!isMobile && (
-          <button
-            onClick={onClose}
-            className="absolute top-5 right-5 p-2 hover:bg-white/8 rounded-full transition-colors"
-          >
-            <X size={16} className="text-slate-400" />
-          </button>
-        )}
+      <div className="px-6 pt-5 pb-4 border-b border-white/6 flex-shrink-0">
         <div className="flex items-start justify-between">
           <div>
-            <div className="flex items-center gap-1.5 mb-0.5">
-              <div className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+            <div className="flex items-center gap-1.5 mb-1">
+              <div
+                className="w-1.5 h-1.5 rounded-full"
+                style={{ background: cfg.color }}
+              />
               <span
-                className="text-[9px] font-black uppercase tracking-[0.35em]"
+                className="text-[9px] font-black uppercase tracking-[0.3em]"
                 style={{ color: cfg.color }}
               >
                 {cfg.label}
               </span>
               {mesa.estado === "ocupada" && (
-                <span className="text-[9px] font-mono text-white/35 ml-1 bg-white/5 px-2 py-0.5 rounded-full">
+                <span className="text-[9px] font-mono text-white/30 bg-white/5 px-2 py-0.5 rounded-full ml-1">
                   {timer}
                 </span>
               )}
             </div>
-            <h2
-              className={`${isMobile ? "text-3xl" : "text-4xl"} font-black tracking-tighter text-white`}
-            >
+            <h2 className="text-4xl font-black tracking-tighter text-white">
               MESA {mesa.numero}
             </h2>
           </div>
-          {/* Acciones estado */}
-          <div className="flex gap-1.5 mt-1 flex-wrap justify-end">
-            {mesa.estado !== "ocupada" && (
+          <button
+            onClick={onClose}
+            className="p-2 hover:bg-white/8 rounded-xl transition-colors"
+          >
+            <X size={16} className="text-slate-500" />
+          </button>
+        </div>
+
+        <div className="flex gap-1.5 mt-3 flex-wrap">
+          {mesa.estado !== "ocupada" && (
+            <button
+              onClick={() => handleEstado("ocupada")}
+              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+              style={{
+                background: "#f9731615",
+                borderColor: "#f9731640",
+                color: "#f97316",
+              }}
+            >
+              <Users size={9} /> Sentar
+            </button>
+          )}
+          {mesa.estado === "sucio" && (
+            <button
+              onClick={() => handleEstado("libre")}
+              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+              style={{
+                background: "#22c55e15",
+                borderColor: "#22c55e40",
+                color: "#22c55e",
+              }}
+            >
+              <CheckCircle2 size={9} /> Limpia
+            </button>
+          )}
+          {mesa.estado === "ocupada" && (
+            <button
+              onClick={() => handleEstado("sucio")}
+              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+              style={{
+                background: "#ef444415",
+                borderColor: "#ef444440",
+                color: "#ef4444",
+              }}
+            >
+              <RotateCcw size={9} /> Desocupar
+            </button>
+          )}
+          {mesa.estado === "libre" && (
+            <button
+              onClick={() => setShowReservaForm(true)}
+              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+              style={{
+                background: "#3b82f615",
+                borderColor: "#3b82f640",
+                color: "#3b82f6",
+              }}
+            >
+              <Calendar size={9} /> Reservar
+            </button>
+          )}
+          {mesa.estado === "reservada" && (
+            <>
               <button
-                onClick={() => handleEstado("ocupada")}
-                className="px-3 py-1.5 bg-orange-600/15 border border-orange-500/30 text-orange-400 text-[8px] font-black uppercase tracking-widest rounded-xl active:scale-95 hover:bg-orange-600/25 transition-all flex items-center gap-1"
+                onClick={handleConvertirReservaEnClientes}
+                className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+                style={{
+                  background: "#f9731615",
+                  borderColor: "#f9731640",
+                  color: "#f97316",
+                }}
               >
                 <Users size={9} /> Sentar
               </button>
-            )}
-            {mesa.estado === "sucio" && (
               <button
-                onClick={() => handleEstado("libre")}
-                className="px-3 py-1.5 bg-green-600/15 border border-green-500/30 text-green-400 text-[8px] font-black uppercase tracking-widest rounded-xl active:scale-95 hover:bg-green-600/25 transition-all flex items-center gap-1"
+                onClick={handleCancelarReserva}
+                className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+                style={{
+                  background: "#ef444415",
+                  borderColor: "#ef444440",
+                  color: "#ef4444",
+                }}
               >
-                <CheckCircle2 size={9} /> Limpia
+                <X size={9} /> Cancelar
               </button>
-            )}
-            {mesa.estado === "ocupada" && (
-              <button
-                onClick={() => handleEstado("sucio")}
-                className="px-3 py-1.5 bg-red-600/15 border border-red-500/30 text-red-400 text-[8px] font-black uppercase tracking-widest rounded-xl active:scale-95 hover:bg-red-600/25 transition-all flex items-center gap-1"
-              >
-                <RotateCcw size={9} /> Desocup.
-              </button>
-            )}
-            <button
-              onClick={() => {
-                if (window.confirm(`¿Eliminar Mesa ${mesa.numero}?`)) {
-                  onDelete(mesa.id);
-                  onClose();
-                }
-              }}
-              className="px-2.5 py-1.5 bg-white/5 border border-white/8 text-slate-600 rounded-xl hover:bg-red-900/20 hover:border-red-500/30 hover:text-red-400 active:scale-95 transition-all"
-            >
-              <Trash2 size={11} />
-            </button>
-          </div>
+            </>
+          )}
+          <button
+            onClick={() => {
+              if (window.confirm(`¿Eliminar Mesa ${mesa.numero}?`)) {
+                onDelete(mesa.id);
+                onClose();
+              }
+            }}
+            className="px-2.5 py-1.5 bg-white/4 border border-white/8 text-slate-600 rounded-xl hover:bg-red-900/20 hover:border-red-500/30 hover:text-red-400 active:scale-95 transition-all ml-auto"
+          >
+            <Trash2 size={11} />
+          </button>
         </div>
       </div>
 
@@ -606,7 +713,7 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`flex-1 ${isMobile ? "py-3" : "py-2.5"} text-[9px] font-black uppercase tracking-widest transition-all ${tab === id ? "text-white border-b-2 border-blue-500" : "text-slate-600 hover:text-slate-400"}`}
+            className={`flex-1 py-3 text-[9px] font-black uppercase tracking-widest transition-all ${tab === id ? "text-white border-b-2 border-blue-500" : "text-slate-600 hover:text-slate-400"}`}
           >
             {label}
           </button>
@@ -615,14 +722,13 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto overscroll-contain">
-        {/* Comanda */}
         {tab === "comanda" && (
           <div className="p-5 space-y-0.5">
             {mesa.comanda.length === 0 ? (
-              <div className="text-center py-12">
+              <div className="text-center py-14">
                 <ChefHat
                   size={28}
-                  className="mx-auto mb-2 text-slate-700 opacity-50"
+                  className="mx-auto mb-3 text-slate-700 opacity-40"
                 />
                 <p className="text-sm font-bold text-slate-600 mb-3">
                   Comanda vacía
@@ -636,56 +742,46 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
               </div>
             ) : (
               mesa.comanda.map((item) => (
-                <motion.div
+                <div
                   key={item.id}
-                  layout
-                  className={`flex items-center gap-3 ${itemSize} border-b border-white/5`}
+                  className="flex items-center gap-3 py-3 border-b border-white/5"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-slate-200 truncate">
                       {item.item}
                     </p>
                     <p className="text-[10px] text-slate-600">
-                      {fmtCOP(item.precio)} c/u
+                      {fmt(item.precio)} c/u
                     </p>
                   </div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-2">
                     <button
                       onClick={() => changeQty(item.id, -1)}
-                      className={`w-${qtySize} h-${qtySize} rounded-full bg-white/8 active:bg-white/20 hover:bg-white/15 flex items-center justify-center text-slate-400 transition-colors`}
-                      style={{
-                        width: isMobile ? 32 : 24,
-                        height: isMobile ? 32 : 24,
-                      }}
+                      className="w-8 h-8 rounded-full bg-white/8 active:bg-white/20 flex items-center justify-center text-slate-400"
                     >
-                      <Minus size={btnSize} />
+                      <Minus size={12} />
                     </button>
-                    <span className="w-5 text-center text-sm font-black text-white">
+                    <span className="w-6 text-center text-sm font-black text-white">
                       {item.qty}
                     </span>
                     <button
                       onClick={() => changeQty(item.id, 1)}
-                      className="rounded-full bg-white/8 active:bg-white/20 hover:bg-white/15 flex items-center justify-center text-slate-400 transition-colors"
-                      style={{
-                        width: isMobile ? 32 : 24,
-                        height: isMobile ? 32 : 24,
-                      }}
+                      className="w-8 h-8 rounded-full bg-white/8 active:bg-white/20 flex items-center justify-center text-slate-400"
                     >
-                      <Plus size={btnSize} />
+                      <Plus size={12} />
                     </button>
                   </div>
                   <span className="text-sm font-black text-white w-20 text-right">
-                    {fmtCOP(item.precio * item.qty)}
+                    {fmt(item.precio * item.qty)}
                   </span>
-                </motion.div>
+                </div>
               ))
             )}
           </div>
         )}
 
-        {/* Menú */}
         {tab === "menu" && (
-          <div className="p-5 space-y-3">
+          <div className="p-5 space-y-4">
             <div className="relative">
               <Search
                 size={12}
@@ -710,19 +806,19 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
                       <button
                         key={item.nombre}
                         onClick={() => addItem(item)}
-                        className={`w-full flex items-center justify-between px-4 ${addBtnH} bg-white/3 active:bg-white/10 hover:bg-white/7 border border-white/6 hover:border-white/10 rounded-2xl transition-all text-left active:scale-[0.98] group`}
+                        className="w-full flex items-center justify-between px-4 py-3.5 bg-white/3 active:bg-white/10 border border-white/6 rounded-2xl transition-all active:scale-[0.98] group text-left"
                       >
                         <span className="text-sm text-slate-400 group-hover:text-white transition-colors">
                           {item.nombre}
                         </span>
                         <div className="flex items-center gap-3">
                           <span className="text-[10px] text-slate-600">
-                            {fmtCOP(item.precio)}
+                            {fmt(item.precio)}
                           </span>
-                          <div className="w-6 h-6 rounded-full bg-blue-600/20 group-hover:bg-blue-500 flex items-center justify-center transition-colors flex-shrink-0">
+                          <div className="w-6 h-6 rounded-full bg-blue-600/20 group-hover:bg-blue-500 flex items-center justify-center transition-colors">
                             <Plus
                               size={10}
-                              className="text-blue-300 group-hover:text-white"
+                              className="text-blue-400 group-hover:text-white"
                             />
                           </div>
                         </div>
@@ -734,9 +830,8 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
           </div>
         )}
 
-        {/* Info */}
         {tab === "info" && (
-          <div className="p-5 space-y-4">
+          <div className="p-5 space-y-3">
             <div className="bg-white/3 border border-white/7 rounded-2xl p-4">
               <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest mb-3">
                 Personas
@@ -744,39 +839,27 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setPersonas((p) => Math.max(0, p - 1))}
-                  className="rounded-full bg-white/8 active:bg-white/20 hover:bg-white/15 flex items-center justify-center text-white transition-colors"
-                  style={{
-                    width: isMobile ? 44 : 34,
-                    height: isMobile ? 44 : 34,
-                  }}
+                  className="w-11 h-11 rounded-full bg-white/8 active:bg-white/20 flex items-center justify-center text-white"
                 >
-                  <Minus size={isMobile ? 16 : 13} />
+                  <Minus size={14} />
                 </button>
                 <span className="text-3xl font-black text-white flex-1 text-center">
                   {personas}
                 </span>
                 <button
                   onClick={() => setPersonas((p) => Math.min(12, p + 1))}
-                  className="rounded-full bg-white/8 active:bg-white/20 hover:bg-white/15 flex items-center justify-center text-white transition-colors"
-                  style={{
-                    width: isMobile ? 44 : 34,
-                    height: isMobile ? 44 : 34,
-                  }}
+                  className="w-11 h-11 rounded-full bg-white/8 active:bg-white/20 flex items-center justify-center text-white"
                 >
-                  <Plus size={isMobile ? 16 : 13} />
+                  <Plus size={14} />
                 </button>
                 <button
                   onClick={() => {
                     onUpdate({ ...mesa, personas });
                     onToast("Actualizado");
                   }}
-                  className="rounded-full bg-blue-600/25 border border-blue-500/30 text-blue-300 flex items-center justify-center active:scale-95 hover:bg-blue-600/40 transition-all"
-                  style={{
-                    width: isMobile ? 44 : 34,
-                    height: isMobile ? 44 : 34,
-                  }}
+                  className="w-11 h-11 rounded-full bg-blue-600/25 border border-blue-500/30 text-blue-300 flex items-center justify-center active:scale-95"
                 >
-                  <Check size={isMobile ? 16 : 13} />
+                  <Check size={14} />
                 </button>
               </div>
             </div>
@@ -787,7 +870,7 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
                 </p>
                 <button
                   onClick={() => setEditNota((v) => !v)}
-                  className="text-slate-600 hover:text-white active:text-white transition-colors p-1"
+                  className="text-slate-600 hover:text-white p-1"
                 >
                   <Edit3 size={12} />
                 </button>
@@ -798,7 +881,7 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
                     value={nota}
                     onChange={(e) => setNota(e.target.value)}
                     rows={3}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-slate-700 outline-none focus:border-blue-500/30 resize-none"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-500/30 resize-none"
                     placeholder="Alergias, preferencias..."
                   />
                   <button
@@ -807,7 +890,7 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
                       setEditNota(false);
                       onToast("Nota guardada");
                     }}
-                    className="w-full py-2.5 bg-blue-600/25 border border-blue-500/30 text-blue-300 text-[9px] font-black rounded-xl uppercase tracking-wider active:scale-98"
+                    className="w-full py-2.5 bg-blue-600/25 border border-blue-500/30 text-blue-300 text-[9px] font-black rounded-xl uppercase tracking-wider"
                   >
                     Guardar
                   </button>
@@ -823,11 +906,9 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
               )}
             </div>
             {mesa.estado === "ocupada" && (
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {[
-                  ["Tiempo", timer],
-                  ["Personas", mesa.personas],
-                  ["Ítems", mesa.comanda.reduce((s, i) => s + i.qty, 0)],
+                  ["Productos", mesa.comanda.reduce((s, i) => s + i.qty, 0)],
                 ].map(([l, v]) => (
                   <div
                     key={l}
@@ -836,606 +917,457 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast, isMobile }) {
                     <p className="text-[7px] font-black text-slate-600 uppercase tracking-widest mb-0.5">
                       {l}
                     </p>
-                    <p
-                      className={`${isMobile ? "text-xl" : "text-lg"} font-black text-white`}
-                    >
-                      {v}
-                    </p>
+                    <p className="text-xl font-black text-white">{v}</p>
                   </div>
                 ))}
+              </div>
+            )}
+            {mesa.estado === "reservada" && mesa.reserva?.activa && (
+              <div className="bg-blue-900/30 border border-blue-500/30 rounded-2xl p-4 space-y-2">
+                <p className="text-[8px] font-black text-blue-400 uppercase tracking-widest">
+                  📅 Información de Reserva
+                </p>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Nombre:</span>
+                    <span className="font-bold text-white">
+                      {mesa.reserva.nombre}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Teléfono:</span>
+                    <span className="font-bold text-white">
+                      {mesa.reserva.telefono}
+                    </span>
+                  </div>
+                  {mesa.reserva.email && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-400">Email:</span>
+                      <span className="font-bold text-white text-xs">
+                        {mesa.reserva.email}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Hora:</span>
+                    <span className="font-bold text-white">
+                      {mesa.reserva.hora}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-400">Personas:</span>
+                    <span className="font-bold text-white">
+                      {mesa.reserva.personas}
+                    </span>
+                  </div>
+                </div>
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Footer cobro */}
+      {/* Footer */}
       {mesa.estado === "ocupada" && (
-        <div
-          className={`${isMobile ? "p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]" : "p-5"} bg-black/50 border-t border-white/6 flex-shrink-0 space-y-3`}
-        >
+        <div className="p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-black/40 border-t border-white/6 flex-shrink-0 space-y-3">
           <div className="flex justify-between items-center">
             <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
               Total
             </span>
             <span className="text-2xl font-black text-white tracking-tighter">
-              {fmtCOP(total)}
+              {fmt(total)}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              onClick={() =>
-                onToast(`📄 Pre-cuenta Mesa ${mesa.numero}: ${fmtCOP(total)}`)
-              }
-              className={`${isMobile ? "py-4" : "py-3"} bg-white/5 border border-white/8 rounded-2xl text-[9px] font-black uppercase tracking-widest active:scale-98 hover:bg-white/10 transition-all flex items-center justify-center gap-1.5 text-slate-300`}
-            >
-              <Receipt size={11} /> Pre-cuenta
-            </button>
+          <div className="grid grid-cols-1 gap-2.5">
             <button
               onClick={handleCobrar}
-              className={`${isMobile ? "py-4" : "py-3"} bg-emerald-600 hover:bg-emerald-500 rounded-2xl text-[9px] font-black uppercase tracking-widest text-white shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-1.5`}
+              className="py-4 bg-emerald-600 rounded-2xl text-[9px] font-black uppercase tracking-widest text-white shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
             >
               <DollarSign size={11} /> Cobrar
             </button>
           </div>
         </div>
       )}
+
+      {/* Modal Reserva */}
+      <AnimatePresence>
+        {showReservaForm && (
+          <motion.div
+            className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
+              onClick={() => setShowReservaForm(false)}
+            />
+            <motion.div
+              className="relative bg-[#0c0c0c] border border-white/10 rounded-3xl p-6 max-w-md w-full space-y-4"
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+            >
+              <h3 className="text-xl font-black text-white flex items-center gap-2">
+                <Calendar size={20} className="text-blue-400" />
+                Nueva Reserva
+              </h3>
+
+              <div className="space-y-3">
+                <div>
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2">
+                    Nombre *
+                  </label>
+                  <input
+                    value={reservaNombre}
+                    onChange={(e) => setReservaNombre(e.target.value)}
+                    placeholder="Nombre del cliente"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-slate-600 outline-none focus:border-blue-500/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2 flex items-center gap-1">
+                    <Phone size={10} /> Teléfono *
+                  </label>
+                  <input
+                    value={reservaTelefono}
+                    onChange={(e) => setReservaTelefono(e.target.value)}
+                    placeholder="Ej: +57 300 123 4567"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-slate-600 outline-none focus:border-blue-500/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2 flex items-center gap-1">
+                    <Mail size={10} /> Email
+                  </label>
+                  <input
+                    value={reservaEmail}
+                    onChange={(e) => setReservaEmail(e.target.value)}
+                    placeholder="cliente@email.com"
+                    type="email"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-slate-600 outline-none focus:border-blue-500/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2 flex items-center gap-1">
+                    <Clock size={10} /> Hora *
+                  </label>
+                  <input
+                    value={reservaHora}
+                    onChange={(e) => setReservaHora(e.target.value)}
+                    placeholder="18:30"
+                    type="time"
+                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white placeholder-slate-600 outline-none focus:border-blue-500/30"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-2 flex items-center gap-1">
+                    <Users size={10} /> Personas
+                  </label>
+                  <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-xl p-3">
+                    <button
+                      onClick={() =>
+                        setReservaPersonas(Math.max(1, reservaPersonas - 1))
+                      }
+                      className="w-8 h-8 rounded-full bg-white/8 active:bg-white/20 flex items-center justify-center"
+                    >
+                      <Minus size={12} className="text-slate-400" />
+                    </button>
+                    <span className="flex-1 text-center font-black text-white">
+                      {reservaPersonas}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setReservaPersonas(Math.min(12, reservaPersonas + 1))
+                      }
+                      className="w-8 h-8 rounded-full bg-white/8 active:bg-white/20 flex items-center justify-center"
+                    >
+                      <Plus size={12} className="text-slate-400" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  onClick={() => setShowReservaForm(false)}
+                  className="flex-1 py-3 bg-white/5 border border-white/10 rounded-xl text-sm font-black text-slate-300 uppercase tracking-wider active:scale-95"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleCrearReserva}
+                  className="flex-1 py-3 bg-blue-600 rounded-xl text-sm font-black text-white uppercase tracking-wider active:scale-95 shadow-lg shadow-blue-600/20"
+                >
+                  Reservar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>
   );
 }
 
-// ─── Panel lateral PC ─────────────────────────────────────────────────────────
-function PanelLateral({ mesa, onClose, onUpdate, onDelete, onToast }) {
+// ─── Panel / Bottom Sheet (responsive) ───────────────────────────────────────
+function MesaPanel({ mesa, onClose, onUpdate, onDelete, onToast }) {
   return (
-    <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ type: "spring", stiffness: 300, damping: 34 }}
-      className="absolute right-0 top-0 bottom-0 w-[380px] bg-[#060606]/98 backdrop-blur-3xl border-l border-white/6 z-[45] flex flex-col shadow-[-60px_0_120px_rgba(0,0,0,0.9)]"
-    >
-      <PanelBody
-        mesa={mesa}
-        onUpdate={onUpdate}
-        onDelete={onDelete}
-        onClose={onClose}
-        onToast={onToast}
-        isMobile={false}
-      />
-    </motion.div>
-  );
-}
+    <AnimatePresence>
+      {mesa && (
+        <motion.div
+          className="fixed inset-0 z-50 flex items-end sm:items-stretch justify-end"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          {/* Backdrop */}
+          <motion.div
+            className="absolute inset-0 bg-black/70 backdrop-blur-[2px]"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          />
 
-// ─── Bottom Sheet móvil ───────────────────────────────────────────────────────
-function BottomSheet({ mesa, onClose, onUpdate, onDelete, onToast }) {
-  return (
-    <motion.div
-      className="fixed inset-0 z-[45] flex flex-col justify-end"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <motion.div
-        className="absolute inset-0 bg-black/65 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <motion.div
-        className="relative bg-[#0a0a0a] border-t border-white/8 rounded-t-3xl z-10 flex flex-col max-h-[92dvh]"
-        initial={{ y: "100%" }}
-        animate={{ y: 0 }}
-        exit={{ y: "100%" }}
-        transition={{ type: "spring", stiffness: 320, damping: 36 }}
-        drag="y"
-        dragConstraints={{ top: 0, bottom: 0 }}
-        dragElastic={{ top: 0, bottom: 0.4 }}
-        onDragEnd={(_, info) => {
-          if (info.offset.y > 80) onClose();
-        }}
-      >
-        {/* Handle swipe */}
-        <div className="flex justify-center pt-3 pb-2 flex-shrink-0">
-          <div className="w-10 h-1 bg-white/15 rounded-full" />
-        </div>
-        <PanelBody
-          mesa={mesa}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
-          onClose={onClose}
-          onToast={onToast}
-          isMobile={true}
-        />
-      </motion.div>
-    </motion.div>
+          {/* Panel — bottom sheet on mobile, side panel on sm+ */}
+          <motion.div
+            className="relative z-10 flex flex-col bg-[#080808] border-white/8
+              w-full sm:w-[400px]
+              rounded-t-3xl sm:rounded-none
+              max-h-[92dvh] sm:max-h-full sm:h-full
+              border-t sm:border-t-0 sm:border-l
+              shadow-2xl overflow-hidden"
+            initial={{ y: "100%" }}
+            animate={{ y: 0 }}
+            exit={{ y: "100%" }}
+            transition={{ type: "spring", stiffness: 340, damping: 38 }}
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.3 }}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 80) onClose();
+            }}
+            style={{ touchAction: "pan-x" }}
+          >
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1 flex-shrink-0 sm:hidden">
+              <div className="w-10 h-1 bg-white/15 rounded-full" />
+            </div>
+            <PanelBody
+              mesa={mesa}
+              onUpdate={onUpdate}
+              onDelete={onDelete}
+              onClose={onClose}
+              onToast={onToast}
+            />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
 // ─── Main ──────────────────────────────────────────────────────────────────────
 export default function MesasPOS() {
-  const { isSidebarExpanded } = useOutletContext() || {
-    isSidebarExpanded: false,
-  };
+  try {
+    useOutletContext();
+  } catch (_) {}
+
   const [mesas, setMesas] = useState(INITIAL_MESAS);
-  const [isEditMode, setIsEditMode] = useState(false);
-  const [detailMesa, setDetailMesa] = useState(null);
-  const [viewport, setViewport] = useState({ x: -1100, y: -1100, zoom: 0.75 });
-  const [showSearch, setShowSearch] = useState(false);
-  const [busquedaMesa, setBusquedaMesa] = useState("");
+  const [selected, setSelected] = useState(null);
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
   const [toast, setToast] = useState(null);
-  const isMobile = useIsMobile();
-  const constraintsRef = useRef(null);
   const toastRef = useRef(null);
 
-  // Sincronizar panel con cambios en mesas
+  // Keep panel in sync with state changes
   useEffect(() => {
-    if (!detailMesa) return;
-    const updated = mesas.find((m) => m.id === detailMesa.id);
-    if (updated) setDetailMesa(updated);
-    else setDetailMesa(null);
+    if (!selected) return;
+    const updated = mesas.find((m) => m.id === selected.id);
+    if (updated) setSelected(updated);
+    else setSelected(null);
   }, [mesas]);
-
-  // Scroll = zoom (PC)
-  useEffect(() => {
-    if (isMobile) return;
-    const onWheel = (e) => {
-      e.preventDefault();
-      setViewport((v) => ({
-        ...v,
-        zoom: Math.min(
-          Math.max(v.zoom + (e.deltaY > 0 ? -0.08 : 0.08), 0.3),
-          2.5,
-        ),
-      }));
-    };
-    window.addEventListener("wheel", onWheel, { passive: false });
-    return () => window.removeEventListener("wheel", onWheel);
-  }, [isMobile]);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
     clearTimeout(toastRef.current);
-    toastRef.current = setTimeout(() => setToast(null), 2500);
+    toastRef.current = setTimeout(() => setToast(null), 2200);
   }, []);
 
-  const updateMesa = useCallback(
-    (updated) =>
-      setMesas((prev) => prev.map((m) => (m.id === updated.id ? updated : m))),
-    [],
-  );
-  const deleteMesa = useCallback(
-    (id) => setMesas((prev) => prev.filter((m) => m.id !== id)),
-    [],
-  );
+  const updateMesa = useCallback((updated) => {
+    setMesas((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+  }, []);
+
+  const deleteMesa = useCallback((id) => {
+    setMesas((prev) => prev.filter((m) => m.id !== id));
+  }, []);
 
   const addMesa = () => {
-    const m = makeMesa(1600 + Math.random() * 900, 1600 + Math.random() * 900);
+    const m = newMesa();
     setMesas((prev) => [...prev, m]);
-    showToast(`Mesa ${m.numero} agregada`);
+    showToast(`Mesa ${m.numero} creada`);
   };
-
-  const handleDragEnd = useCallback((id, offset) => {
-    setMesas((prev) =>
-      prev.map((m) =>
-        m.id === id ? { ...m, x: m.x + offset.x, y: m.y + offset.y } : m,
-      ),
-    );
-  }, []);
-
-  const handleTap = useCallback((mesa) => setDetailMesa(mesa), []);
-
-  const handleHoverAction = useCallback(
-    (mesa, action) => {
-      if (action === "detail") {
-        setDetailMesa(mesa);
-        return;
-      }
-      if (action === "sentar")
-        updateMesa({
-          ...mesa,
-          estado: "ocupada",
-          startTime: Date.now(),
-          personas: 2,
-        });
-      if (action === "limpiar")
-        updateMesa({
-          ...mesa,
-          estado: "libre",
-          startTime: null,
-          personas: 0,
-          comanda: [],
-          total: 0,
-        });
-      showToast(action === "sentar" ? "Mesa ocupada" : "Mesa limpia ✓");
-    },
-    [updateMesa, showToast],
-  );
-
-  const handleZoom = (d) =>
-    setViewport((v) => ({
-      ...v,
-      zoom: Math.min(Math.max(v.zoom + d, 0.3), 2.5),
-    }));
-  const mesasBusqueda = busquedaMesa
-    ? mesas.filter((m) => m.numero.includes(busquedaMesa))
-    : [];
 
   const kpis = {
+    total: mesas.length,
     libres: mesas.filter((m) => m.estado === "libre").length,
     ocupadas: mesas.filter((m) => m.estado === "ocupada").length,
+    reservadas: mesas.filter((m) => m.estado === "reservada").length,
     sucias: mesas.filter((m) => m.estado === "sucio").length,
-    caja: mesas
-      .filter((m) => m.estado === "ocupada")
-      .reduce((s, m) => s + m.total, 0),
   };
 
+  const visible = mesas.filter((m) => {
+    const matchF = filter === "all" || m.estado === filter;
+    const matchS = !search || m.numero.includes(search);
+    return matchF && matchS;
+  });
+
   return (
-    <div className="relative h-screen w-full bg-black overflow-hidden select-none flex font-sans">
-      {/* KPIs */}
-      <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[45] flex  gap-1 justify-center px-2 max-w-full overflow-x-auto">
-        {[
-          { label: "Libres", value: kpis.libres, color: "bg-gray-500" },
-          { label: "Ocupadas", value: kpis.ocupadas, color: "bg-orange-500" },
-          { label: "Sucias", value: kpis.sucias, color: "bg-red-500" },
-        ].map(({ label, value, color }) => (
-          <div
-            key={label}
-            className="flex items-center gap-2 px-3 py-1.5 bg-black/65 backdrop-blur-xl border border-white/8 rounded-full shadow-xl"
-          >
-            <div
-              className={`w-1.5 h-1.5 rounded-full ${color} flex-shrink-0`}
-            />
-            <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest">
-              {label}
-            </span>
-            <span className="text-xs font-black text-white">{value}</span>
+    <div className="min-h-screen bg-black text-white font-sans flex flex-col">
+      {/* ── Header ── */}
+      <div className="sticky top-0 z-40 bg-black/97 backdrop-blur-xl border-b border-white/6 px-4 pt-4 pb-3 flex-shrink-0">
+        <div className="flex items-center justify-between mb-3">
+          <h1 className="text-2xl font-black tracking-tighter">Mesas</h1>
+        </div>
+
+        {/* KPIs con Wrap Optimizado - Mobile First */}
+        <div className="flex flex-wrap w-full gap-2 mb-3 overflow-visible py-1.5 px-0.5">
+          {[
+            {
+              id: "all",
+              label: "Todas",
+              value: kpis.total,
+              color: "text-white",
+              activeBorder: "border-white/40",
+            },
+            {
+              id: "libre",
+              label: "Libres",
+              value: kpis.libres,
+              color: "text-gray-400",
+              activeBorder: "border-gray-500/50",
+            },
+            {
+              id: "ocupada",
+              label: "Ocupadas",
+              value: kpis.ocupadas,
+              color: "text-orange-400",
+              activeBorder: "border-orange-500/50",
+            },
+            {
+              id: "reservada",
+              label: "Reservas",
+              value: kpis.reservadas,
+              color: "text-blue-400",
+              activeBorder: "border-blue-500/50",
+            },
+            {
+              id: "sucio",
+              label: "Limpiar",
+              value: kpis.sucias,
+              color: "text-red-400",
+              activeBorder: "border-red-500/50",
+            },
+          ].map(({ id, label, value, color, activeBorder }) => (
+            <button
+              key={id}
+              onClick={() => setFilter(id)}
+              className={`
+        relative flex-1 min-w-[70px] flex flex-col items-center justify-center 
+        bg-white/3 border rounded-xl py-3 px-2 text-center transition-all active:scale-95
+        ${filter === id ? `${activeBorder} bg-white/10` : "border-white/6"}
+      `}
+            >
+              <p className={`text-lg font-black ${color} leading-none`}>
+                {value}
+              </p>
+              <p className="text-[7px] font-black uppercase tracking-widest mt-1 text-slate-500">
+                {label}
+              </p>
+
+              {filter === id && (
+                <motion.div
+                  layoutId="filter-dot"
+                  className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full"
+                  style={{ backgroundColor: "currentColor" }}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+        {/* Filters + Search simplificado */}
+        <div className="flex gap-2 items-center justify-between">
+          <div className="flex-1">
+            <p className="text-[9px] font-black text-slate-500 uppercase tracking-[0.2em] ml-1">
+              Filtrando por:{" "}
+              <span className="text-white">
+                {filter === "all" ? "Todas" : filter}
+              </span>
+            </p>
           </div>
-        ))}
+
+          <div className="relative flex-shrink-0">
+            <Search
+              size={11}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600"
+            />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar mesa..."
+              className="w-40 bg-white/5 border border-white/8 rounded-full pl-8 pr-3 py-1.5 text-xs text-white placeholder-slate-700 outline-none focus:border-white/20 transition-all"
+            />
+          </div>
+        </div>
       </div>
 
-      {/* Toast */}
+      {/* ── Grid ── */}
+      <div className="flex-1 p-4 overflow-y-auto">
+        {visible.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-slate-700">
+            <Search size={32} className="mb-3 opacity-30" />
+            <p className="font-bold text-sm">Sin mesas</p>
+          </div>
+        ) : (
+          <div
+            className="grid gap-3"
+            style={{
+              gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))",
+            }}
+          >
+            {visible.map((mesa) => (
+              <MesaTile key={mesa.id} mesa={mesa} onOpen={setSelected} />
+            ))}
+            <AddMesaTile onAdd={addMesa} />
+          </div>
+        )}
+      </div>
+
+      {/* ── Panel ── */}
+      <MesaPanel
+        mesa={selected}
+        onClose={() => setSelected(null)}
+        onUpdate={updateMesa}
+        onDelete={deleteMesa}
+        onToast={showToast}
+      />
+
+      {/* ── Toast ── */}
       <AnimatePresence>
         {toast && (
           <motion.div
-            initial={{ opacity: 0, y: -8 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            className="absolute top-14 left-1/2 -translate-x-1/2 z-[45] px-5 py-2 bg-white/8 backdrop-blur-xl border border-white/12 rounded-full text-xs font-bold text-white shadow-2xl whitespace-nowrap pointer-events-none"
+            exit={{ opacity: 0, y: 12 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] px-5 py-2.5 bg-white/10 backdrop-blur-xl border border-white/15 rounded-full text-xs font-bold text-white shadow-2xl whitespace-nowrap pointer-events-none"
           >
             {toast}
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Minimap — solo PC */}
-      {!isMobile && (
-        <div className="absolute bottom-6 left-6 z-[45] p-3 bg-black/85 backdrop-blur-2xl border border-white/8 rounded-2xl shadow-2xl">
-          <p className="text-[7px] font-black uppercase tracking-widest text-blue-400 mb-2 flex items-center gap-1">
-            <MapIcon size={8} /> Radar de Posición
-          </p>
-          <div className="w-32 h-32 bg-white/[0.02] rounded-lg relative border border-white/5 overflow-hidden">
-            {/* ── INDICADOR DE TU POSICIÓN (EL "VISOR") ── */}
-            <motion.div
-              className="absolute border border-blue-500/50 bg-blue-500/10 z-10 pointer-events-none"
-              animate={{
-                // Mapeamos el movimiento del canvas (5000px) al tamaño del radar (128px)
-                x: (Math.abs(viewport.x) / 5000) * 128,
-                y: (Math.abs(viewport.y) / 5000) * 128,
-                // El tamaño del visor cambia según el zoom
-                width: (window.innerWidth / (5000 * viewport.zoom)) * 128,
-                height: (window.innerHeight / (5000 * viewport.zoom)) * 128,
-              }}
-              transition={{ type: "spring", bounce: 0, duration: 0.3 }}
-            />
-
-            {/* Mesas en el radar */}
-            {mesas.map((m) => (
-              <div
-                key={m.id}
-                className={`absolute w-1.5 h-1.5 rounded-full ${
-                  m.estado === "ocupada"
-                    ? "bg-orange-500"
-                    : m.estado === "sucio"
-                      ? "bg-red-500"
-                      : "bg-gray-700"
-                }`}
-                style={{
-                  left: `${(m.x / 5000) * 100}%`,
-                  top: `${(m.y / 5000) * 100}%`,
-                  transform: "translate(-50%, -50%)",
-                }}
-              />
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* ── Controles PC: columna derecha ── */}
-      {!isMobile && (
-        <div className="absolute right-5 top-1/2 -translate-y-1/2 z-[45] flex flex-col items-center gap-2.5">
-          <div className="flex flex-col gap-0.5 p-1.5 bg-black/85 backdrop-blur-3xl border border-white/8 rounded-[1.25rem] shadow-2xl">
-            {[
-              {
-                icon: isEditMode ? <Unlock size={15} /> : <Lock size={15} />,
-                label: "Layout",
-                action: () => setIsEditMode((v) => !v),
-                active: isEditMode,
-                color: isEditMode ? "text-blue-400" : "text-slate-500",
-              },
-              null,
-              {
-                icon: <ZoomIn size={15} />,
-                label: "Zoom+",
-                action: () => handleZoom(0.2),
-                color: "text-slate-500",
-              },
-              {
-                icon: <ZoomOut size={15} />,
-                label: "Zoom–",
-                action: () => handleZoom(-0.2),
-                color: "text-slate-500",
-              },
-              {
-                icon: <Target size={15} />,
-                label: "Centrar",
-                action: () => setViewport({ x: -1100, y: -1100, zoom: 0.75 }),
-                color: "text-slate-500",
-              },
-              null,
-              {
-                icon: <Search size={15} />,
-                label: "Buscar",
-                action: () => setShowSearch((v) => !v),
-                active: showSearch,
-                color: showSearch ? "text-blue-400" : "text-slate-500",
-              },
-            ].map((btn, i) =>
-              btn === null ? (
-                <div key={i} className="h-px bg-white/5 mx-2 my-0.5" />
-              ) : (
-                <button
-                  key={btn.label}
-                  onClick={btn.action}
-                  title={btn.label}
-                  className={`p-3 rounded-xl transition-all flex flex-col items-center gap-1 group ${btn.active ? "bg-blue-600/15" : "hover:bg-white/6"}`}
-                >
-                  <div
-                    className={`${btn.color} group-hover:text-slate-300 group-hover:scale-110 transition-all`}
-                  >
-                    {btn.icon}
-                  </div>
-                  <span className="text-[7px] font-black uppercase tracking-tighter text-slate-700 group-hover:text-slate-500">
-                    {btn.label}
-                  </span>
-                </button>
-              ),
-            )}
-          </div>
-          <button
-            onClick={addMesa}
-            title="Nueva mesa"
-            className="p-3.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 rounded-full shadow-xl shadow-emerald-600/30 text-white transition-all"
-          >
-            <Plus size={18} />
-          </button>
-        </div>
-      )}
-
-      {/* ── Controles Móvil: barra inferior ── */}
-      {isMobile && (
-        <div className="absolute bottom-0 left-0 right-0 z-[45] px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))] bg-black/92 backdrop-blur-2xl border-t border-white/8 flex items-center gap-2 shadow-2xl overflow-x-auto">
-          <button
-            onClick={() => setIsEditMode((v) => !v)}
-            className={`flex-1 py-3.5 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 ${isEditMode ? "bg-blue-600/25 border border-blue-500/40 text-blue-300" : "bg-white/5 border border-white/8 text-slate-400"}`}
-          >
-            {isEditMode ? <Unlock size={14} /> : <Lock size={14} />}{" "}
-            {isEditMode ? "Edición" : "Layout"}
-          </button>
-          <button
-            onClick={() => setViewport({ x: -1100, y: -1100, zoom: 0.75 })}
-            className="flex-1 py-3.5 bg-white/5 border border-white/8 rounded-2xl text-slate-400 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 active:scale-95 transition-all"
-          >
-            <Target size={14} /> Centrar
-          </button>
-          <button
-            onClick={() => setShowSearch((v) => !v)}
-            className={`flex-1 py-3.5 rounded-2xl flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest active:scale-95 transition-all ${showSearch ? "bg-blue-600/25 border border-blue-500/40 text-blue-300" : "bg-white/5 border border-white/8 text-slate-400"}`}
-          >
-            <Search size={14} /> Buscar
-          </button>
-          <button
-            onClick={addMesa}
-            className="py-3.5 px-4 bg-emerald-600 rounded-2xl text-white active:scale-95 transition-all shadow-lg shadow-emerald-600/25"
-          >
-            <Plus size={16} />
-          </button>
-        </div>
-      )}
-
-      {/* Buscador flotante */}
-      <AnimatePresence>
-        {showSearch && (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            className={`absolute z-[45] bg-black/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl p-4 w-56 ${
-              isMobile
-                ? "bottom-24 left-1/2 -translate-x-1/2"
-                : "right-20 top-1/2 -translate-y-1/2"
-            }`}
-          >
-            <input
-              autoFocus
-              value={busquedaMesa}
-              onChange={(e) => setBusquedaMesa(e.target.value)}
-              placeholder="Número de mesa..."
-              className="w-full bg-white/5 border border-white/8 rounded-xl px-3 py-2.5 text-sm text-white placeholder-slate-600 outline-none focus:border-blue-500/40"
-            />
-            {mesasBusqueda.map((m) => (
-              <button
-                key={m.id}
-                onClick={() => {
-                  setViewport({
-                    x: -(m.x * 0.75) + 600,
-                    y: -(m.y * 0.75) + 400,
-                    zoom: 0.75,
-                  });
-                  setShowSearch(false);
-                  setBusquedaMesa("");
-                  setTimeout(() => setDetailMesa(m), 350);
-                }}
-                className="w-full mt-1.5 px-3 py-2.5 bg-white/5 hover:bg-white/10 active:bg-white/15 rounded-xl text-left text-sm font-bold text-white flex items-center justify-between transition-colors"
-              >
-                Mesa {m.numero}
-                <span
-                  className={`text-[8px] font-black ${ESTADO_CONFIG[m.estado].dot.replace("bg-", "text-")}`}
-                >
-                  {ESTADO_CONFIG[m.estado].label}
-                </span>
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Canvas */}
-      <motion.div
-        className={`flex-1 transition-all duration-300 ${
-          isMobile && isSidebarExpanded ? "blur-md pointer-events-none" : ""
-        }`}
-        style={{
-          cursor: isEditMode ? "default" : isMobile ? "default" : "grab",
-          backgroundColor: "black",
-          backgroundImage: isEditMode
-            ? "radial-gradient(circle, rgba(255,255,255,0.2) 1.5px, transparent 1.5px)"
-            : "radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px)",
-          backgroundSize: "60px 60px",
-        }}
-        drag={!isEditMode}
-        dragConstraints={{
-          left: -4000,
-          right: 600,
-          top: -4000,
-          bottom: isMobile ? 90 : 600,
-        }}
-        dragMomentum={isMobile}
-        dragElastic={isMobile ? 0.05 : 0}
-        animate={{ scale: viewport.zoom, x: viewport.x, y: viewport.y }}
-        transition={{ type: "spring", damping: 28, stiffness: 160 }}
-        onClick={() => !isEditMode && setDetailMesa(null)}
-      >
-        <div
-          ref={constraintsRef}
-          className="w-[5000px] h-[5000px] relative z-10"
-        >
-          <AnimatePresence>
-            {mesas.map((mesa) => (
-              <MesaNode
-                key={mesa.id}
-                mesa={mesa}
-                isActive={detailMesa?.id === mesa.id}
-                isEditMode={isEditMode}
-                isMobile={isMobile}
-                onTap={handleTap}
-                onHoverAction={handleHoverAction}
-                onDragEnd={handleDragEnd}
-                constraintsRef={constraintsRef}
-              />
-            ))}
-          </AnimatePresence>
-        </div>
-      </motion.div>
-
-      {/* Panel / Sheet */}
-      <AnimatePresence>
-        {detailMesa &&
-          (isMobile ? (
-            <BottomSheet
-              key={`s-${detailMesa.id}`}
-              mesa={detailMesa}
-              onClose={() => setDetailMesa(null)}
-              onUpdate={updateMesa}
-              onDelete={deleteMesa}
-              onToast={showToast}
-            />
-          ) : (
-            <PanelLateral
-              key={`p-${detailMesa.id}`}
-              mesa={detailMesa}
-              onClose={() => setDetailMesa(null)}
-              onUpdate={updateMesa}
-              onDelete={deleteMesa}
-              onToast={showToast}
-            />
-          ))}
-      </AnimatePresence>
-
-      {/* Banner modo edición */}
-      <AnimatePresence>
-        {isEditMode && (
-          <motion.div
-            className={`flex-1 origin-center transition-all duration-300 ${
-              isMobile && isSidebarExpanded ? "blur-md pointer-events-none" : ""
-            }`}
-            style={{
-              cursor: isEditMode ? "default" : isMobile ? "default" : "grab",
-              // MOVEMOS EL FONDO AQUÍ:
-              backgroundColor: "black",
-              backgroundImage:
-                "radial-gradient(circle, rgba(255,255,255,0.2) 1.5px, transparent 1.5px)",
-              backgroundSize: "60px 60px",
-            }}
-            drag={!isEditMode}
-            dragConstraints={{
-              left: -4000,
-              right: 600,
-              top: -4000,
-              bottom: isMobile ? 90 : 600,
-            }}
-            dragMomentum={isMobile}
-            dragElastic={isMobile ? 0.05 : 0}
-            animate={{
-              scale: viewport.zoom,
-              x: viewport.x,
-              y: viewport.y,
-            }}
-            transition={{ type: "spring", damping: 28, stiffness: 160 }}
-            onClick={() => !isEditMode && setDetailMesa(null)}
-          >
-            {/* El contenedor interno ahora es transparente para mostrar el fondo del padre */}
-            <div
-              ref={constraintsRef}
-              className="w-[5000px] h-[5000px] relative z-10"
-            >
-              <AnimatePresence>
-                {mesas.map((mesa) => (
-                  <MesaNode
-                    key={mesa.id}
-                    mesa={mesa}
-                    isActive={detailMesa?.id === mesa.id}
-                    isEditMode={isEditMode}
-                    isMobile={isMobile}
-                    onTap={handleTap}
-                    onHoverAction={handleHoverAction}
-                    onDragEnd={handleDragEnd}
-                    constraintsRef={constraintsRef}
-                  />
-                ))}
-              </AnimatePresence>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Overlay blur para móvil cuando sidebar está expandido */}
-      <AnimatePresence>
-        {isMobile && isSidebarExpanded && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.3 }}
-            className="absolute inset-0 bg-black/30 backdrop-blur-sm z-40 pointer-events-none"
-          />
         )}
       </AnimatePresence>
     </div>
