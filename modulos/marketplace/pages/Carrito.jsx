@@ -1,0 +1,786 @@
+// Carrito.jsx
+import React, { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
+import {
+  ChevronLeft,
+  Trash2,
+  ShoppingBag,
+  Banknote,
+  CreditCard,
+  Landmark,
+  Split,
+  Store,
+} from "lucide-react";
+import { useCart } from "./CartContext";
+
+const fmt = (n) =>
+  new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    minimumFractionDigits: 0,
+  }).format(n);
+
+const formatNumberForInput = (value) => {
+  if (!value) return "";
+  // Quita todo lo que no sea número y agrega puntos de miles
+  const num = String(value).replace(/\D/g, "");
+  return new Intl.NumberFormat("es-CO").format(Number(num));
+};
+
+const METODOS_PAGO = [
+  { id: "efectivo", label: "Efectivo", Icon: Banknote },
+  { id: "tarjeta", label: "Tarjeta", Icon: CreditCard },
+  { id: "transferencia", label: "Transferencia", Icon: Landmark },
+  { id: "dividir", label: "Dividir", Icon: Split },
+];
+
+const Carrito = ({ onIrAPagar }) => {
+  const [imageError, setImageError] = useState(false);
+
+  const {
+    carrito,
+    productos,
+    nombreTienda,
+    logoTienda,
+    cerrarCarrito,
+    agregar,
+    quitar,
+    eliminar,
+    vaciarTodo,
+    observaciones,
+    setObservaciones,
+    metodoPago,
+    agregarDivision,
+    eliminarDivision,
+    actualizarDivision,
+    setMetodoPago,
+    puedeHacerPedido,
+    totalItems,
+    totalPrecio,
+    totalPagado,
+  } = useCart();
+
+  useEffect(() => {
+    setImageError(false);
+  }, [logoTienda]);
+
+  useEffect(() => {
+    if (metodoPago.length === 1) {
+      setMetodoPago((prev) => [{ ...prev[0], monto: totalPrecio }]);
+    }
+  }, [totalPrecio]);
+
+  const [confirmVaciarOpen, setConfirmVaciarOpen] = useState(false);
+
+  const items = productos.filter((p) => carrito[p.id] > 0);
+
+  const handlePedir = () => {
+    if (!puedeHacerPedido) return;
+    // TODO: conectar con el envío real del pedido (API / backend).
+    if (onIrAPagar) onIrAPagar();
+  };
+
+  return createPortal(
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "#0a0a0a",
+        color: "#fff",
+        zIndex: 200,
+        display: "flex",
+        flexDirection: "column",
+        fontFamily: "'Inter', system-ui, sans-serif",
+      }}
+    >
+      {/* Header */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          padding: "16px 20px",
+          borderBottom: "1px solid #1a1a1a",
+          flexShrink: 0,
+        }}
+      >
+        <button
+          type="button"
+          onClick={cerrarCarrito}
+          style={{
+            width: "36px",
+            height: "36px",
+            borderRadius: "50%",
+            background: "rgba(255,255,255,0.06)",
+            border: "none",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+          aria-label="Volver a la tienda"
+        >
+          <ChevronLeft size={20} color="#fff" />
+        </button>
+        <div
+          style={{
+            width: "50px",
+            height: "50px",
+            borderRadius: "12px",
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {/* La lógica con onError para manejar errores de carga */}
+          {logoTienda && !imageError ? (
+            <img
+              src={logoTienda}
+              alt={`Logo de ${nombreTienda}`}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <Store size={24} style={{ color: "rgba(255,255,255,0.3)" }} />
+          )}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <h2 style={{ fontSize: "16px", fontWeight: 800, margin: 0 }}>
+            Resumen
+          </h2>
+          <p
+            style={{
+              fontSize: "12px",
+              color: "rgba(255,255,255,0.45)",
+              margin: 0,
+            }}
+          >
+            {nombreTienda}
+          </p>
+        </div>
+
+        {items.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setConfirmVaciarOpen(true)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              borderRadius: "100px",
+              padding: "8px 12px",
+              color: "rgba(255,255,255,0.7)",
+              fontSize: "12px",
+              fontWeight: 700,
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+            aria-label="Vaciar carrito"
+          >
+            <Trash2 size={14} />
+            Vaciar
+          </button>
+        )}
+      </div>
+
+      {/* Cuerpo scrolleable */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {/* Lista de items */}
+        <div style={{ padding: "12px 0" }}>
+          {items.length === 0 ? (
+            <div
+              style={{
+                textAlign: "center",
+                padding: "72px 24px",
+                color: "rgba(255,255,255,0.35)",
+              }}
+            >
+              <p style={{ fontSize: "13px" }}>Tu carrito está vacío.</p>
+            </div>
+          ) : (
+            items.map((p) => {
+              const qty = carrito[p.id];
+              return (
+                <div
+                  key={p.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "14px",
+                    padding: "14px 20px",
+                    borderBottom: "1px solid #131313",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => eliminar(p.id)}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      flexShrink: 0,
+                      display: "flex",
+                    }}
+                    aria-label={`Eliminar ${p.nombre} del carrito`}
+                  >
+                    <Trash2 size={16} color="rgba(255,255,255,0.35)" />
+                  </button>
+                  <div
+                    style={{
+                      width: "56px",
+                      height: "56px",
+                      borderRadius: "14px",
+                      background: "#131313",
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "26px",
+                    }}
+                  >
+                    {p.emoji}
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <h4
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 700,
+                        marginBottom: "4px",
+                      }}
+                    >
+                      {p.nombre}
+                    </h4>
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 800,
+                        color: "#fff",
+                      }}
+                    >
+                      {fmt(p.precio * qty)}
+                    </span>
+                    {p.notas && (
+                      <p
+                        style={{
+                          fontSize: "11.5px",
+                          color: "rgba(255,255,255,0.4)",
+                          fontStyle: "italic",
+                          margin: "4px 0 0",
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        "{p.notas}"
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Stepper cantidad */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "10px",
+                      background: "#131313",
+                      borderRadius: "100px",
+                      padding: "6px 12px",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => quitar(p.id)}
+                      style={{
+                        color: "#fff",
+                        background: "none",
+                        border: "none",
+                        fontSize: "16px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        lineHeight: 1,
+                        padding: 0,
+                      }}
+                      aria-label={`Quitar ${p.nombre}`}
+                    >
+                      −
+                    </button>
+                    <span
+                      style={{
+                        fontSize: "13px",
+                        fontWeight: 800,
+                        minWidth: "14px",
+                        textAlign: "center",
+                      }}
+                    >
+                      {qty}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => agregar(p.id)}
+                      style={{
+                        color: "#fff",
+                        background: "none",
+                        border: "none",
+                        fontSize: "16px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        lineHeight: 1,
+                        padding: 0,
+                      }}
+                      aria-label={`Agregar ${p.nombre}`}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {items.length > 0 && (
+          <>
+            {/* Observaciones generales */}
+            <div
+              style={{ padding: "16px 20px", borderTop: "1px solid #1a1a1a" }}
+            >
+              <label
+                htmlFor="observaciones-pedido"
+                style={{
+                  display: "block",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "rgba(255,255,255,0.7)",
+                  marginBottom: "8px",
+                }}
+              >
+                Observaciones generales
+              </label>
+              <textarea
+                id="observaciones-pedido"
+                value={observaciones}
+                onChange={(e) => setObservaciones(e.target.value)}
+                placeholder="Ej: sin cebolla, traer cubiertos, tocar el timbre..."
+                rows={3}
+                style={{
+                  width: "100%",
+                  resize: "vertical",
+                  background: "#131313",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "14px",
+                  padding: "12px 14px",
+                  color: "#fff",
+                  fontSize: "13px",
+                  fontFamily: "inherit",
+                  outline: "none",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+
+            {/* Método de pago */}
+            <div style={{ padding: "4px 20px 20px" }}>
+              <p
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "rgba(255,255,255,0.7)",
+                  marginBottom: "10px",
+                }}
+              >
+                Método de pago
+              </p>
+
+              {/* 1. Botones siempre visibles */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: "10px",
+                  marginBottom: "15px",
+                }}
+              >
+                {METODOS_PAGO.map(({ id, label, Icon }) => {
+                  // Definimos si el botón está activo:
+                  // - Si es dividir: está activo si hay más de 1 elemento en el array.
+                  // - Si es otro método: está activo si hay exactamente 1 elemento y es ese método.
+                  const activo =
+                    id === "dividir"
+                      ? metodoPago.length > 1
+                      : metodoPago.length === 1 && metodoPago[0].metodo === id;
+
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => {
+                        if (id === "dividir") {
+                          // Si ya estamos dividiendo, no hacemos nada (el usuario usa el botón +)
+                          // Si no, iniciamos la división limpiando cualquier residuo anterior
+                          if (metodoPago.length <= 1) {
+                            agregarDivision();
+                          }
+                        } else {
+                          // Al seleccionar método único, borramos cualquier rastro de división
+                          setMetodoPago([
+                            { id: Date.now(), metodo: id, monto: totalPrecio },
+                          ]);
+                        }
+                      }}
+                      style={{
+                        background: activo
+                          ? "rgba(124,58,237,0.15)"
+                          : "#131313",
+                        border: activo
+                          ? "1px solid #7c3aed"
+                          : "1px solid rgba(255,255,255,0.08)",
+                        color: activo ? "#fff" : "rgba(255,255,255,0.7)",
+                        padding: "10px",
+                        borderRadius: "8px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                      }}
+                    >
+                      <Icon
+                        size={16}
+                        style={{ color: activo ? "#a78bfa" : "inherit" }}
+                      />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 2. Bloque de división */}
+              {metodoPago.length > 1 && (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "12px",
+                    borderTop: "1px solid rgba(255,255,255,0.1)",
+                    paddingTop: "16px",
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.7)",
+                      marginBottom: "10px",
+                    }}
+                  >
+                    Dividir pago entre métodos
+                  </p>
+
+                  {metodoPago.map((item) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <button
+                        onClick={() => eliminarDivision(item.id)}
+                        style={{
+                          border: "none",
+                          color: "#e53e3e",
+                          width: "32px",
+                          height: "32px",
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        ×
+                      </button>
+
+                      <select
+                        value={item.metodo}
+                        onChange={(e) =>
+                          actualizarDivision(item.id, "metodo", e.target.value)
+                        }
+                        style={{
+                          flex: 1,
+                          background: "#131313",
+                          color: "#fff",
+                          padding: "8px 12px",
+                          borderRadius: "8px",
+                          fontSize: "14px",
+                        }}
+                      >
+                        <option value="" disabled>
+                          Selecciona método
+                        </option>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="tarjeta">Tarjeta</option>
+                        <option value="transferencia">Transferencia</option>
+                      </select>
+
+                      {/* Contenedor del input para que el signo $ se vea integrado */}
+                      <div
+                        style={{
+                          flex: 1,
+                          position: "relative",
+                          display: "flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        <input
+                          type="text"
+                          inputMode="numeric" // Esto asegura que en el móvil salga el teclado numérico
+                          placeholder="$"
+                          // Aquí formateas el valor para que el usuario vea: 1.000.000
+                          value={
+                            item.monto
+                              ? new Intl.NumberFormat("es-CO").format(
+                                  item.monto,
+                                )
+                              : ""
+                          }
+                          onChange={(e) => {
+                            // Aquí limpias los puntos para que en el estado se guarde solo el número: 1000000
+                            const valorLimpio = e.target.value.replace(
+                              /\D/g,
+                              "",
+                            );
+                            actualizarDivision(item.id, "monto", valorLimpio);
+                          }}
+                          style={{
+                            width: "100%",
+                            background: "#131313",
+                            color: "#fff",
+                            padding: "8px 8px 8px 25px",
+                            borderRadius: "8px",
+                            fontSize: "14px",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    onClick={agregarDivision}
+                    style={{
+                      background: "transparent",
+                      border: "1px dashed rgba(167, 139, 250, 0.4)",
+                      color: "#a78bfa",
+                      padding: "10px",
+                      borderRadius: "8px",
+                      cursor: "pointer",
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      marginTop: "4px",
+                    }}
+                  >
+                    + Añadir otra forma de pago
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Footer total + botón pedir */}
+      {items.length > 0 && (
+        <div
+          style={{
+            padding: "16px 20px",
+            paddingBottom: "calc(16px + env(safe-area-inset-bottom))",
+            borderTop: "1px solid #1a1a1a",
+            flexShrink: 0,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              marginBottom: "12px",
+              fontSize: "16px",
+              color: "rgba(255,255,255,0.6)",
+            }}
+          >
+            <span>{totalItems} producto(s)</span>
+            <span style={{ fontWeight: 800, color: "#fff" }}>
+              {fmt(totalPrecio)}
+            </span>
+          </div>
+
+          {/* Advertencia: No se ha seleccionado método */}
+          {metodoPago.length === 0 && (
+            <p
+              style={{
+                fontSize: "11.5px",
+                color: "rgba(255,209,102,0.85)",
+                marginBottom: "10px",
+                textAlign: "center",
+              }}
+            >
+              Selecciona un método de pago para continuar
+            </p>
+          )}
+
+          {/* Advertencia: Montos incompletos o excedidos al dividir */}
+          {metodoPago.length > 1 && totalPagado !== totalPrecio && (
+            <p
+              style={{
+                fontSize: "11.5px",
+                color: totalPagado < totalPrecio ? "#e53e3e" : "#f6e05e",
+                marginBottom: "10px",
+                textAlign: "center",
+                fontWeight: 600,
+              }}
+            >
+              {totalPagado < totalPrecio
+                ? `Faltan ${fmt(totalPrecio - totalPagado)} para completar el pago.`
+                : `Excediste el pago por ${fmt(totalPagado - totalPrecio)}. El total es ${fmt(totalPrecio)}.`}
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={handlePedir}
+            disabled={!puedeHacerPedido}
+            style={{
+              width: "100%",
+              padding: "14px",
+              borderRadius: "100px",
+              background: puedeHacerPedido
+                ? "#7c3aed"
+                : "rgba(124,58,237,0.25)",
+              color: puedeHacerPedido ? "#fff" : "rgba(255,255,255,0.5)",
+              fontWeight: 800,
+              fontSize: "14px",
+              border: "none",
+              cursor: puedeHacerPedido ? "pointer" : "not-allowed",
+              boxShadow: puedeHacerPedido
+                ? "0 8px 32px rgba(124,58,237,0.45)"
+                : "none",
+              transition: "all 0.15s",
+            }}
+          >
+            Confirmar · {fmt(totalPrecio)}
+          </button>
+        </div>
+      )}
+
+      {/* Confirmar vaciar carrito */}
+      {confirmVaciarOpen &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(0,0,0,0.75)",
+              backdropFilter: "blur(6px)",
+              zIndex: 300,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: "20px",
+            }}
+          >
+            <div
+              style={{
+                background: "#131313",
+                borderRadius: "20px",
+                padding: "26px 22px",
+                width: "100%",
+                maxWidth: "320px",
+                border: "1px solid rgba(255,255,255,0.08)",
+                boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  width: "52px",
+                  height: "52px",
+                  borderRadius: "50%",
+                  background: "rgba(229,62,62,0.12)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 14px",
+                }}
+              >
+                <Trash2 size={24} color="#e53e3e" />
+              </div>
+              <h3
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 800,
+                  color: "#fff",
+                  marginBottom: "8px",
+                }}
+              >
+                ¿Vaciar el carrito?
+              </h3>
+              <p
+                style={{
+                  fontSize: "12.5px",
+                  color: "rgba(255,255,255,0.5)",
+                  lineHeight: 1.5,
+                  marginBottom: "22px",
+                }}
+              >
+                Se eliminarán todos los productos, las observaciones y el método
+                de pago seleccionado.
+              </p>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button
+                  type="button"
+                  onClick={() => setConfirmVaciarOpen(false)}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    borderRadius: "100px",
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    color: "#fff",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    vaciarTodo();
+                    setConfirmVaciarOpen(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "12px",
+                    borderRadius: "100px",
+                    background: "#e53e3e",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Sí, vaciar
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+    </div>,
+    document.body,
+  );
+};
+
+export default Carrito;

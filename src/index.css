@@ -1,0 +1,166 @@
+@import "tailwindcss";
+
+/* 1. Definición de Variables CSS Nativas (:root) - Simplificado */
+:root {
+    /* IDENTIDAD PRINCIPAL (Obsidian Violet) */
+    --background: #0a0a0a;
+    /* Fondo base ultra oscuro de la app */
+    --surface: #131313;
+    /* Superficie estándar (paneles, contenedores base) */
+    --surface-bright: #222222;
+    /* Superficie elevada (cards interactivas, sidebar) */
+    --surface-hover: #2a2a2a;
+    /* Estado hover en elementos de lista o menú */
+
+    /* COLORES DE TEXTO (Contraste) */
+    --on-surface: #ffffff;
+    /* Texto principal de alta legibilidad */
+    --on-surface-variant: #ffffff;
+    /* Texto secundario o de soporte */
+
+    /* ACCENT / BRANDING */
+    --primary: #ffffff;
+    /* Violeta claro para destacados, iconos activos y marcas */
+    --primary-container: #7c3aed;
+    /* Violeta sólido/oscuro para botones principales */
+    --on-primary: #ffffff;
+    /* Texto sobre botones o fondos primarios */
+
+    /* CONTORNOS / DIVISIONES */
+    --outline: #3a3a3ab2;
+    /* Bordes sutiles y líneas divisorias */
+
+    /* ESTADOS CRÍTICOS Y ALERTAS */
+    --success: #00c448;
+    /* Completado, activo, libre */
+    --warning: #eab308;
+    /* Pendiente, alerta sutil */
+    --warning-light: rgba(234, 179, 8, 0.1);
+    --urgent: #7c3aed;
+    /* Alerta alta prioridad (KDS / Órdenes) */
+    --urgent-light: rgba(124, 58, 237, 0.15);
+    --error: #ff1900;
+    /* Cancelado, error de caja */
+    --info: #38bdf8;
+    /* Información general */
+
+}
+
+/* 2. Configuración de Tema para Tailwind v4 */
+@theme {
+    /* Colores reducidos y directos */
+    --color-background: var(--background);
+    --color-surface: var(--surface);
+    --color-surface-bright: var(--surface-bright);
+    --color-surface-hover: var(--surface-hover);
+
+    --color-on-surface: var(--on-surface);
+    --color-on-surface-variant: var(--on-surface-variant);
+
+    --color-primary: var(--primary);
+    --color-primary-container: var(--primary-container);
+    --color-on-primary: var(--on-primary);
+
+    --color-outline: var(--outline);
+
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-warning-light: var(--warning-light);
+    --color-urgent: var(--urgent);
+    --color-urgent-light: var(--urgent-light);
+    --color-error: var(--error);
+    --color-info: var(--info);
+
+    /* Tipografías unificadas */
+    --font-h1: "Manrope", sans-serif;
+    --font-h2: "Manrope", sans-serif;
+    --font-h3: "Manrope", sans-serif;
+    --font-body-lg: "Inter", sans-serif;
+    --font-body-md: "Inter", sans-serif;
+    --font-body-sm: "Inter", sans-serif;
+    --font-label-caps: "Inter", sans-serif;
+    --font-code: monospace;
+
+    /* Bordes redondeados estandarizados */
+    --radius-sm: 0.25rem;
+    --radius-default: 0.5rem;
+    --radius-md: 0.75rem;
+    --radius-lg: 1rem;
+    --radius-full: 9999px;
+
+    /* CORRECCIÓN TÁCTICA: Mapeo semántico de espaciado para no pisar
+      la escala numérica nativa de anchos de Tailwind (como max-w-md, max-w-lg)
+    */
+    --spacing-layout-xs: 4px;
+    --spacing-layout-sm: 8px;
+    --spacing-layout-md: 16px;
+    --spacing-layout-lg: 24px;
+    --spacing-layout-xl: 40px;
+}
+
+
+
+
+/* 3. Estilos Base globales */
+body {
+    background-color: var(--background);
+    color: var(--on-surface);
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+}
+
+/* 4. Clases Utilitarias Adicionales */
+.glass-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(12px);
+}
+
+.urgent-border {
+    border: 1px solid var(--urgent);
+    box-shadow: 0 0 20px var(--urgent-light);
+}
+
+.warning-border {
+    border: 1px solid var(--warning);
+    box-shadow: 0 0 20px var(--warning-light);
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.view-animate {
+    animation: fade-in 0.4s ease-out forwards;
+}
+
+
+.custom-sidebar {
+    scrollbar-gutter: stable;
+}
+
+/* Scrollbar optimizado para el Sidebar */
+.custom-sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.custom-sidebar::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.custom-sidebar::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(168, 85, 247, 0.2) 0%, rgba(139, 92, 246, 0.1) 100%);
+    border-radius: 10px;
+}
+
+.custom-sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(168, 85, 247, 0.4);
+}
