@@ -203,6 +203,33 @@ const Shop = () => {
   const [productoDetalle, setProductoDetalle] = useState(null);
   const [seguimientoOpen, setSeguimientoOpen] = useState(false);
   const searchInputRef = useRef(null);
+  const filtrosRef = useRef(null);
+
+  // Lleva la vista al punto exacto donde la barra de filtros queda fija
+  // arriba, mostrando el primer producto del filtro justo debajo.
+  // Usamos offsetTop (no scrollIntoView) porque, al ser "sticky", el
+  // navegador cree que ya está visible y no mueve el scroll real.
+  const scrollASuave = () => {
+    const el = filtrosRef.current;
+    if (!el) return;
+    window.scrollTo({ top: el.offsetTop, behavior: "smooth" });
+  };
+
+  // Importante: el scroll se dispara en un useEffect (DESPUÉS de que React
+  // ya actualizó el DOM con la nueva categoría), no dentro del onClick.
+  // Si se dispara antes, el cambio de tamaño de la lista activa el
+  // "scroll anchoring" del navegador, que pelea con nuestra animación y
+  // deja al usuario viendo el espacio vacío del filtro anterior.
+  //
+  // Usamos un contador (filtroTick) en vez de depender de "catActiva"
+  // directamente: así el scroll se ejecuta en TODOS los clics, incluso si
+  // el usuario toca dos veces la misma categoría (catActiva no cambiaría
+  // de valor, pero igual queremos resetear la vista al primer producto).
+  const [filtroTick, setFiltroTick] = useState(0);
+  useEffect(() => {
+    if (filtroTick === 0) return; // evita el scroll al cargar la página
+    scrollASuave();
+  }, [filtroTick]);
 
   const nombreTienda =
     slug
@@ -308,6 +335,12 @@ const Shop = () => {
 
   return (
     <>
+      <style>{`
+        @keyframes fadeInLista {
+          from { opacity: 0; transform: translateY(6px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+      `}</style>
       <div
         style={{
           background: "#0a0a0a",
@@ -315,6 +348,9 @@ const Shop = () => {
           color: "#fff",
           paddingBottom: "calc(88px + env(safe-area-inset-bottom))",
           fontFamily: "'Inter', system-ui, sans-serif",
+          // Evita que el navegador "corrija" el scroll automáticamente
+          // cuando la lista de productos cambia de tamaño al filtrar.
+          overflowAnchor: "none",
         }}
       >
         {/* ── HERO ── */}
@@ -563,6 +599,7 @@ const Shop = () => {
 
         {/* ── TABS + BÚSQUEDA (sticky) ── */}
         <div
+          ref={filtrosRef}
           style={{
             position: "sticky",
             top: 0,
@@ -590,6 +627,7 @@ const Shop = () => {
                 onClick={() => {
                   setCatActiva(cat);
                   setSearchQuery("");
+                  setFiltroTick((t) => t + 1);
                 }}
                 style={{
                   padding: "7px 16px",
@@ -665,7 +703,19 @@ const Shop = () => {
         </div>
 
         {/* ── LISTA DE PRODUCTOS ── */}
-        <div style={{ padding: "8px 0" }}>
+        {/* minHeight: "100vh" garantiza espacio suficiente debajo del
+            último producto, sin importar cuántos queden tras filtrar.
+            Sin esto, con pocos resultados la página queda tan corta que
+            el navegador no puede desplazarse hasta que la barra de
+            filtros llegue arriba (no hay a dónde "scrollear"). */}
+        <div
+          key={catActiva}
+          style={{
+            padding: "8px 0",
+            minHeight: "100vh",
+            animation: "fadeInLista 0.22s ease",
+          }}
+        >
           {searchQuery.trim() !== "" && (
             <p
               style={{

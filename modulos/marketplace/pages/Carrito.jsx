@@ -396,9 +396,10 @@ const Carrito = ({ onIrAPagar }) => {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gridTemplateColumns: "repeat(4, 1fr)",
                   gap: "10px",
                   marginBottom: "15px",
+                  justifyItems: "center",
                 }}
               >
                 {METODOS_PAGO.map(({ id, label, Icon }) => {
@@ -436,16 +437,21 @@ const Carrito = ({ onIrAPagar }) => {
                           ? "1px solid #7c3aed"
                           : "1px solid rgba(255,255,255,0.08)",
                         color: activo ? "#fff" : "rgba(255,255,255,0.7)",
-                        padding: "10px",
-                        borderRadius: "8px",
+                        padding: "12px 4px",
+                        borderRadius: "12px",
                         cursor: "pointer",
                         display: "flex",
+                        flexDirection: "column",
                         alignItems: "center",
-                        gap: "8px",
+                        justifyContent: "center",
+                        gap: "6px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        width: "100%",
                       }}
                     >
                       <Icon
-                        size={16}
+                        size={20}
                         style={{ color: activo ? "#a78bfa" : "inherit" }}
                       />
                       {label}
@@ -490,13 +496,15 @@ const Carrito = ({ onIrAPagar }) => {
                         style={{
                           border: "none",
                           color: "#e53e3e",
-                          width: "32px",
-                          height: "32px",
+                          width: "28px",
+                          height: "28px",
                           cursor: "pointer",
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
                           flexShrink: 0,
+                          padding: 0,
+                          fontSize: "18px",
                         }}
                       >
                         ×
@@ -508,16 +516,17 @@ const Carrito = ({ onIrAPagar }) => {
                           actualizarDivision(item.id, "metodo", e.target.value)
                         }
                         style={{
-                          flex: 1,
+                          flex: "0.8",
+                          minWidth: 0,
                           background: "#131313",
                           color: "#fff",
-                          padding: "8px 12px",
+                          padding: "8px 6px",
                           borderRadius: "8px",
-                          fontSize: "14px",
+                          fontSize: "13px",
                         }}
                       >
                         <option value="" disabled>
-                          Selecciona método
+                          Método
                         </option>
                         <option value="efectivo">Efectivo</option>
                         <option value="tarjeta">Tarjeta</option>
@@ -527,7 +536,8 @@ const Carrito = ({ onIrAPagar }) => {
                       {/* Contenedor del input para que el signo $ se vea integrado */}
                       <div
                         style={{
-                          flex: 1,
+                          flex: "1.6",
+                          minWidth: 0,
                           position: "relative",
                           display: "flex",
                           alignItems: "center",
@@ -560,6 +570,7 @@ const Carrito = ({ onIrAPagar }) => {
                             padding: "8px 8px 8px 25px",
                             borderRadius: "8px",
                             fontSize: "14px",
+                            boxSizing: "border-box",
                           }}
                         />
                       </div>

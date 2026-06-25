@@ -10,6 +10,7 @@ import {
   Store,
   Truck,
   Navigation,
+  X,
 } from "lucide-react";
 import { useCart } from "./CartContext";
 
@@ -20,12 +21,35 @@ const fmt = (n) =>
     minimumFractionDigits: 0,
   }).format(n);
 
+// Capitaliza cada palabra: primera letra mayúscula, el resto en minúscula.
+// Ej: "jorge puerta" -> "Jorge Puerta"
+const capitalizarNombre = (texto) =>
+  texto
+    .toLowerCase()
+    .split(" ")
+    .map((palabra) =>
+      palabra ? palabra.charAt(0).toUpperCase() + palabra.slice(1) : palabra,
+    )
+    .join(" ");
+
 const METODOS_ENTREGA = [
   { id: "recoger", label: "Recoger", Icon: Store },
   { id: "mesa", label: "En mesa", Icon: Armchair },
+  { id: "punto", label: "En punto", Icon: Navigation },
   { id: "domicilio", label: "Domicilio", Icon: Truck },
-  { id: "punto", label: "Punto de encuentro", Icon: Navigation },
 ];
+
+const clearButtonStyle = {
+  position: "absolute",
+  right: "14px",
+  background: "none",
+  border: "none",
+  color: "rgba(255,255,255,0.3)",
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  padding: 0,
+};
 
 const inputStyle = {
   width: "100%",
@@ -144,9 +168,12 @@ const Checkout = ({ onVolver, onConfirmar }) => {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr 1fr",
+            // Definimos las 4 columnas
+            gridTemplateColumns: "repeat(4, 1fr)",
             gap: "10px",
             marginBottom: "24px",
+            // Esto asegura que si los botones son más pequeños que su celda, se centren
+            justifyItems: "center",
           }}
         >
           {METODOS_ENTREGA.map(({ id, label, Icon }) => {
@@ -162,15 +189,18 @@ const Checkout = ({ onVolver, onConfirmar }) => {
                     ? "1px solid #7c3aed"
                     : "1px solid rgba(255,255,255,0.08)",
                   color: activo ? "#fff" : "rgba(255,255,255,0.7)",
-                  padding: "14px 10px",
+                  // Ajusté el padding horizontal un poco para que quepan mejor 4 en fila
+                  padding: "12px 4px",
                   borderRadius: "12px",
                   cursor: "pointer",
                   display: "flex",
                   flexDirection: "column",
                   alignItems: "center",
-                  gap: "8px",
-                  fontSize: "12px",
+                  justifyContent: "center", // Centrado vertical del contenido del botón
+                  gap: "6px",
+                  fontSize: "11px", // Reducí un poco la fuente para que no se corte
                   fontWeight: 700,
+                  width: "100%", // Asegura que ocupen el espacio de la columna
                 }}
               >
                 <Icon
@@ -195,9 +225,23 @@ const Checkout = ({ onVolver, onConfirmar }) => {
                 placeholder="Nombre completo"
                 value={datosCliente.nombre}
                 onChange={(e) =>
-                  actualizarDatoCliente("nombre", e.target.value)
+                  actualizarDatoCliente(
+                    "nombre",
+                    capitalizarNombre(e.target.value),
+                  )
                 }
               />
+              {/* Botón de borrado rápido */}
+              {datosCliente.nombre && (
+                <button
+                  type="button"
+                  style={clearButtonStyle}
+                  onClick={() => actualizarDatoCliente("nombre", "")}
+                  aria-label="Borrar nombre"
+                >
+                  <X size={16} />
+                </button>
+              )}
             </div>
 
             <div style={iconWrapStyle}>
@@ -207,10 +251,23 @@ const Checkout = ({ onVolver, onConfirmar }) => {
                 placeholder="Teléfono de contacto"
                 inputMode="tel"
                 value={datosCliente.telefono}
-                onChange={(e) =>
-                  actualizarDatoCliente("telefono", e.target.value)
-                }
+                onChange={(e) => {
+                  // Expresión regular: permite solo números y el signo +
+                  const value = e.target.value.replace(/[^0-9+]/g, "");
+                  actualizarDatoCliente("telefono", value);
+                }}
               />
+              {/* Botón de borrado rápido */}
+              {datosCliente.telefono && (
+                <button
+                  type="button"
+                  style={clearButtonStyle}
+                  onClick={() => actualizarDatoCliente("telefono", "")}
+                  aria-label="Borrar teléfono"
+                >
+                  <X size={16} />
+                </button>
+              )}
             </div>
 
             {/* Mesa */}
@@ -222,16 +279,29 @@ const Checkout = ({ onVolver, onConfirmar }) => {
                   placeholder="Número de mesa"
                   inputMode="numeric"
                   value={datosCliente.mesa}
-                  onChange={(e) =>
-                    actualizarDatoCliente("mesa", e.target.value)
-                  }
+                  onChange={(e) => {
+                    // Expresión regular: permite solo números
+                    const value = e.target.value.replace(/[^0-9]/g, "");
+                    actualizarDatoCliente("mesa", value);
+                  }}
                 />
+                {datosCliente.mesa && (
+                  <button
+                    type="button"
+                    style={clearButtonStyle}
+                    onClick={() => actualizarDatoCliente("mesa", "")}
+                    aria-label="Borrar número de mesa"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
               </div>
             )}
 
             {/* Domicilio */}
             {metodoEntrega === "domicilio" && (
               <>
+                {/* Campo Dirección (Inteligente) */}
                 <div style={iconWrapStyle}>
                   <MapPin size={16} style={iconInsideStyle} />
                   <input
@@ -242,7 +312,42 @@ const Checkout = ({ onVolver, onConfirmar }) => {
                       actualizarDatoCliente("direccion", e.target.value)
                     }
                   />
+                  {datosCliente.direccion && (
+                    <button
+                      type="button"
+                      style={clearButtonStyle}
+                      onClick={() => actualizarDatoCliente("direccion", "")}
+                      aria-label="Borrar dirección"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
                 </div>
+
+                {/* Campo Punto de Referencia */}
+                <div style={iconWrapStyle}>
+                  <Store size={16} style={iconInsideStyle} />
+                  <input
+                    style={inputStyle}
+                    placeholder="Punto de referencia (ej. Casa color azul)"
+                    value={datosCliente.referencia || ""}
+                    onChange={(e) =>
+                      actualizarDatoCliente("referencia", e.target.value)
+                    }
+                  />
+                  {datosCliente.referencia && (
+                    <button
+                      type="button"
+                      style={clearButtonStyle}
+                      onClick={() => actualizarDatoCliente("referencia", "")}
+                      aria-label="Borrar punto de referencia"
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Mapa ilustrativo */}
                 <div
                   style={{
                     height: "180px",
@@ -257,11 +362,14 @@ const Checkout = ({ onVolver, onConfirmar }) => {
                     justifyContent: "center",
                     gap: "8px",
                     color: "rgba(255,255,255,0.35)",
+                    cursor: "pointer", // Indicamos que es interactivo
                   }}
                 >
                   <MapPin size={28} />
                   <span style={{ fontSize: "12px" }}>
-                    Mapa ilustrativo de entrega
+                    {datosCliente.direccion
+                      ? "Ubicación seleccionada"
+                      : "Seleccionar en el mapa"}
                   </span>
                 </div>
               </>
@@ -279,6 +387,16 @@ const Checkout = ({ onVolver, onConfirmar }) => {
                     actualizarDatoCliente("puntoRetiro", e.target.value)
                   }
                 />
+                {datosCliente.puntoRetiro && (
+                  <button
+                    type="button"
+                    style={clearButtonStyle}
+                    onClick={() => actualizarDatoCliente("puntoRetiro", "")}
+                    aria-label="Borrar punto de encuentro"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
               </div>
             )}
           </>
