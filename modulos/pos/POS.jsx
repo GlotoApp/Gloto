@@ -183,8 +183,6 @@ const POS = () => {
   const cartScrollRef = useRef(null);
   const cartScrollRefMobile = useRef(null);
   const tableInputRef = useRef(null);
-  const touchStartX = useRef(null);
-  const touchStartY = useRef(null);
 
   // Estado para el item que cambia de color
   const [highlightItem, setHighlightItem] = useState(null);
@@ -206,52 +204,6 @@ const POS = () => {
       : cleaned.replace(/\+/g, "");
     return withPlus;
   };
-
-  // Manejo de swipe en móvil para navegar entre paneles
-  React.useEffect(() => {
-    const handleTouchStart = (e) => {
-      touchStartX.current = e.touches[0].clientX;
-      touchStartY.current = e.touches[0].clientY;
-    };
-
-    const handleTouchEnd = (e) => {
-      if (!touchStartX.current || !touchStartY.current) return;
-
-      const touchEndX = e.changedTouches[0].clientX;
-      const touchEndY = e.changedTouches[0].clientY;
-
-      const diffX = touchStartX.current - touchEndX;
-      const diffY = touchStartY.current - touchEndY;
-
-      // Solo procesar swipes horizontales (si el movimiento vertical es menor)
-      if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
-        const panelOrder = ["products", "datos", "resumen"];
-        const currentIndex = panelOrder.indexOf(mobilePanel);
-
-        if (diffX > 0) {
-          // Swipe izquierda: siguiente panel
-          const nextIndex = (currentIndex + 1) % panelOrder.length;
-          setMobilePanel(panelOrder[nextIndex]);
-        } else {
-          // Swipe derecha: panel anterior
-          const prevIndex =
-            currentIndex === 0 ? panelOrder.length - 1 : currentIndex - 1;
-          setMobilePanel(panelOrder[prevIndex]);
-        }
-      }
-
-      touchStartX.current = null;
-      touchStartY.current = null;
-    };
-
-    window.addEventListener("touchstart", handleTouchStart);
-    window.addEventListener("touchend", handleTouchEnd);
-
-    return () => {
-      window.removeEventListener("touchstart", handleTouchStart);
-      window.removeEventListener("touchend", handleTouchEnd);
-    };
-  }, [mobilePanel]);
 
   // Función para autorellenar campos de entrega
   const autoFillDeliveryFields = () => {
