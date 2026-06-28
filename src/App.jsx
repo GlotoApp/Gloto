@@ -7,8 +7,11 @@ import {
 } from "react-router-dom";
 import Marketplace from "../modulos/marketplace/Marketplace";
 import Layout from "../modulos/pos/Layout";
-import { Loading } from "../modulos/pos/Loading"; // Asegúrate de importar el componente renombrado
+import { Loading } from "../modulos/pos/Loading";
+import { useAuth } from "./components/AuthContext";
+import LoginSuperAdmin from "../modulos/admin/LoginSuperAdmin";
 
+// Lazy imports
 const POS = lazy(() => import("../modulos/pos/POS"));
 const Mesas = lazy(() => import("../modulos/pos/Mesas"));
 const Ordenes = lazy(() => import("../modulos/pos/Ordenes"));
@@ -24,17 +27,52 @@ const Estadisticas = lazy(() => import("../modulos/pos/Estadisticas"));
 const Utilidades = lazy(() => import("../modulos/pos/Utilidades"));
 const Planes = lazy(() => import("../modulos/pos/Planes"));
 const Configuracion = lazy(() => import("../modulos/pos/Configuracion"));
+const SuperAdmin = lazy(() => import("../modulos/admin/SuperAdmin"));
+const Login = lazy(() => import("../modulos/pos/Login"));
+
+// Componentes protectores
+const RequireAdmin = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <Loading />;
+  return user ? children : <Navigate to="/login-superadmin" replace />;
+};
+
+const RequireAuth = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <Loading />;
+  return user ? children : <Navigate to="/login" replace />;
+};
 
 function App() {
   return (
     <Router>
       <Suspense fallback={<Loading />}>
         <Routes>
-          <Route path="/" element={<Navigate to="/marketplace" replace />} />
+          {/* Rutas Públicas */}
+          <Route path="/login" element={<Login />} />
+          <Route path="/login-superadmin" element={<LoginSuperAdmin />} />
           <Route path="/marketplace/*" element={<Marketplace />} />
+          <Route path="/" element={<Navigate to="/marketplace" replace />} />
 
-          {/* Todas estas rutas usan el Layout, que ahora gestiona la carga internamente */}
-          <Route path="/pos" element={<Layout />}>
+          {/* Ruta Protegida: SuperAdmin */}
+          <Route
+            path="/superadmin"
+            element={
+              <RequireAdmin>
+                <SuperAdmin />
+              </RequireAdmin>
+            }
+          />
+
+          {/* Rutas Protegidas: POS */}
+          <Route
+            path="/pos"
+            element={
+              <RequireAuth>
+                <Layout />
+              </RequireAuth>
+            }
+          >
             <Route index element={<POS />} />
             <Route path="pos" element={<POS />} />
             <Route path="mesas" element={<Mesas />} />

@@ -15,6 +15,8 @@ import {
   PencilRuler,
   CreditCard,
 } from "lucide-react";
+import { supabase } from "../../src/lib/supabaseClient";
+import { useNavigate } from "react-router-dom";
 
 const Sidebar = ({ isExpanded, toggleSidebar }) => {
   const location = useLocation();
@@ -28,6 +30,13 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
       setCatalogoOpen(false);
     }
   }, [isExpanded]);
+
+  const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/login"); // O "/login-superadmin" si lo prefieres
+  };
 
   const menuItems = [
     { name: "POS", path: "/pos", icon: Plus },
@@ -475,6 +484,21 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
               </p>
             </div>
           </div>
+          <button
+            onClick={handleLogout}
+            className={`flex items-center gap-3 p-2 rounded-default hover:bg-error/10 text-on-surface-variant hover:text-error transition-all duration-300 ${
+              !isExpanded ? "justify-center" : "justify-start px-3"
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">
+              logout
+            </span>
+            {isExpanded && (
+              <span className="font-label-caps text-[10px] font-black uppercase tracking-widest">
+                Salir
+              </span>
+            )}
+          </button>
         </div>
       </aside>
     </>
