@@ -111,6 +111,24 @@ export const CartProvider = ({ children }) => {
     return Math.abs(h).toString(36);
   };
 
+  // Resuelve la clave (id) que identifica una línea del carrito para un
+  // producto dado, según su variante y notas.
+  //
+  // CLAVE: si no hay variante ni notas, la clave es simplemente el id del
+  // producto base — la MISMA clave que usa el botón "+" directo en Shop.jsx
+  // (agregar(producto.id)). Esto es lo que mantiene sincronizados el
+  // contador de la lista de productos y el contador del detalle: agregar
+  // "liso" desde cualquiera de los dos lugares suma sobre la misma línea.
+  // Solo cuando el usuario elige una variante o escribe una nota se crea
+  // una línea distinta (porque de verdad es un pedido distinto).
+  const obtenerItemId = (productoId, variante, notas = "") => {
+    const notasLimpias = (notas || "").trim();
+    if (!variante && !notasLimpias) return productoId;
+    const varianteKey = variante ? variante.id : "base";
+    const notasKey = notasLimpias ? hashCorto(notasLimpias.toLowerCase()) : "0";
+    return `${productoId}__${varianteKey}__${notasKey}`;
+  };
+
   // Agrega un producto al carrito respetando variante (ej. tamaño) y notas/indicaciones.
   // Crea (o reutiliza) un "producto virtual" en `productos` para no romper la lógica
   // existente de Carrito.jsx, que indexa todo por producto.id.
@@ -120,9 +138,7 @@ export const CartProvider = ({ children }) => {
     notas = "",
     cantidad = 1,
   }) => {
-    const varianteKey = variante ? variante.id : "base";
-    const notasKey = notas.trim() ? hashCorto(notas.trim().toLowerCase()) : "0";
-    const itemId = `${productoBase.id}__${varianteKey}__${notasKey}`;
+    const itemId = obtenerItemId(productoBase.id, variante, notas);
 
     setProductos((prev) => {
       if (prev.some((p) => p.id === itemId)) return prev;
@@ -254,6 +270,7 @@ export const CartProvider = ({ children }) => {
     actualizarDatoCliente,
     puedeConfirmarEntrega,
     agregarConVariante,
+    obtenerItemId,
     pedidoActivo,
     estadoPedido,
     setEstadoPedido,

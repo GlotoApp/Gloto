@@ -1,11 +1,9 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Search,
   X,
   ArrowRight,
-
-  // Categorías actuales
   Pizza,
   Coffee,
   IceCream,
@@ -13,8 +11,6 @@ import {
   Leaf,
   Fish,
   Beef,
-
-  // Nuevas categorías
   ShoppingBasket,
   Cookie,
   Sandwich,
@@ -24,7 +20,12 @@ import {
   Utensils,
   UtensilsCrossed,
   Timer,
+  Hamburger,
+  Motorbike,
+  ClockFading,
+  Star,
 } from "lucide-react";
+import { supabase } from "../../../src/lib/supabaseClient";
 
 // ─── Datos ──────────────────────────────────
 
@@ -81,7 +82,7 @@ const PROMOS = [
     tag: "PATROCINADO",
     oferta: "2×1 en combos",
     nombre: "Burger House",
-    emoji: "🍔",
+    icon: Hamburger,
   },
   {
     id: 2,
@@ -89,7 +90,7 @@ const PROMOS = [
     tag: "NUEVO",
     oferta: "Café gratis",
     nombre: "Obsidian Brew",
-    emoji: "☕",
+    icon: Coffee,
   },
   {
     id: 3,
@@ -97,298 +98,7 @@ const PROMOS = [
     tag: "TRENDING",
     oferta: "-30% hoy",
     nombre: "Pizza Luna",
-    emoji: "🍕",
-  },
-];
-
-const TIENDAS = [
-  {
-    slug: "sushi-bar",
-    nombre: "Sushi Bar",
-    tipo: "Japonesa",
-    logo: "🍣",
-    rating: 4.8,
-    reviews: 312,
-    tiempo: "20–30 min",
-    domicilio: "$2.500",
-    distancia: "1.2 km",
-    badge: "Más pedido",
-  },
-  {
-    slug: "tacos-locos",
-    nombre: "Tacos Locos",
-    tipo: "Mexicana",
-    logo: "🌮",
-    rating: 4.5,
-    reviews: 198,
-    tiempo: "15–25 min",
-    domicilio: "Gratis",
-    distancia: "0.8 km",
-    badge: null,
-  },
-  {
-    slug: "burger-house",
-    nombre: "Burger House",
-    tipo: "Americana",
-    logo: "🍔",
-    rating: 4.7,
-    reviews: 540,
-    tiempo: "25–35 min",
-    domicilio: "$3.000",
-    distancia: "2.1 km",
-    badge: "Top rated",
-  },
-  {
-    slug: "pizza-luna",
-    nombre: "Pizza Luna",
-    tipo: "Italiana",
-    logo: "🍕",
-    rating: 4.9,
-    reviews: 421,
-    tiempo: "18–25 min",
-    domicilio: "$2.000",
-    distancia: "1.4 km",
-    badge: "Popular",
-  },
-  {
-    slug: "pollos-reales",
-    nombre: "Pollos Reales",
-    tipo: "Pollo",
-    logo: "🍗",
-    rating: 4.6,
-    reviews: 284,
-    tiempo: "20–30 min",
-    domicilio: "$2.500",
-    distancia: "1.8 km",
-    badge: "Popular",
-  },
-  {
-    slug: "wok-express",
-    nombre: "Wok Express",
-    tipo: "China",
-    logo: "🥡",
-    rating: 4.7,
-    reviews: 412,
-    tiempo: "25–35 min",
-    domicilio: "$3.000",
-    distancia: "2.4 km",
-    badge: null,
-  },
-  {
-    slug: "cafe-central",
-    nombre: "Café Central",
-    tipo: "Café",
-    logo: "☕",
-    rating: 4.9,
-    reviews: 190,
-    tiempo: "10–20 min",
-    domicilio: "Gratis",
-    distancia: "0.7 km",
-    badge: "Top rated",
-  },
-  {
-    slug: "panaderia-del-sol",
-    nombre: "Panadería del Sol",
-    tipo: "Panadería",
-    logo: "🥐",
-    rating: 4.5,
-    reviews: 156,
-    tiempo: "15–25 min",
-    domicilio: "$2.000",
-    distancia: "1.1 km",
-    badge: null,
-  },
-  {
-    slug: "arepas-colombia",
-    nombre: "Arepas Colombia",
-    tipo: "Colombiana",
-    logo: "🫓",
-    rating: 4.8,
-    reviews: 367,
-    tiempo: "20–30 min",
-    domicilio: "$2.500",
-    distancia: "1.5 km",
-    badge: "Más pedido",
-  },
-  {
-    slug: "parrilla-premium",
-    nombre: "Parrilla Premium",
-    tipo: "Parrilla",
-    logo: "🥩",
-    rating: 4.7,
-    reviews: 520,
-    tiempo: "30–40 min",
-    domicilio: "$4.000",
-    distancia: "3.2 km",
-    badge: "Popular",
-  },
-  {
-    slug: "fit-bowl",
-    nombre: "Fit Bowl",
-    tipo: "Saludable",
-    logo: "🥗",
-    rating: 4.9,
-    reviews: 243,
-    tiempo: "15–25 min",
-    domicilio: "$2.000",
-    distancia: "1.3 km",
-    badge: "Nuevo",
-  },
-  {
-    slug: "dulce-mania",
-    nombre: "Dulce Manía",
-    tipo: "Postres",
-    logo: "🍰",
-    rating: 4.8,
-    reviews: 274,
-    tiempo: "15–20 min",
-    domicilio: "$2.500",
-    distancia: "0.9 km",
-    badge: null,
-  },
-  {
-    slug: "helados-polar",
-    nombre: "Helados Polar",
-    tipo: "Helados",
-    logo: "🍦",
-    rating: 4.6,
-    reviews: 211,
-    tiempo: "10–15 min",
-    domicilio: "$1.500",
-    distancia: "0.6 km",
-    badge: null,
-  },
-  {
-    slug: "empanadas-criollas",
-    nombre: "Empanadas Criollas",
-    tipo: "Colombiana",
-    logo: "🥟",
-    rating: 4.7,
-    reviews: 301,
-    tiempo: "15–25 min",
-    domicilio: "Gratis",
-    distancia: "1.0 km",
-    badge: "Popular",
-  },
-  {
-    slug: "shawarma-house",
-    nombre: "Shawarma House",
-    tipo: "Árabe",
-    logo: "🌯",
-    rating: 4.8,
-    reviews: 198,
-    tiempo: "20–30 min",
-    domicilio: "$2.500",
-    distancia: "1.7 km",
-    badge: null,
-  },
-  {
-    slug: "ceviches-del-mar",
-    nombre: "Ceviches del Mar",
-    tipo: "Mariscos",
-    logo: "🦐",
-    rating: 4.9,
-    reviews: 489,
-    tiempo: "25–35 min",
-    domicilio: "$3.500",
-    distancia: "2.2 km",
-    badge: "Top rated",
-  },
-  {
-    slug: "donut-factory",
-    nombre: "Donut Factory",
-    tipo: "Postres",
-    logo: "🍩",
-    rating: 4.5,
-    reviews: 144,
-    tiempo: "10–20 min",
-    domicilio: "$2.000",
-    distancia: "0.8 km",
-    badge: null,
-  },
-  {
-    slug: "lasagna-mia",
-    nombre: "Lasagna Mía",
-    tipo: "Italiana",
-    logo: "🍝",
-    rating: 4.8,
-    reviews: 253,
-    tiempo: "25–35 min",
-    domicilio: "$3.000",
-    distancia: "1.9 km",
-    badge: "Popular",
-  },
-  {
-    slug: "fruteria-fresh",
-    nombre: "Frutería Fresh",
-    tipo: "Saludable",
-    logo: "🍉",
-    rating: 4.7,
-    reviews: 176,
-    tiempo: "15–20 min",
-    domicilio: "$2.000",
-    distancia: "1.1 km",
-    badge: null,
-  },
-  {
-    slug: "bbq-smoke",
-    nombre: "BBQ Smoke",
-    tipo: "Americana",
-    logo: "🍖",
-    rating: 4.8,
-    reviews: 445,
-    tiempo: "30–40 min",
-    domicilio: "$4.000",
-    distancia: "2.8 km",
-    badge: "Top rated",
-  },
-  {
-    slug: "green-vegan",
-    nombre: "Green Vegan",
-    tipo: "Vegana",
-    logo: "🌱",
-    rating: 4.9,
-    reviews: 222,
-    tiempo: "20–30 min",
-    domicilio: "$2.500",
-    distancia: "1.4 km",
-    badge: "Nuevo",
-  },
-  {
-    slug: "sandwich-club",
-    nombre: "Sandwich Club",
-    tipo: "Sandwiches",
-    logo: "🥪",
-    rating: 4.6,
-    reviews: 187,
-    tiempo: "15–25 min",
-    domicilio: "$2.000",
-    distancia: "1.2 km",
-    badge: null,
-  },
-  {
-    slug: "churros-city",
-    nombre: "Churros City",
-    tipo: "Postres",
-    logo: "🍫",
-    rating: 4.7,
-    reviews: 132,
-    tiempo: "10–15 min",
-    domicilio: "$1.500",
-    distancia: "0.5 km",
-    badge: null,
-  },
-  {
-    slug: "poke-paradise",
-    nombre: "Poke Paradise",
-    tipo: "Japonesa",
-    logo: "🍱",
-    rating: 4.9,
-    reviews: 338,
-    tiempo: "20–30 min",
-    domicilio: "$3.000",
-    distancia: "1.6 km",
-    badge: "Popular",
+    icon: Pizza,
   },
 ];
 
@@ -406,6 +116,7 @@ const FRASES_LOOP = [...FRASES, ...FRASES];
 
 const Home = () => {
   const nombreUsuario = "Juan";
+  const navigate = useNavigate();
 
   const [busqueda, setBusqueda] = useState("");
   const [filtroActivo, setFiltroActivo] = useState("Relevancia");
@@ -414,6 +125,82 @@ const Home = () => {
   const [animando, setAnimando] = useState(true);
   const [verTodasPromos, setVerTodasPromos] = useState(false);
   const [busquedaPromo, setBusquedaPromo] = useState("");
+  const [tiendas, setTiendas] = useState([]);
+  const [cargando, setCargando] = useState(true);
+
+  // Obtener negocios de Supabase
+  useEffect(() => {
+    const obtenerTiendas = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("businesses")
+          .select(
+            `
+            id, 
+            name, 
+            slug, 
+            logo_url, 
+            is_active,
+            created_at,
+            business_info (
+              rating,
+              rating_count,
+              delivery_time_min,
+              delivery_time_max,
+              delivery_fee,
+              free_delivery_min_order,
+              categoria
+            )
+          `,
+          )
+          .eq("is_active", true)
+          .order("created_at", { ascending: true });
+
+        if (error) throw error;
+
+        // Mapear datos de Supabase al formato esperado
+        const tiendasMapeadas = data.map((negocio) => {
+          // La relación retorna un array, acceder al primer elemento
+          const info = Array.isArray(negocio.business_info)
+            ? negocio.business_info[0]
+            : negocio.business_info || {};
+
+          const rating = info?.rating ? parseFloat(info.rating) : 4.5;
+          const reviews = info?.rating_count || 0;
+          const deliveryMin = info?.delivery_time_min || 20;
+          const deliveryMax = info?.delivery_time_max || 35;
+          const deliveryFee = info?.delivery_fee
+            ? parseFloat(info.delivery_fee)
+            : 2500;
+
+          return {
+            slug: negocio.slug,
+            nombre: negocio.name,
+            tipo: info?.categoria || "Tienda",
+            logo: negocio.logo_url || "../../public/default.png",
+            rating: rating.toFixed(1),
+            reviews,
+            tiempo: `${deliveryMin}–${deliveryMax} min`,
+            domicilio:
+              deliveryFee === 0
+                ? "Gratis"
+                : `$${deliveryFee.toLocaleString("es-CO")}`,
+            distancia: "—",
+            badge: null,
+          };
+        });
+
+        setTiendas(tiendasMapeadas);
+      } catch (error) {
+        console.error("Error al obtener tiendas:", error);
+        setTiendas([]);
+      } finally {
+        setCargando(false);
+      }
+    };
+
+    obtenerTiendas();
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -447,7 +234,7 @@ const Home = () => {
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "");
 
-  const tiendasFiltradas = TIENDAS.filter((t) => {
+  const tiendasFiltradas = tiendas.filter((t) => {
     const pasaBusqueda =
       busqueda.trim() === "" ||
       (() => {
@@ -482,6 +269,48 @@ const Home = () => {
   const buscando = busqueda.trim().length > 0;
 
   const modoCategoria = categoriaActiva !== null && !buscando;
+
+  // Aplicar ordenamiento según el filtro activo
+  const tiendasOrdenadas = (() => {
+    const copia = [...tiendasFiltradas];
+
+    switch (filtroActivo) {
+      case "Relevancia":
+        return copia.sort(
+          (a, b) => parseFloat(b.rating) - parseFloat(a.rating),
+        );
+      case "Más cerca":
+        return copia.sort((a, b) => {
+          const minA = parseInt(a.tiempo.split("–")[0]);
+          const minB = parseInt(b.tiempo.split("–")[0]);
+          return minA - minB;
+        });
+      case "Calificación":
+        return copia.sort(
+          (a, b) => parseFloat(b.rating) - parseFloat(a.rating),
+        );
+      case "Precio":
+        return copia.sort((a, b) => {
+          const precioA =
+            a.domicilio === "Gratis"
+              ? 0
+              : parseFloat(a.domicilio.replace("$", "").replace(/\./g, ""));
+          const precioB =
+            b.domicilio === "Gratis"
+              ? 0
+              : parseFloat(b.domicilio.replace("$", "").replace(/\./g, ""));
+          return precioA - precioB;
+        });
+      case "Rápido":
+        return copia.sort((a, b) => {
+          const minA = parseInt(a.tiempo.split("–")[0]);
+          const minB = parseInt(b.tiempo.split("–")[0]);
+          return minA - minB;
+        });
+      default:
+        return copia;
+    }
+  })();
 
   // Selecciona/deselecciona una categoría (toggle)
   const toggleCategoria = (nombreCategoria) => {
@@ -604,24 +433,27 @@ const Home = () => {
       {/* PROMOCIONES (se ocultan mientras se busca) */}
       {!buscando && !modoCategoria && !verTodasPromos && (
         <div className="flex gap-3 overflow-x-auto px-2 no-scrollbar pb-4">
-          {promocionesFiltradas.map((promo) => (
-            <Link
-              key={promo.id}
-              to={`/marketplace/tienda/${promo.slug}`}
-              className="relative flex-shrink-0 w-[190px] h-[105px] rounded-3xl bg-primary-container/80 overflow-hidden"
-            >
-              <div className="absolute top-3 left-3 px-2 py-1 rounded-full text-[8px] font-bold bg-white/10 text-white/70">
-                {promo.tag}
-              </div>
-              <div className="absolute right-3 bottom-2 text-4xl opacity-70">
-                {promo.emoji}
-              </div>
-              <div className="absolute left-3 bottom-3 text-white">
-                <p className="font-black text-base">{promo.oferta}</p>
-                <p className="text-[11px] opacity-70">{promo.nombre}</p>
-              </div>
-            </Link>
-          ))}
+          {promocionesFiltradas.map((promo) => {
+            const IconPromo = promo.icon;
+            return (
+              <Link
+                key={promo.id}
+                to={`/marketplace/tienda/${promo.slug}`}
+                className="relative flex-shrink-0 w-[190px] h-[105px] rounded-3xl bg-primary-container/80 overflow-hidden"
+              >
+                <div className="absolute top-3 left-3 px-2 py-1 rounded-full text-[8px] font-bold bg-white/10 text-white/70">
+                  {promo.tag}
+                </div>
+                <div className="absolute right-3 bottom-2 opacity-70">
+                  <IconPromo size={40} className="text-white" />
+                </div>
+                <div className="absolute left-3 bottom-3 text-white">
+                  <p className="font-black text-base">{promo.oferta}</p>
+                  <p className="text-[11px] opacity-70">{promo.nombre}</p>
+                </div>
+              </Link>
+            );
+          })}
 
           <button
             onClick={() => setVerTodasPromos(true)}
@@ -697,27 +529,30 @@ const Home = () => {
                 <p className="text-xs mt-1">Intenta con otro nombre u oferta</p>
               </div>
             ) : (
-              promocionesFiltradas.map((promo) => (
-                <Link
-                  key={promo.id}
-                  to={`/marketplace/tienda/${promo.slug}`}
-                  className="relative h-36 rounded-3xl bg-primary-container overflow-hidden p-5"
-                >
-                  <div className="absolute right-4 bottom-2 text-6xl opacity-20">
-                    {promo.emoji}
-                  </div>
+              promocionesFiltradas.map((promo) => {
+                const IconPromo = promo.icon;
+                return (
+                  <Link
+                    key={promo.id}
+                    to={`/marketplace/tienda/${promo.slug}`}
+                    className="relative h-36 rounded-3xl bg-primary-container overflow-hidden p-5"
+                  >
+                    <div className="absolute right-4 bottom-2 opacity-20">
+                      <IconPromo size={56} className="text-white" />
+                    </div>
 
-                  <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-bold bg-white/10 text-white">
-                    {promo.tag}
-                  </span>
+                    <span className="inline-flex px-3 py-1 rounded-full text-[10px] font-bold bg-white/10 text-white">
+                      {promo.tag}
+                    </span>
 
-                  <h3 className="mt-4 text-2xl font-black text-white">
-                    {promo.oferta}
-                  </h3>
+                    <h3 className="mt-4 text-2xl font-black text-white">
+                      {promo.oferta}
+                    </h3>
 
-                  <p className="text-white/70">{promo.nombre}</p>
-                </Link>
-              ))
+                    <p className="text-white/70">{promo.nombre}</p>
+                  </Link>
+                );
+              })
             )}
           </div>
         </section>
@@ -725,7 +560,23 @@ const Home = () => {
 
       {!verTodasPromos && (
         <section className="px-5">
-          {tiendasFiltradas.length === 0 ? (
+          {cargando ? (
+            // ── SKELETON ── mismo grid de 2 columnas que las tarjetas
+            // reales, para que no haya salto de layout al llegar los datos.
+            <div className="grid grid-cols-2 gap-4 pb-8">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={`tienda-skeleton-${idx}`}
+                  className="flex flex-col rounded-3xl bg-surface border border-outline/30 p-3"
+                >
+                  <div className="h-24 rounded-2xl bg-background animate-pulse mb-3" />
+                  <div className="h-3.5 w-3/4 rounded-md bg-background animate-pulse mb-2" />
+                  <div className="h-2.5 w-1/2 rounded-md bg-background animate-pulse mb-3" />
+                  <div className="h-2.5 w-full rounded-md bg-background animate-pulse" />
+                </div>
+              ))}
+            </div>
+          ) : tiendasOrdenadas.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-12 text-on-surface-variant/60">
               <Search size={28} className="mb-2 opacity-50" />
               <p className="text-base font-bold">
@@ -740,7 +591,7 @@ const Home = () => {
           ) : buscando ? (
             // ── MODO BÚSQUEDA: tarjetas horizontales, compitiendo por la mirada del usuario ──
             <div className="flex flex-col gap-3 pb-8">
-              {tiendasFiltradas.map((t) => (
+              {tiendasOrdenadas.map((t) => (
                 <Link
                   key={t.slug}
                   to={`/marketplace/tienda/${t.slug}`}
@@ -748,7 +599,14 @@ const Home = () => {
                 >
                   {/* Logo */}
                   <div className="relative flex-shrink-0 flex items-center justify-center w-20 h-20 rounded-2xl bg-background border border-outline/10 overflow-hidden">
-                    <span className="text-4xl">{t.logo}</span>
+                    <img
+                      src={t.logo}
+                      alt={t.nombre}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.src = "/default-store.png";
+                      }}
+                    />
 
                     {t.badge && (
                       <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-primary-container text-white text-[7px] font-bold uppercase tracking-wider shadow-sm">
@@ -783,7 +641,7 @@ const Home = () => {
                             : "text-on-surface-variant"
                         }
                       >
-                        🛵{" "}
+                        {" "}
                         {t.domicilio === "Gratis"
                           ? "Envío Gratis"
                           : t.domicilio}
@@ -800,7 +658,7 @@ const Home = () => {
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-4 pb-8">
-              {tiendasFiltradas.map((t) => (
+              {tiendasOrdenadas.map((t) => (
                 <Link
                   key={t.slug}
                   to={`/marketplace/tienda/${t.slug}`}
@@ -808,7 +666,26 @@ const Home = () => {
                 >
                   {/* Contenedor del Logo con fondo sutil */}
                   <div className="relative flex items-center justify-center h-24 rounded-2xl bg-background border border-outline/10 mb-3 overflow-hidden">
-                    <span className="text-5xl">{t.logo}</span>
+                    <img
+                      src={t.logo}
+                      alt={t.nombre}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.target.src = "/default-store.png";
+                      }}
+                    />
+
+                    {/* Logo pequeño en esquina inferior derecha */}
+                    <div className="absolute bottom-2 right-2 w-7 h-7 overflow-hidden shadow-md">
+                      <img
+                        src={t.logo}
+                        alt={t.nombre}
+                        className="w-full h-full object-cover rounded"
+                        onError={(e) => {
+                          e.target.src = "/default-store.png";
+                        }}
+                      />
+                    </div>
 
                     {/* Badge de estado, si tuviera un badge personalizado */}
                     {t.badge && (
@@ -828,28 +705,24 @@ const Home = () => {
                     </p>
                   </div>
 
-                  {/* Métricas: Usamos un contenedor tipo "chip" para organizar mejor */}
-                  <div className="mt-3 flex items-center gap-1.5 flex-wrap">
-                    <div className="px-2 py-1 rounded-md bg-background border border-outline/10 text-[10px] font-bold text-on-surface flex items-center gap-1">
-                      <span className="text-yellow-500">★</span> {t.rating}
+                  {/* Métricas: Compactas estilo Didi Food */}
+                  <div className="mt-2 flex items-center gap-1 text-[8px] sm:text-[9px] text-white/50">
+                    <div className="flex items-center gap-0.5">
+                      <Star size={10} />
+                      <span>{t.rating}</span>
                     </div>
-                    <div className="px-2 py-1 rounded-md bg-background border border-outline/10 text-[10px] font-medium text-on-surface-variant">
-                      {t.tiempo}
+                    <span className="text-white/30">•</span>
+                    <div className="flex items-center gap-0.5">
+                      <ClockFading size={10} />
+                      <span>{t.tiempo}</span>
                     </div>
-                  </div>
-
-                  {/* Envío: Más destacado */}
-                  <div className="mt-2 text-[11px] font-bold flex items-center gap-1">
-                    <span
-                      className={
-                        t.domicilio === "Gratis"
-                          ? "text-success"
-                          : "text-on-surface-variant"
-                      }
-                    >
-                      🛵{" "}
-                      {t.domicilio === "Gratis" ? "Envío Gratis" : t.domicilio}
-                    </span>
+                    <span className="text-white/30">•</span>
+                    <div className="flex items-center gap-0.5">
+                      <Motorbike size={10} />
+                      <span>
+                        {t.domicilio === "Gratis" ? "Gratis" : t.domicilio}
+                      </span>
+                    </div>
                   </div>
                 </Link>
               ))}

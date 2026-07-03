@@ -202,6 +202,9 @@ const Carrito = ({ onIrAPagar }) => {
           ) : (
             items.map((p) => {
               const qty = carrito[p.id];
+              const stockDisponible =
+                typeof p.stock === "number" ? p.stock : Infinity;
+              const alcanzoStock = qty >= stockDisponible;
               return (
                 <div
                   key={p.id}
@@ -237,10 +240,34 @@ const Carrito = ({ onIrAPagar }) => {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: "26px",
+                      overflow: "hidden",
                     }}
                   >
-                    {p.emoji}
+                    {p.image ? (
+                      <img
+                        src={p.image}
+                        alt={p.nombre}
+                        onError={(event) => {
+                          event.currentTarget.onerror = null;
+                          event.currentTarget.src = "/default.png";
+                        }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                    ) : (
+                      <span
+                        style={{
+                          fontSize: "20px",
+                          fontWeight: 700,
+                          color: "#fff",
+                        }}
+                      >
+                        {p.nombre?.charAt(0).toUpperCase() || "?"}
+                      </span>
+                    )}
                   </div>
 
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -273,6 +300,18 @@ const Carrito = ({ onIrAPagar }) => {
                         }}
                       >
                         "{p.notas}"
+                      </p>
+                    )}
+                    {alcanzoStock && (
+                      <p
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#f6e05e",
+                          margin: "4px 0 0",
+                        }}
+                      >
+                        Máximo disponible alcanzado
                       </p>
                     )}
                   </div>
@@ -317,14 +356,18 @@ const Carrito = ({ onIrAPagar }) => {
                     </span>
                     <button
                       type="button"
-                      onClick={() => agregar(p.id)}
+                      onClick={() => {
+                        if (alcanzoStock) return;
+                        agregar(p.id);
+                      }}
+                      disabled={alcanzoStock}
                       style={{
-                        color: "#fff",
+                        color: alcanzoStock ? "rgba(255,255,255,0.3)" : "#fff",
                         background: "none",
                         border: "none",
                         fontSize: "16px",
                         fontWeight: 700,
-                        cursor: "pointer",
+                        cursor: alcanzoStock ? "not-allowed" : "pointer",
                         lineHeight: 1,
                         padding: 0,
                       }}

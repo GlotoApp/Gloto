@@ -14,6 +14,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
+import { supabase } from "../../../src/lib/supabaseClient";
 import { useCart } from "./CartContext";
 import Carrito from "./Carrito";
 import Checkout from "./Checkout";
@@ -21,88 +22,18 @@ import ProductoDetalle from "./ProductoDetalle";
 import SeguimientoPedido from "./SeguimientoPedido";
 
 const TIENDA_INFO = {
-  nombre: "Burger House",
-  tipo: "Americana · Comida rápida",
-  horario: "Abierto · Cierra 11:00 PM",
-  rating: 4.8,
-  reviews: 540,
-  tiempo: "25–35 min",
-  domicilio: "$3.000",
-  direccion: "Cra. 5 #34-21, El Centro",
-  descripcion:
-    "Las mejores burgers artesanales de la ciudad, preparadas al momento con ingredientes frescos.",
+  nombre: "",
+  tipo: "",
+  horario: "",
+  rating: 0,
+  reviews: 0,
+  tiempo: "",
+  domicilio: "",
+  direccion: "",
+  descripcion: "",
+  logo: "/default.png",
+  cover: "/default.png",
 };
-
-const CATEGORIAS_BASE = [
-  "Populares",
-  "Combos",
-  "Burgers",
-  "Bebidas",
-  "Postres",
-];
-const CATEGORIAS_MENU = ["Todos", ...CATEGORIAS_BASE];
-
-const PRODUCTOS = [
-  {
-    id: 1,
-    cat: "Populares",
-    nombre: "Burger Pro",
-    desc: "Doble carne angus, tocino ahumado, queso cheddar, salsa especial de la casa.",
-    precio: 28000,
-    tag: "Más vendido",
-    emoji: "🍔",
-    rating: 4.9,
-    variantes: [
-      { id: "sencilla", nombre: "Sencilla", precioExtra: 0 },
-      { id: "doble", nombre: "Doble carne", precioExtra: 8000 },
-      { id: "triple", nombre: "Triple carne", precioExtra: 15000 },
-    ],
-  },
-  {
-    id: 2,
-    cat: "Populares",
-    nombre: "Crispy Deluxe",
-    desc: "Pollo crocante, lechuga romana, pepinillos, mayo chipotle.",
-    precio: 24000,
-    tag: "Favorito",
-    emoji: "🍗",
-    rating: 4.7,
-  },
-  {
-    id: 3,
-    cat: "Combos",
-    nombre: "Combo Destructor",
-    desc: "Burger Pro + papas grandes + bebida 400ml.",
-    precio: 38000,
-    tag: "Ahorra $6k",
-    emoji: "🔥",
-    rating: 4.8,
-  },
-  {
-    id: 4,
-    cat: "Bebidas",
-    nombre: "Limonada de coco",
-    desc: "Hecha al momento, endulzada con panela.",
-    precio: 9000,
-    tag: null,
-    emoji: "🥥",
-    rating: 4.6,
-    variantes: [
-      { id: "personal", nombre: "Personal", precioExtra: 0 },
-      { id: "grande", nombre: "Grande 1L", precioExtra: 6000 },
-    ],
-  },
-  {
-    id: 5,
-    cat: "Postres",
-    nombre: "Milkshake Oreo",
-    desc: "Helado premium, galletas Oreo, crema chantilly.",
-    precio: 14000,
-    tag: "Nuevo",
-    emoji: "🥤",
-    rating: 4.9,
-  },
-];
 
 const fmt = (n) =>
   new Intl.NumberFormat("es-CO", {
@@ -175,6 +106,10 @@ const Shop = () => {
   }, []);
 
   const [catActiva, setCatActiva] = useState("Todos");
+  const [tiendaData, setTiendaData] = useState(TIENDA_INFO);
+  const [categorias, setCategorias] = useState([]);
+  const [productos, setProductosState] = useState([]);
+  const [isLoadingProductos, setIsLoadingProductos] = useState(true);
   const {
     carrito,
     cartOpen,
@@ -205,6 +140,208 @@ const Shop = () => {
   const searchInputRef = useRef(null);
   const filtrosRef = useRef(null);
 
+  // Obtener datos de la tienda desde Supabase
+  useEffect(() => {
+    const obtenerTienda = async () => {
+      setIsLoadingProductos(true);
+      try {
+        const obtenerNegocioPorId = async (campo, valor) =>
+          supabase
+            .from("businesses")
+            .select(
+              `
+              id,
+              name,
+              slug,
+              logo_url
+            `,
+            )
+            .eq(campo, valor)
+            .single();
+
+        let tiendaQuery = await obtenerNegocioPorId("slug", slug);
+
+        if (!tiendaQuery.error && !tiendaQuery.data) {
+          tiendaQuery = await obtenerNegocioPorId("name", slug);
+        }
+
+        if (tiendaQuery.error) throw tiendaQuery.error;
+        const data = tiendaQuery.data;
+        if (!data) throw new Error("Tienda no encontrada");
+
+        const businessInfoRes = await supabase
+          .from("business_info")
+          .select(
+            `
+            rating,
+            rating_count,
+            delivery_time_min,
+            delivery_time_max,
+            delivery_fee,
+            free_delivery_min_order,
+            categoria
+          `,
+          )
+          .eq("business_id", data.id)
+          .single();
+
+        const info = businessInfoRes.error ? {} : businessInfoRes.data || {};
+
+        const rating = info?.rating ? parseFloat(info.rating) : 4.5;
+        const reviews = info?.rating_count || 0;
+        const deliveryMin = info?.delivery_time_min || 20;
+        const deliveryMax = info?.delivery_time_max || 35;
+        const deliveryFee = info?.delivery_fee
+          ? parseFloat(info.delivery_fee)
+          : 2500;
+        const categoria = info?.categoria || "Restaurante";
+
+        const [categoriasRes, productosRes] = await Promise.all([
+          supabase
+            .from("categories_shop")
+            .select("id,name,icon_url,order_index")
+            .eq("business_id", data.id)
+            .eq("is_active", true)
+            .order("order_index", { ascending: true }),
+          supabase
+            .from("products")
+            .select(
+              "id,name,description,price,stock,image_url,is_active,category_id",
+            )
+            .eq("business_id", data.id)
+            .eq("is_active", true)
+            .order("created_at", { ascending: true }),
+        ]);
+
+        if (categoriasRes.error) {
+          console.error("Error al obtener categorías:", categoriasRes.error);
+        }
+        if (productosRes.error) {
+          console.error("Error al obtener productos:", productosRes.error);
+        }
+
+        const categoriasMapeadas = (categoriasRes.data || []).map(
+          (categoria) => ({
+            id: categoria.id,
+            nombre: categoria.name,
+            icon: categoria.icon_url,
+          }),
+        );
+
+        const productosData = productosRes.data || [];
+        const productsItemsMap = {};
+
+        const getOptionLabel = (item) =>
+          item.nombre ||
+          item.name ||
+          item.title ||
+          item.label ||
+          item.option_name ||
+          item.option ||
+          item.text ||
+          item.value ||
+          `Opción ${item.id}`;
+
+        const getOptionPrice = (item) =>
+          Number(
+            item.precio_extra ??
+            item.price ??
+            item.price_extra ??
+            item.extra_price ??
+            item.monto ??
+            0,
+          ) || 0;
+
+        const getOptionMandatory = (item) =>
+          item.es_opcion_obligatoria ??
+          item.mandatory ??
+          item.is_mandatory ??
+          item.required ??
+          item.is_required ??
+          false;
+
+        const getOptionTags = (item) =>
+          item.tags ?? item.tag ?? item.categories ?? null;
+
+        if (productosData.length > 0) {
+          const productIds = productosData.map((producto) => producto.id);
+          const itemsRes = await supabase
+            .from("products_items")
+            .select("*")
+            .in("product_id", productIds);
+
+          if (itemsRes.error) {
+            console.error("Error al obtener opciones de producto:", itemsRes.error);
+          } else {
+            (itemsRes.data || []).forEach((item) => {
+              if (!productsItemsMap[item.product_id]) {
+                productsItemsMap[item.product_id] = [];
+              }
+              productsItemsMap[item.product_id].push(item);
+            });
+          }
+        }
+
+        const productosMapeados = productosData.map((producto) => {
+          const categoria = categoriasMapeadas.find(
+            (cat) => cat.id === producto.category_id,
+          );
+
+          const opciones = (productsItemsMap[producto.id] || []).map((item) => ({
+            id: item.id,
+            nombre: getOptionLabel(item),
+            precioExtra: getOptionPrice(item),
+            obligatorio: getOptionMandatory(item),
+            tags: getOptionTags(item),
+          }));
+
+          return {
+            id: producto.id,
+            nombre: producto.name,
+            desc: producto.description || "",
+            precio: Number(producto.price) || 0,
+            stock: producto.stock || 0,
+            cat: categoria?.nombre || "Otros",
+            image: producto.image_url,
+            isActive: producto.is_active,
+            variantes: opciones,
+          };
+        });
+
+        setTiendaData({
+          nombre: data.name,
+          tipo: categoria,
+          horario: "Abierto · Cierra 11:00 PM",
+          rating,
+          reviews,
+          tiempo: `${deliveryMin}–${deliveryMax} min`,
+          domicilio:
+            deliveryFee === 0
+              ? "Gratis"
+              : `$${deliveryFee.toLocaleString("es-CO")}`,
+          direccion: "Cra. 5 #34-21, El Centro",
+          descripcion: "",
+          logo: data.logo_url || "/default.png",
+          cover: info?.cover_url || "/default.png",
+        });
+
+        setCategorias(categoriasMapeadas);
+        setProductosState(productosMapeados);
+        setProductos(productosMapeados);
+        setNombreTienda(data.name);
+        setLogoTienda(data.logo_url || "/default.png");
+      } catch (error) {
+        console.error("Error al obtener tienda:", error);
+      } finally {
+        setIsLoadingProductos(false);
+      }
+    };
+
+    if (slug) {
+      obtenerTienda();
+    }
+  }, [slug, setNombreTienda, setLogoTienda]);
+
   // Lleva la vista al punto exacto donde la barra de filtros queda fija
   // arriba, mostrando el primer producto del filtro justo debajo.
   // Usamos offsetTop (no scrollIntoView) porque, al ser "sticky", el
@@ -231,36 +368,43 @@ const Shop = () => {
     scrollASuave();
   }, [filtroTick]);
 
-  const nombreTienda =
-    slug
-      ?.split("-")
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(" ") || TIENDA_INFO.nombre;
-
   // Sincroniza con el contexto del carrito para que Carrito.jsx
-  // pueda mostrar nombre/precio/emoji de cada producto agregado.
+  // pueda mostrar nombre/precio/imagen de cada producto agregado.
   // Si el carrito ya tenía productos de OTRA tienda, primero se pide
   // confirmación antes de vaciarlo.
+  //
+  // IMPORTANTE: usamos una ref para leer totalItems en vez de ponerlo
+  // como dependencia del efecto. Si totalItems estuviera en el array de
+  // dependencias, cada vez que el usuario agrega/quita un producto este
+  // efecto se volvería a ejecutar y, al ser la misma tienda, caía en la
+  // rama que limpia `productos` — vaciando visualmente el carrito aunque
+  // las cantidades siguieran ahí. Con la ref, el efecto solo corre
+  // cuando cambia el slug o el tiendaSlug guardado.
+  const totalItemsRef = useRef(totalItems);
   useEffect(() => {
-    if (tiendaSlug && tiendaSlug !== slug && totalItems > 0) {
+    totalItemsRef.current = totalItems;
+  }, [totalItems]);
+
+  useEffect(() => {
+    if (tiendaSlug && tiendaSlug !== slug && totalItemsRef.current > 0) {
       setConfirmCambioOpen(true);
       return;
     }
 
-    // Aquí inicializas los datos de la tienda
-    setProductos(PRODUCTOS);
-    setNombreTienda(TIENDA_INFO.nombre); // Asegúrate de usar la propiedad correcta
-    setLogoTienda("🍔"); // <--- ¡Faltaba esto!
+    // Limpiamos el catálogo local antes de cargar la nueva tienda.
+    setProductosState([]);
+    setCategorias([]);
+    setProductos([]);
     setTiendaSlug(slug);
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
+  }, [slug, tiendaSlug]);
 
   const confirmarCambioTienda = () => {
     vaciar();
-    setProductos(PRODUCTOS);
-    setNombreTienda(nombreTienda);
-    setTiendaSlug(slug);
+    setProductosState([]);
+    setCategorias([]);
+    setProductos([]);
     setConfirmCambioOpen(false);
   };
 
@@ -269,10 +413,22 @@ const Shop = () => {
     navigate(-1);
   };
 
+  // Estilo base para cada bloque "hueso" del skeleton: un degradado que
+  // se desliza de izquierda a derecha simulando el efecto de brillo.
+  const skeletonBlock = (extra = {}) => ({
+    background: "linear-gradient(90deg, #131313 25%, #1c1c1c 37%, #131313 63%)",
+    backgroundSize: "400% 100%",
+    animation: "shimmer 1.4s ease infinite",
+    borderRadius: "6px",
+    ...extra,
+  });
+
+  const categoriasMenu = ["Todos", ...categorias.map((c) => c.nombre)];
+
   const productosPorCategoria =
     catActiva === "Todos"
-      ? PRODUCTOS
-      : PRODUCTOS.filter((p) => p.cat === catActiva);
+      ? productos
+      : productos.filter((p) => p.cat === catActiva);
   const displayedProducts =
     searchQuery.trim() === ""
       ? productosPorCategoria
@@ -294,8 +450,8 @@ const Shop = () => {
 
   const handleNativeShare = async () => {
     const shareData = {
-      title: nombreTienda,
-      text: `Mira este local: ${nombreTienda}`,
+      title: tiendaData.nombre,
+      text: `Mira este local: ${tiendaData.nombre}`,
       url: shareUrl,
     };
     try {
@@ -340,6 +496,10 @@ const Shop = () => {
           from { opacity: 0; transform: translateY(6px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        @keyframes shimmer {
+          0% { background-position: -200% 0; }
+          100% { background-position: 200% 0; }
+        }
       `}</style>
       <div
         style={{
@@ -359,8 +519,12 @@ const Shop = () => {
           {/* Imagen recortada dentro de su propio div */}
           <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
             <img
-              src="https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&q=80&w=800"
-              alt={nombreTienda}
+              src={tiendaData.cover || "/default.png"}
+              alt={tiendaData.nombre}
+              onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = "/default.png";
+              }}
               style={{
                 width: "100%",
                 height: "100%",
@@ -402,7 +566,24 @@ const Shop = () => {
                 boxShadow: "0 4px 24px rgba(0,0,0,0.7)",
               }}
             >
-              🍔
+              {tiendaData.logo && typeof tiendaData.logo === "string" ? (
+                <img
+                  src={tiendaData.logo}
+                  alt={tiendaData.nombre}
+                  onError={(event) => {
+                    event.currentTarget.onerror = null;
+                    event.currentTarget.src = "/default.png";
+                  }}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    borderRadius: "20px",
+                  }}
+                />
+              ) : (
+                "🍔"
+              )}
             </div>
           </div>
 
@@ -491,7 +672,7 @@ const Shop = () => {
               letterSpacing: "0.02em",
             }}
           >
-            {TIENDA_INFO.tipo}
+            {tiendaData.tipo}
           </p>
           <h1
             style={{
@@ -502,7 +683,7 @@ const Shop = () => {
               marginBottom: "14px",
             }}
           >
-            {nombreTienda}
+            {tiendaData.nombre}
           </h1>
 
           {/* Métricas en fila */}
@@ -517,12 +698,12 @@ const Shop = () => {
             <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
               <Star size={13} fill="#FFD166" style={{ color: "#FFD166" }} />
               <span style={{ fontSize: "13px", fontWeight: 700 }}>
-                {TIENDA_INFO.rating}
+                {tiendaData.rating}
               </span>
               <span
                 style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}
               >
-                ({TIENDA_INFO.reviews})
+                ({tiendaData.reviews})
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
@@ -534,7 +715,7 @@ const Shop = () => {
                   fontWeight: 500,
                 }}
               >
-                {TIENDA_INFO.tiempo}
+                {tiendaData.tiempo}
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
@@ -546,7 +727,7 @@ const Shop = () => {
                   fontWeight: 500,
                 }}
               >
-                {TIENDA_INFO.domicilio}
+                {tiendaData.domicilio}
               </span>
             </div>
           </div>
@@ -573,7 +754,7 @@ const Shop = () => {
               }}
             />
             <span style={{ fontSize: "12px", fontWeight: 600, color: "#fff" }}>
-              {TIENDA_INFO.horario}
+              {tiendaData.horario}
             </span>
             <span style={{ color: "rgba(255,255,255,0.2)" }}>·</span>
             <MapPin
@@ -589,7 +770,7 @@ const Shop = () => {
                 whiteSpace: "nowrap",
               }}
             >
-              {TIENDA_INFO.direccion}
+              {tiendaData.direccion}
             </span>
           </div>
         </div>
@@ -620,34 +801,47 @@ const Shop = () => {
               marginBottom: searchOpen ? "10px" : "0",
             }}
           >
-            {CATEGORIAS_MENU.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                onClick={() => {
-                  setCatActiva(cat);
-                  setSearchQuery("");
-                  setFiltroTick((t) => t + 1);
-                }}
-                style={{
-                  padding: "7px 16px",
-                  borderRadius: "100px",
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  whiteSpace: "nowrap",
-                  // Eliminamos el borde permanentemente
-                  border: "none",
-                  // El color de fondo es el único indicador visual
-                  background: catActiva === cat ? "#7c3aed" : "#1a1a1a",
-                  color: catActiva === cat ? "#fff" : "rgba(255,255,255,0.45)",
-                  cursor: "pointer",
-                  letterSpacing: "0.01em",
-                  flexShrink: 0,
-                }}
-              >
-                {cat}
-              </button>
-            ))}
+            {isLoadingProductos
+              ? Array.from({ length: 4 }).map((_, idx) => (
+                  <div
+                    key={`chip-skeleton-${idx}`}
+                    style={skeletonBlock({
+                      width: idx === 0 ? "56px" : "78px",
+                      height: "29px",
+                      borderRadius: "100px",
+                      flexShrink: 0,
+                    })}
+                  />
+                ))
+              : categoriasMenu.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => {
+                      setCatActiva(cat);
+                      setSearchQuery("");
+                      setFiltroTick((t) => t + 1);
+                    }}
+                    style={{
+                      padding: "7px 16px",
+                      borderRadius: "100px",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                      // Eliminamos el borde permanentemente
+                      border: "none",
+                      // El color de fondo es el único indicador visual
+                      background: catActiva === cat ? "#7c3aed" : "#1a1a1a",
+                      color:
+                        catActiva === cat ? "#fff" : "rgba(255,255,255,0.45)",
+                      cursor: "pointer",
+                      letterSpacing: "0.01em",
+                      flexShrink: 0,
+                    }}
+                  >
+                    {cat}
+                  </button>
+                ))}
           </div>
 
           {/* Barra de búsqueda */}
@@ -728,7 +922,59 @@ const Shop = () => {
             </p>
           )}
 
-          {displayedProducts.length === 0 ? (
+          {isLoadingProductos ? (
+            // ── SKELETON ── mismo layout que la tarjeta real (texto a la
+            // izquierda, imagen 88x88 a la derecha) para que no haya salto
+            // de tamaño al reemplazar por los productos reales.
+            Array.from({ length: 5 }).map((_, idx) => (
+              <div
+                key={`skeleton-${idx}`}
+                style={{
+                  display: "flex",
+                  gap: "14px",
+                  padding: "16px 20px 24px",
+                  alignItems: "flex-start",
+                  borderBottom:
+                    idx < 4 ? "1px solid rgba(255,255,255,0.06)" : "none",
+                }}
+              >
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    style={skeletonBlock({
+                      width: "70%",
+                      height: "14px",
+                      marginBottom: "10px",
+                    })}
+                  />
+                  <div
+                    style={skeletonBlock({
+                      width: "95%",
+                      height: "11px",
+                      marginBottom: "6px",
+                    })}
+                  />
+                  <div
+                    style={skeletonBlock({
+                      width: "60%",
+                      height: "11px",
+                      marginBottom: "14px",
+                    })}
+                  />
+                  <div
+                    style={skeletonBlock({ width: "50px", height: "15px" })}
+                  />
+                </div>
+                <div
+                  style={skeletonBlock({
+                    width: "88px",
+                    height: "88px",
+                    borderRadius: "16px",
+                    flexShrink: 0,
+                  })}
+                />
+              </div>
+            ))
+          ) : displayedProducts.length === 0 ? (
             <div
               style={{
                 textAlign: "center",
@@ -836,10 +1082,34 @@ const Shop = () => {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          fontSize: "38px",
+                          overflow: "hidden",
                         }}
                       >
-                        {p.emoji}
+                        {p.image ? (
+                          <img
+                            src={p.image}
+                            alt={p.nombre}
+                            onError={(event) => {
+                              event.currentTarget.onerror = null;
+                              event.currentTarget.src = "/default.png";
+                            }}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ) : (
+                          <span
+                            style={{
+                              color: "#fff",
+                              fontSize: "22px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            {p.nombre?.charAt(0).toUpperCase() || "?"}
+                          </span>
+                        )}
                       </div>
 
                       {/* Botón superpuesto en esquina inferior derecha */}
@@ -1034,7 +1304,7 @@ const Shop = () => {
                   letterSpacing: "-0.01em",
                 }}
               >
-                Compartir {nombreTienda}
+                Compartir {tiendaData.nombre}
               </h3>
               <p
                 style={{
@@ -1181,8 +1451,8 @@ const Shop = () => {
                   {nombreTiendaEnCarrito}
                 </strong>{" "}
                 en tu carrito. Si entras a{" "}
-                <strong style={{ color: "#fff" }}>{nombreTienda}</strong>, se
-                eliminarán y tu carrito quedará vacío.
+                <strong style={{ color: "#fff" }}>{tiendaData.nombre}</strong>,
+                se eliminarán y tu carrito quedará vacío.
               </p>
               <div style={{ display: "flex", gap: "10px" }}>
                 <button

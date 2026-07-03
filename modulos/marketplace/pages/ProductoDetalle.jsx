@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, Minus, Plus } from "lucide-react";
+import { supabase } from "../../../src/lib/supabaseClient";
 import { useCart } from "./CartContext";
 
 const fmt = (n) =>
@@ -11,28 +12,112 @@ const fmt = (n) =>
     minimumFractionDigits: 0,
   }).format(n);
 
-// producto.variantes (opcional): [{ id, nombre, precioExtra }]
+const normalizeOptionItem = (item) => ({
+  id: item.id,
+  nombre:
+    item.nombre ||
+    item.name ||
+    item.title ||
+    item.label ||
+    item.option_name ||
+    item.option ||
+    item.text ||
+    item.value ||
+    `Opción ${item.id}`,
+  precioExtra:
+    Number(item.precio_extra ?? item.price ?? item.price_extra ?? item.extra_price ?? item.monto ?? 0) ||
+    0,
+  obligatorio:
+    item.es_opcion_obligatoria ??
+    item.mandatory ??
+    item.is_mandatory ??
+    item.required ??
+    item.is_required ??
+    false,
+  tags: item.tags ?? item.tag ?? item.categories ?? null,
+});
+
 const ProductoDetalle = ({ producto, onClose }) => {
-  const { agregarConVariante } = useCart();
+  const { agregarConVariante, obtenerItemId, carrito } = useCart();
+  const [opciones, setOpciones] = useState(
+    (producto.variantes || producto.products_items || producto.options || []).map(
+      normalizeOptionItem,
+    ),
+  );
   const [varianteId, setVarianteId] = useState(
-    producto?.variantes?.[0]?.id || null,
+    opciones?.[0]?.id || null,
   );
   const [notas, setNotas] = useState("");
   const [cantidad, setCantidad] = useState(1);
 
   useEffect(() => {
-    setVarianteId(producto?.variantes?.[0]?.id || null);
+    const initialOptions =
+      (producto.variantes || producto.products_items || producto.options || []).map(
+        normalizeOptionItem,
+      );
+    setOpciones(initialOptions);
     setNotas("");
     setCantidad(1);
   }, [producto]);
 
+  useEffect(() => {
+    if (opciones.length > 0) {
+      setVarianteId(opciones[0].id);
+    } else {
+      setVarianteId(null);
+    }
+  }, [opciones]);
+
+  useEffect(() => {
+    const cargarOpciones = async () => {
+      if ((producto.variantes || producto.products_items || producto.options || []).length > 0) {
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("products_items")
+        .select("*")
+        .eq("product_id", producto.id)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Error cargando opciones de producto:", error);
+      }
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        setOpciones(data.map(normalizeOptionItem));
+      }
+    };
+
+    if (producto?.id) {
+      cargarOpciones();
+    }
+  }, [producto]);
+
   if (!producto) return null;
 
-  const variante = producto.variantes?.find((v) => v.id === varianteId) || null;
+  const variante = opciones.find((v) => v.id === varianteId) || null;
   const precioUnitario = producto.precio + (variante?.precioExtra || 0);
   const precioTotal = precioUnitario * cantidad;
+  const stockDisponible =
+    typeof producto.stock === "number" ? producto.stock : Infinity;
+
+  // Clave exacta que ocupará esta combinación de variante + notas en el
+  // carrito. Es la MISMA función que usa CartContext al agregar, así que
+  // esta pantalla siempre lee el número real que ya hay en esa línea del
+  // carrito — sin importar si se agregó desde aquí o desde el botón "+"
+  // de la lista de la tienda.
+  const itemId = obtenerItemId(producto.id, variante, notas);
+  const yaEnCarrito = carrito[itemId] || 0;
+
+  const agotado = stockDisponible <= 0;
+  const limiteAlcanzado = !agotado && yaEnCarrito >= stockDisponible;
+  const restanteParaAgregar = Math.max(0, stockDisponible - yaEnCarrito);
+  const alcanzoStock = cantidad >= restanteParaAgregar;
+  const noSePuedeAgregar = agotado || limiteAlcanzado;
 
   const handleAgregar = () => {
+    if (noSePuedeAgregar) return;
     agregarConVariante({
       productoBase: producto,
       variante,
@@ -92,15 +177,19 @@ const ProductoDetalle = ({ producto, onClose }) => {
           <X size={18} color="#fff" />
         </button>
 
-        {producto.imagen ? (
+        {producto.image ? (
           <img
-            src={producto.imagen}
+            src={producto.image}
             alt={producto.nombre}
+            onError={(event) => {
+              event.currentTarget.onerror = null;
+              event.currentTarget.src = "/default.png";
+            }}
             style={{ width: "100%", height: "100%", objectFit: "cover" }}
           />
         ) : (
-          <span style={{ fontSize: "110px", lineHeight: 1 }}>
-            {producto.emoji}
+          <span style={{ fontSize: "64px", fontWeight: 700, color: "#fff" }}>
+            {producto.nombre?.charAt(0).toUpperCase() || "?"}
           </span>
         )}
       </div>
@@ -131,14 +220,54 @@ const ProductoDetalle = ({ producto, onClose }) => {
             fontSize: "13px",
             color: "rgba(255,255,255,0.5)",
             lineHeight: 1.6,
-            marginBottom: "20px",
+            marginBottom: agotado || stockDisponible <= 5 ? "8px" : "20px",
           }}
         >
           {producto.desc}
         </p>
 
+        {agotado ? (
+          <p
+            style={{
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "#e53e3e",
+              marginBottom: "20px",
+            }}
+          >
+            Producto agotado
+          </p>
+        ) : (
+          stockDisponible <= 5 && (
+            <p
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "#f6e05e",
+                marginBottom: "20px",
+              }}
+            >
+              ¡Solo quedan {stockDisponible} unidades!
+            </p>
+          )
+        )}
+
+        {!agotado && yaEnCarrito > 0 && (
+          <p
+            style={{
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "#a78bfa",
+              marginBottom: "20px",
+            }}
+          >
+            Ya tienes {yaEnCarrito} en tu carrito
+            {limiteAlcanzado ? " (máximo disponible)" : ""}
+          </p>
+        )}
+
         {/* Variantes (tamaños, presentaciones, etc.) */}
-        {producto.variantes && producto.variantes.length > 0 && (
+        {opciones && opciones.length > 0 && (
           <div style={{ marginBottom: "22px" }}>
             <p
               style={{
@@ -148,16 +277,16 @@ const ProductoDetalle = ({ producto, onClose }) => {
                 marginBottom: "10px",
               }}
             >
-              Elige el tamaño
+              Elige una opción
             </p>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: `repeat(${producto.variantes.length}, 1fr)`,
+                gridTemplateColumns: `repeat(${opciones.length}, 1fr)`,
                 gap: "10px",
               }}
             >
-              {producto.variantes.map((v) => {
+              {opciones.map((v) => {
                 const activo = v.id === varianteId;
                 return (
                   <button
@@ -293,12 +422,15 @@ const ProductoDetalle = ({ producto, onClose }) => {
           </span>
           <button
             type="button"
-            onClick={() => setCantidad((c) => c + 1)}
+            onClick={() =>
+              setCantidad((c) => (c < restanteParaAgregar ? c + 1 : c))
+            }
+            disabled={alcanzoStock}
             style={{
               background: "none",
               border: "none",
-              color: "#fff",
-              cursor: "pointer",
+              color: alcanzoStock ? "rgba(255,255,255,0.3)" : "#fff",
+              cursor: alcanzoStock ? "not-allowed" : "pointer",
               display: "flex",
             }}
             aria-label="Agregar uno"
@@ -310,20 +442,27 @@ const ProductoDetalle = ({ producto, onClose }) => {
         <button
           type="button"
           onClick={handleAgregar}
+          disabled={noSePuedeAgregar}
           style={{
             flex: 1,
             padding: "14px",
             borderRadius: "100px",
-            background: "#7c3aed",
-            color: "#fff",
+            background: noSePuedeAgregar ? "rgba(124,58,237,0.25)" : "#7c3aed",
+            color: noSePuedeAgregar ? "rgba(255,255,255,0.5)" : "#fff",
             fontWeight: 800,
             fontSize: "14px",
             border: "none",
-            cursor: "pointer",
-            boxShadow: "0 8px 32px rgba(124,58,237,0.45)",
+            cursor: noSePuedeAgregar ? "not-allowed" : "pointer",
+            boxShadow: noSePuedeAgregar
+              ? "none"
+              : "0 8px 32px rgba(124,58,237,0.45)",
           }}
         >
-          Agregar · {fmt(precioTotal)}
+          {agotado
+            ? "Agotado"
+            : limiteAlcanzado
+              ? "Máximo alcanzado"
+              : `Agregar · ${fmt(precioTotal)}`}
         </button>
       </div>
     </div>,
