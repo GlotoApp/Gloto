@@ -230,6 +230,8 @@ const Shop = () => {
 
         const productosData = productosRes.data || [];
         const productsItemsMap = {};
+        const productsGroupsMap = {};
+        const itemsByGroup = {};
 
         const getOptionLabel = (item) =>
           item.nombre ||
@@ -245,11 +247,11 @@ const Shop = () => {
         const getOptionPrice = (item) =>
           Number(
             item.precio_extra ??
-            item.price ??
-            item.price_extra ??
-            item.extra_price ??
-            item.monto ??
-            0,
+              item.price ??
+              item.price_extra ??
+              item.extra_price ??
+              item.monto ??
+              0,
           ) || 0;
 
         const getOptionMandatory = (item) =>
@@ -263,21 +265,98 @@ const Shop = () => {
         const getOptionTags = (item) =>
           item.tags ?? item.tag ?? item.categories ?? null;
 
+        const normalizeGroup = (group, itemsForGroup = []) => {
+          const isRequired =
+            group.is_required ??
+            group.es_requerido ??
+            group.required ??
+            group.isRequired ??
+            false;
+          const selectionType =
+            group.selection_type ??
+            group.selectionType ??
+            group.type ??
+            group.selection ??
+            "single";
+
+          return {
+            id: group.id,
+            name:
+              group.name ?? group.nombre ?? group.title ?? `Grupo ${group.id}`,
+            nombre:
+              group.name ?? group.nombre ?? group.title ?? `Grupo ${group.id}`,
+            description:
+              group.description ?? group.descripcion ?? group.hint ?? "",
+            descripcion:
+              group.description ?? group.descripcion ?? group.hint ?? "",
+            is_required: Boolean(isRequired),
+            es_requerido: Boolean(isRequired),
+            selection_type: selectionType,
+            selectionType,
+            order_index: Number(
+              group.order_index ?? group.orderIndex ?? group.order ?? 0,
+            ),
+            orderIndex: Number(
+              group.order_index ?? group.orderIndex ?? group.order ?? 0,
+            ),
+            opciones: (itemsForGroup || [])
+              .map((item) => ({
+                ...item,
+                nombre: getOptionLabel(item),
+                precioExtra: getOptionPrice(item),
+                obligatorio: getOptionMandatory(item),
+                order: Number(item.order_index ?? item.order ?? 0),
+              }))
+              .sort((a, b) => (a.order || 0) - (b.order || 0)),
+          };
+        };
+
         if (productosData.length > 0) {
           const productIds = productosData.map((producto) => producto.id);
-          const itemsRes = await supabase
-            .from("products_items")
-            .select("*")
-            .in("product_id", productIds);
+          const [itemsRes, groupsRes] = await Promise.all([
+            supabase
+              .from("products_items")
+              .select("*")
+              .in("product_id", productIds),
+            supabase
+              .from("product_option_groups")
+              .select("*")
+              .in("product_id", productIds)
+              .order("order_index", { ascending: true }),
+          ]);
 
           if (itemsRes.error) {
-            console.error("Error al obtener opciones de producto:", itemsRes.error);
+            console.error(
+              "Error al obtener opciones de producto:",
+              itemsRes.error,
+            );
           } else {
             (itemsRes.data || []).forEach((item) => {
-              if (!productsItemsMap[item.product_id]) {
-                productsItemsMap[item.product_id] = [];
+              if (item.option_group_id) {
+                if (!itemsByGroup[item.option_group_id]) {
+                  itemsByGroup[item.option_group_id] = [];
+                }
+                itemsByGroup[item.option_group_id].push(item);
+              } else {
+                if (!productsItemsMap[item.product_id]) {
+                  productsItemsMap[item.product_id] = [];
+                }
+                productsItemsMap[item.product_id].push(item);
               }
-              productsItemsMap[item.product_id].push(item);
+            });
+          }
+
+          if (groupsRes.error) {
+            console.error(
+              "Error al obtener grupos de opciones:",
+              groupsRes.error,
+            );
+          } else {
+            (groupsRes.data || []).forEach((group) => {
+              if (!productsGroupsMap[group.product_id]) {
+                productsGroupsMap[group.product_id] = [];
+              }
+              productsGroupsMap[group.product_id].push(group);
             });
           }
         }
@@ -287,13 +366,19 @@ const Shop = () => {
             (cat) => cat.id === producto.category_id,
           );
 
-          const opciones = (productsItemsMap[producto.id] || []).map((item) => ({
-            id: item.id,
-            nombre: getOptionLabel(item),
-            precioExtra: getOptionPrice(item),
-            obligatorio: getOptionMandatory(item),
-            tags: getOptionTags(item),
-          }));
+          const opciones = (productsItemsMap[producto.id] || []).map(
+            (item) => ({
+              id: item.id,
+              nombre: getOptionLabel(item),
+              precioExtra: getOptionPrice(item),
+              obligatorio: getOptionMandatory(item),
+              tags: getOptionTags(item),
+            }),
+          );
+
+          const grupos = (productsGroupsMap[producto.id] || [])
+            .map((group) => normalizeGroup(group, itemsByGroup[group.id] || []))
+            .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
 
           return {
             id: producto.id,
@@ -305,6 +390,9 @@ const Shop = () => {
             image: producto.image_url,
             isActive: producto.is_active,
             variantes: opciones,
+            product_option_groups: grupos,
+            option_groups: grupos,
+            groups: grupos,
           };
         });
 
@@ -440,6 +528,36 @@ const Shop = () => {
           );
         });
 
+  const obtenerCantidadProducto = (producto) => {
+    const baseCantidad = carrito[producto.id] || 0;
+    const variantesCantidad = Object.entries(carrito).reduce(
+      (sum, [key, cantidad]) =>
+        key.startsWith(`${producto.id}__`) ? sum + cantidad : sum,
+      0,
+    );
+    return baseCantidad + variantesCantidad;
+  };
+
+  const tieneOpciones = (producto) =>
+    (Array.isArray(producto.variantes) && producto.variantes.length > 0) ||
+    (Array.isArray(producto.option_groups) &&
+      producto.option_groups.length > 0) ||
+    (Array.isArray(producto.product_option_groups) &&
+      producto.product_option_groups.length > 0);
+
+  // IMPORTANTE: ya no volvemos a consultar "products_items" aquí.
+  // `producto.variantes` ya viene cargado desde la consulta en bloque
+  // que hace `obtenerTienda` (una sola vez, para todos los productos).
+  // Antes esta función repetía la consulta por producto individual y,
+  // si esa segunda consulta llegaba a devolver un arreglo vacío por
+  // cualquier motivo (RLS, timing, etc.), igual abría el modal —
+  // y ProductoDetalle.jsx hacía UNA TERCERA consulta que podía volver
+  // a pisar los datos buenos con un resultado vacío. Con una sola
+  // fuente de verdad se elimina ese punto de falla.
+  const abrirDetalleProducto = (producto) => {
+    setProductoDetalle(producto);
+  };
+
   // abrirCarrito ahora viene del CartContext (abre <Carrito /> de pantalla completa)
 
   const shareUrl = window.location.href;
@@ -518,20 +636,30 @@ const Shop = () => {
         <div style={{ position: "relative", height: "250px" }}>
           {/* Imagen recortada dentro de su propio div */}
           <div style={{ position: "absolute", inset: 0, overflow: "hidden" }}>
-            <img
-              src={tiendaData.cover || "/default.png"}
-              alt={tiendaData.nombre}
-              onError={(event) => {
-                event.currentTarget.onerror = null;
-                event.currentTarget.src = "/default.png";
-              }}
-              style={{
-                width: "100%",
-                height: "100%",
-                objectFit: "cover",
-                display: "block",
-              }}
-            />
+            {isLoadingProductos ? (
+              <div
+                style={skeletonBlock({
+                  width: "100%",
+                  height: "100%",
+                  borderRadius: 0,
+                })}
+              />
+            ) : (
+              <img
+                src={tiendaData.cover || "/default.png"}
+                alt={tiendaData.nombre}
+                onError={(event) => {
+                  event.currentTarget.onerror = null;
+                  event.currentTarget.src = "/default.png";
+                }}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  display: "block",
+                }}
+              />
+            )}
             {/* Gradiente oscuro */}
             <div
               style={{
@@ -566,7 +694,15 @@ const Shop = () => {
                 boxShadow: "0 4px 24px rgba(0,0,0,0.7)",
               }}
             >
-              {tiendaData.logo && typeof tiendaData.logo === "string" ? (
+              {isLoadingProductos ? (
+                <div
+                  style={skeletonBlock({
+                    width: "100%",
+                    height: "100%",
+                    borderRadius: "20px",
+                  })}
+                />
+              ) : tiendaData.logo && typeof tiendaData.logo === "string" ? (
                 <img
                   src={tiendaData.logo}
                   alt={tiendaData.nombre}
@@ -600,179 +736,277 @@ const Shop = () => {
               zIndex: 5,
             }}
           >
-            <button
-              type="button"
-              onClick={() => navigate("/")} // Redirige directamente al home/marketplace
-              style={{
-                width: "36px",
-                height: "36px",
-                borderRadius: "50%",
-                background: "rgba(0,0,0,0.55)",
-                backdropFilter: "blur(10px)",
-                border: "1px solid rgba(255,255,255,0.12)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                cursor: "pointer",
-              }}
-              aria-label="Ir al inicio"
-            >
-              <Home size={18} color="#fff" />
-            </button>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <button
-                type="button"
-                onClick={() => setSearchOpen((s) => !s)}
+            {isLoadingProductos ? (
+              <div
                 style={{
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  background: "rgba(0,0,0,0.55)",
-                  backdropFilter: "blur(10px)",
                   display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  gap: "10px",
                 }}
-                aria-label="Buscar"
               >
-                <Search size={17} color="#fff" />
-              </button>
-              <button
-                type="button"
-                onClick={handleShare}
-                style={{
-                  width: "36px",
-                  height: "36px",
-                  borderRadius: "50%",
-                  background: "rgba(0,0,0,0.55)",
-                  backdropFilter: "blur(10px)",
-                  border: "1px solid rgba(255,255,255,0.12)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  cursor: "pointer",
-                }}
-                aria-label="Compartir"
-              >
-                <Share2 size={17} color="#fff" />
-              </button>
-            </div>
+                <div
+                  style={skeletonBlock({
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                  })}
+                />
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <div
+                    style={skeletonBlock({
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                    })}
+                  />
+                  <div
+                    style={skeletonBlock({
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                    })}
+                  />
+                </div>
+              </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => navigate("/")} // Redirige directamente al home/marketplace
+                  style={{
+                    width: "36px",
+                    height: "36px",
+                    borderRadius: "50%",
+                    background: "rgba(0,0,0,0.55)",
+                    backdropFilter: "blur(10px)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                  }}
+                  aria-label="Ir al inicio"
+                >
+                  <Home size={18} color="#fff" />
+                </button>
+                <div style={{ display: "flex", gap: "10px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setSearchOpen((s) => !s)}
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      background: "rgba(0,0,0,0.55)",
+                      backdropFilter: "blur(10px)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                    aria-label="Buscar"
+                  >
+                    <Search size={17} color="#fff" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShare}
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "50%",
+                      background: "rgba(0,0,0,0.55)",
+                      backdropFilter: "blur(10px)",
+                      border: "1px solid rgba(255,255,255,0.12)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: "pointer",
+                    }}
+                    aria-label="Compartir"
+                  >
+                    <Share2 size={17} color="#fff" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
         {/* ── INFO DEL LOCAL ── */}
         <div style={{ padding: "48px 20px 0", textAlign: "center" }}>
-          <p
-            style={{
-              fontSize: "12px",
-              color: "rgba(255,255,255,0.45)",
-              fontWeight: 500,
-              marginBottom: "6px",
-              letterSpacing: "0.02em",
-            }}
-          >
-            {tiendaData.tipo}
-          </p>
-          <h1
-            style={{
-              fontSize: "26px",
-              fontWeight: 800,
-              letterSpacing: "-0.03em",
-              lineHeight: 1.15,
-              marginBottom: "14px",
-            }}
-          >
-            {tiendaData.nombre}
-          </h1>
-
-          {/* Métricas en fila */}
-          <div
-            style={{
-              display: "flex",
-              gap: "20px",
-              marginBottom: "16px",
-              justifyContent: "center",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-              <Star size={13} fill="#FFD166" style={{ color: "#FFD166" }} />
-              <span style={{ fontSize: "13px", fontWeight: 700 }}>
-                {tiendaData.rating}
-              </span>
-              <span
-                style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}
-              >
-                ({tiendaData.reviews})
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-              <Clock3 size={13} style={{ color: "rgba(255,255,255,0.5)" }} />
-              <span
+          {isLoadingProductos ? (
+            <>
+              <div
+                style={skeletonBlock({
+                  width: "30%",
+                  height: "12px",
+                  margin: "0 auto 10px",
+                })}
+              />
+              <div
+                style={skeletonBlock({
+                  width: "50%",
+                  height: "36px",
+                  margin: "0 auto 14px",
+                })}
+              />
+              <div
                 style={{
-                  fontSize: "13px",
-                  color: "rgba(255,255,255,0.7)",
-                  fontWeight: 500,
+                  display: "flex",
+                  justifyContent: "center",
+                  gap: "20px",
+                  marginBottom: "16px",
                 }}
               >
-                {tiendaData.tiempo}
-              </span>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-              <Bike size={13} style={{ color: "rgba(255,255,255,0.5)" }} />
-              <span
+                <div style={skeletonBlock({ width: "70px", height: "28px" })} />
+                <div style={skeletonBlock({ width: "70px", height: "28px" })} />
+                <div style={skeletonBlock({ width: "70px", height: "28px" })} />
+              </div>
+              <div
+                style={skeletonBlock({
+                  width: "90%",
+                  height: "18px",
+                  margin: "0 auto 8px",
+                  borderRadius: "12px",
+                })}
+              />
+              <div
+                style={skeletonBlock({
+                  width: "80%",
+                  height: "14px",
+                  margin: "0 auto",
+                  borderRadius: "12px",
+                })}
+              />
+            </>
+          ) : (
+            <>
+              <p
                 style={{
-                  fontSize: "13px",
-                  color: "rgba(255,255,255,0.7)",
+                  fontSize: "12px",
+                  color: "rgba(255,255,255,0.45)",
                   fontWeight: 500,
+                  marginBottom: "6px",
+                  letterSpacing: "0.02em",
                 }}
               >
-                {tiendaData.domicilio}
-              </span>
-            </div>
-          </div>
+                {tiendaData.tipo}
+              </p>
+              <h1
+                style={{
+                  fontSize: "26px",
+                  fontWeight: 800,
+                  letterSpacing: "-0.03em",
+                  lineHeight: 1.15,
+                  marginBottom: "14px",
+                }}
+              >
+                {tiendaData.nombre}
+              </h1>
 
-          {/* Horario + dirección */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "10px 14px",
-              borderRadius: "12px",
-              marginBottom: "20px",
-            }}
-          >
-            <span
-              style={{
-                width: "7px",
-                height: "7px",
-                borderRadius: "50%",
-                background: "#00c448",
-                boxShadow: "0 0 7px #00c448",
-                flexShrink: 0,
-              }}
-            />
-            <span style={{ fontSize: "12px", fontWeight: 600, color: "#fff" }}>
-              {tiendaData.horario}
-            </span>
-            <span style={{ color: "rgba(255,255,255,0.2)" }}>·</span>
-            <MapPin
-              size={11}
-              style={{ color: "rgba(255,255,255,0.35)", flexShrink: 0 }}
-            />
-            <span
-              style={{
-                fontSize: "12px",
-                color: "rgba(255,255,255,0.4)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {tiendaData.direccion}
-            </span>
-          </div>
+              {/* Métricas en fila */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: "20px",
+                  marginBottom: "16px",
+                  justifyContent: "center",
+                }}
+              >
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "5px" }}
+                >
+                  <Star size={13} fill="#FFD166" style={{ color: "#FFD166" }} />
+                  <span style={{ fontSize: "13px", fontWeight: 700 }}>
+                    {tiendaData.rating}
+                  </span>
+                  <span
+                    style={{ fontSize: "12px", color: "rgba(255,255,255,0.4)" }}
+                  >
+                    ({tiendaData.reviews})
+                  </span>
+                </div>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "5px" }}
+                >
+                  <Clock3
+                    size={13}
+                    style={{ color: "rgba(255,255,255,0.5)" }}
+                  />
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "rgba(255,255,255,0.7)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {tiendaData.tiempo}
+                  </span>
+                </div>
+                <div
+                  style={{ display: "flex", alignItems: "center", gap: "5px" }}
+                >
+                  <Bike size={13} style={{ color: "rgba(255,255,255,0.5)" }} />
+                  <span
+                    style={{
+                      fontSize: "13px",
+                      color: "rgba(255,255,255,0.7)",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {tiendaData.domicilio}
+                  </span>
+                </div>
+              </div>
+
+              {/* Horario + dirección */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  padding: "10px 14px",
+                  borderRadius: "12px",
+                  marginBottom: "20px",
+                }}
+              >
+                <span
+                  style={{
+                    width: "7px",
+                    height: "7px",
+                    borderRadius: "50%",
+                    background: "#00c448",
+                    boxShadow: "0 0 7px #00c448",
+                    flexShrink: 0,
+                  }}
+                />
+                <span
+                  style={{ fontSize: "12px", fontWeight: 600, color: "#fff" }}
+                >
+                  {tiendaData.horario}
+                </span>
+                <span style={{ color: "rgba(255,255,255,0.2)" }}>·</span>
+                <MapPin
+                  size={11}
+                  style={{ color: "rgba(255,255,255,0.35)", flexShrink: 0 }}
+                />
+                <span
+                  style={{
+                    fontSize: "12px",
+                    color: "rgba(255,255,255,0.4)",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {tiendaData.direccion}
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Divisor */}
@@ -1000,12 +1234,13 @@ const Shop = () => {
             </div>
           ) : (
             displayedProducts.map((p, idx) => {
-              const qty = carrito[p.id] || 0;
+              const qty = obtenerCantidadProducto(p);
+              const tieneOpcionesProducto = tieneOpciones(p);
               const isLast = idx === displayedProducts.length - 1;
               return (
                 <div key={p.id}>
                   <div
-                    onClick={() => setProductoDetalle(p)}
+                    onClick={() => abrirDetalleProducto(p)}
                     style={{
                       display: "flex",
                       gap: "14px",
@@ -1118,27 +1353,36 @@ const Shop = () => {
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            agregar(p.id);
+                            if (tieneOpcionesProducto) {
+                              abrirDetalleProducto(p);
+                            } else {
+                              agregar(p.id);
+                            }
                           }}
                           style={{
                             position: "absolute",
                             bottom: "-10px",
                             right: "-10px",
-                            width: "32px",
+                            minWidth: "32px",
                             height: "32px",
                             borderRadius: "50%",
                             background: "#7c3aed",
                             color: "#fff",
-                            fontSize: "22px",
-                            fontWeight: 300,
+                            fontSize: "14px",
+                            fontWeight: 700,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
                             cursor: "pointer",
                             boxShadow: "0 4px 12px rgba(124,58,237,0.5)",
                             lineHeight: 1,
+                            padding: "0 10px",
                           }}
-                          aria-label={`Agregar ${p.nombre}`}
+                          aria-label={
+                            tieneOpcionesProducto
+                              ? `Abrir detalles de ${p.nombre}`
+                              : `Agregar ${p.nombre}`
+                          }
                         >
                           +
                         </button>
@@ -1163,7 +1407,11 @@ const Shop = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              quitar(p.id);
+                              if (tieneOpcionesProducto) {
+                                abrirDetalleProducto(p);
+                              } else {
+                                quitar(p.id);
+                              }
                             }}
                             style={{
                               color: "#fff",
@@ -1175,7 +1423,11 @@ const Shop = () => {
                               lineHeight: 1,
                               padding: 0,
                             }}
-                            aria-label={`Quitar ${p.nombre}`}
+                            aria-label={
+                              tieneOpcionesProducto
+                                ? `Modificar ${p.nombre}`
+                                : `Quitar ${p.nombre}`
+                            }
                           >
                             −
                           </button>
@@ -1194,7 +1446,11 @@ const Shop = () => {
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              agregar(p.id);
+                              if (tieneOpcionesProducto) {
+                                abrirDetalleProducto(p);
+                              } else {
+                                agregar(p.id);
+                              }
                             }}
                             style={{
                               color: "#fff",
@@ -1206,7 +1462,11 @@ const Shop = () => {
                               lineHeight: 1,
                               padding: 0,
                             }}
-                            aria-label={`Agregar ${p.nombre}`}
+                            aria-label={
+                              tieneOpcionesProducto
+                                ? `Abrir detalles de ${p.nombre}`
+                                : `Agregar ${p.nombre}`
+                            }
                           >
                             +
                           </button>

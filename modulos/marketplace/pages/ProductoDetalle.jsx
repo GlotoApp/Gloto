@@ -25,8 +25,14 @@ const normalizeOptionItem = (item) => ({
     item.value ||
     `Opción ${item.id}`,
   precioExtra:
-    Number(item.precio_extra ?? item.price ?? item.price_extra ?? item.extra_price ?? item.monto ?? 0) ||
-    0,
+    Number(
+      item.precio_extra ??
+        item.price ??
+        item.price_extra ??
+        item.extra_price ??
+        item.monto ??
+        0,
+    ) || 0,
   obligatorio:
     item.es_opcion_obligatoria ??
     item.mandatory ??
@@ -39,68 +45,208 @@ const normalizeOptionItem = (item) => ({
 
 const ProductoDetalle = ({ producto, onClose }) => {
   const { agregarConVariante, obtenerItemId, carrito } = useCart();
-  const [opciones, setOpciones] = useState(
-    (producto.variantes || producto.products_items || producto.options || []).map(
-      normalizeOptionItem,
-    ),
-  );
-  const [varianteId, setVarianteId] = useState(
-    opciones?.[0]?.id || null,
-  );
+  const [opciones, setOpciones] = useState([]);
+  const [grupos, setGrupos] = useState([]);
+  const [selecciones, setSelecciones] = useState({});
+  const [cargandoOpciones, setCargandoOpciones] = useState(true);
+  const [varianteId, setVarianteId] = useState(null);
   const [notas, setNotas] = useState("");
   const [cantidad, setCantidad] = useState(1);
 
+  // Única fuente de verdad: las opciones ya vienen cargadas en
+  // `producto.variantes` desde la consulta en bloque que hace
+  // Shop.jsx (una sola vez, para todos los productos, en `obtenerTienda`).
+  // Antes este componente volvía a consultar "products_items" por su
+  // cuenta (una tercera consulta redundante) y, si esa consulta llegaba
+  // a devolver un arreglo vacío por cualquier motivo (RLS, timing,
+  // condición de carrera), pisaba las opciones correctas que ya
+  // traía `producto`. Quitar esa consulta elimina ese punto de falla.
   useEffect(() => {
-    const initialOptions =
-      (producto.variantes || producto.products_items || producto.options || []).map(
-        normalizeOptionItem,
-      );
-    setOpciones(initialOptions);
-    setNotas("");
-    setCantidad(1);
-  }, [producto]);
+    let activo = true;
 
-  useEffect(() => {
-    if (opciones.length > 0) {
-      setVarianteId(opciones[0].id);
-    } else {
-      setVarianteId(null);
-    }
-  }, [opciones]);
+    const mapGroups = (rawGroups) =>
+      (rawGroups || [])
+        .map((group) => {
+          const isRequired =
+            group.is_required ??
+            group.es_requerido ??
+            group.required ??
+            group.isRequired ??
+            false;
+          const selectionType =
+            group.selection_type ??
+            group.selectionType ??
+            group.type ??
+            group.selection ??
+            "single";
+          const rawOptions =
+            group.opciones ||
+            group.options ||
+            group.items ||
+            group.products_items ||
+            group.product_options ||
+            [];
 
-  useEffect(() => {
-    const cargarOpciones = async () => {
-      if ((producto.variantes || producto.products_items || producto.options || []).length > 0) {
-        return;
-      }
+          return {
+            id: group.id,
+            nombre:
+              group.name || group.nombre || group.title || `Grupo ${group.id}`,
+            descripcion:
+              group.description || group.descripcion || group.hint || "",
+            obligatorio: Boolean(isRequired),
+            selectionType,
+            order: Number(
+              group.order_index ?? group.orderIndex ?? group.order ?? 0,
+            ),
+            opciones: rawOptions
+              .map((item) => ({
+                ...normalizeOptionItem(item),
+                order: Number(item.order_index ?? item.order ?? 0),
+              }))
+              .sort((a, b) => a.order - b.order),
+          };
+        })
+        .sort((a, b) => a.order - b.order);
 
-      const { data, error } = await supabase
-        .from("products_items")
-        .select("*")
-        .eq("product_id", producto.id)
-        .order("created_at", { ascending: true });
+    const loadFallbackGroups = async () => {
+      try {
+        const [groupsRes, itemsRes] = await Promise.all([
+          supabase
+            .from("product_option_groups")
+            .select("*")
+            .eq("product_id", producto.id)
+            .order("order_index", { ascending: true }),
+          supabase
+            .from("products_items")
+            .select("*")
+            .eq("product_id", producto.id)
+            .order("order_index", { ascending: true }),
+        ]);
 
-      if (error) {
-        console.error("Error cargando opciones de producto:", error);
-      }
+        if (groupsRes.error) {
+          console.error("Error al obtener grupos fallback:", groupsRes.error);
+          return [];
+        }
+        if (itemsRes.error) {
+          console.error("Error al obtener opciones fallback:", itemsRes.error);
+          return [];
+        }
 
-      if (!error && Array.isArray(data) && data.length > 0) {
-        setOpciones(data.map(normalizeOptionItem));
+        const itemsByGroup = {};
+        (itemsRes.data || []).forEach((item) => {
+          const groupKey =
+            item.option_group_id ??
+            item.group_id ??
+            item.product_option_group_id ??
+            item.optionGroupId ??
+            null;
+          if (!groupKey) return;
+          if (!itemsByGroup[groupKey]) {
+            itemsByGroup[groupKey] = [];
+          }
+          itemsByGroup[groupKey].push(item);
+        });
+
+        const fallbackGroups = (groupsRes.data || []).map((group) => ({
+          ...group,
+          opciones: (itemsByGroup[group.id] || []).map((item) => ({
+            ...item,
+          })),
+        }));
+
+        return fallbackGroups;
+      } catch (error) {
+        console.error("Error en fallback de grupos:", error);
+        return [];
       }
     };
 
-    if (producto?.id) {
-      cargarOpciones();
-    }
+    const initialize = async () => {
+      const rawGroups =
+        producto.option_groups ||
+        producto.product_option_groups ||
+        producto.groups ||
+        producto.product_option_groups ||
+        producto.option_groups ||
+        producto.groups ||
+        [];
+
+      let parsedGroups = mapGroups(rawGroups);
+
+      const initialOptions = (
+        producto.variantes ||
+        producto.products_items ||
+        producto.options ||
+        []
+      ).map(normalizeOptionItem);
+
+      if (parsedGroups.length === 0) {
+        const fallbackGroups = await loadFallbackGroups();
+        if (fallbackGroups.length > 0) {
+          parsedGroups = mapGroups(fallbackGroups);
+        }
+      }
+
+      if (!activo) return;
+
+      if (parsedGroups.length > 0) {
+        setGrupos(parsedGroups);
+        setOpciones([]);
+        setSelecciones({});
+      } else {
+        setGrupos([]);
+        setOpciones(initialOptions);
+        setSelecciones({});
+      }
+
+      setNotas("");
+      setCantidad(1);
+      setVarianteId(null);
+      setCargandoOpciones(false);
+    };
+
+    initialize();
+
+    return () => {
+      activo = false;
+    };
   }, [producto]);
 
   if (!producto) return null;
 
-  const variante = opciones.find((v) => v.id === varianteId) || null;
+  const modoGrupos = grupos.length > 0;
+  const selectedOptions = modoGrupos
+    ? grupos
+        .map((group) =>
+          group.opciones.find((opt) => opt.id === selecciones[group.id]),
+        )
+        .filter(Boolean)
+    : [];
+
+  const variante = modoGrupos
+    ? selectedOptions.length > 0
+      ? {
+          id: selectedOptions.map((opt) => opt.id).join("__"),
+          nombre: selectedOptions.map((opt) => opt.nombre).join(" · "),
+          precioExtra: selectedOptions.reduce(
+            (sum, opt) => sum + (opt.precioExtra || 0),
+            0,
+          ),
+        }
+      : null
+    : opciones.find((v) => v.id === varianteId) || null;
+
   const precioUnitario = producto.precio + (variante?.precioExtra || 0);
   const precioTotal = precioUnitario * cantidad;
   const stockDisponible =
     typeof producto.stock === "number" ? producto.stock : Infinity;
+
+  const tieneOpcionesObligatorias = modoGrupos
+    ? grupos.some((group) => group.obligatorio)
+    : opciones.some((opt) => opt.obligatorio);
+  const requiereSeleccionarVariante = modoGrupos
+    ? grupos.some((group) => group.obligatorio && !selecciones[group.id])
+    : tieneOpcionesObligatorias && varianteId === null;
 
   // Clave exacta que ocupará esta combinación de variante + notas en el
   // carrito. Es la MISMA función que usa CartContext al agregar, así que
@@ -117,7 +263,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
   const noSePuedeAgregar = agotado || limiteAlcanzado;
 
   const handleAgregar = () => {
-    if (noSePuedeAgregar) return;
+    if (noSePuedeAgregar || requiereSeleccionarVariante) return;
     agregarConVariante({
       productoBase: producto,
       variante,
@@ -266,73 +412,186 @@ const ProductoDetalle = ({ producto, onClose }) => {
           </p>
         )}
 
-        {/* Variantes (tamaños, presentaciones, etc.) */}
-        {opciones && opciones.length > 0 && (
-          <div style={{ marginBottom: "22px" }}>
-            <p
-              style={{
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "rgba(255,255,255,0.7)",
-                marginBottom: "10px",
-              }}
-            >
-              Elige una opción
-            </p>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(${opciones.length}, 1fr)`,
-                gap: "10px",
-              }}
-            >
-              {opciones.map((v) => {
-                const activo = v.id === varianteId;
-                return (
-                  <button
-                    key={v.id}
-                    type="button"
-                    onClick={() => setVarianteId(v.id)}
+        {/* Grupos de opciones (tamaños, endulzante, etc.) */}
+        {cargandoOpciones ? (
+          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "13px" }}>
+            Cargando opciones...
+          </div>
+        ) : grupos.length > 0 ? (
+          grupos.map((group) => {
+            const seleccionActual = selecciones[group.id];
+            return (
+              <div
+                key={group.id}
+                style={{
+                  marginBottom: "22px",
+                  padding: "18px",
+                  borderRadius: "22px",
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div style={{ marginBottom: "12px" }}>
+                  <p
                     style={{
-                      background: activo ? "rgba(124,58,237,0.15)" : "#131313",
-                      border: activo
-                        ? "1px solid #7c3aed"
-                        : "1px solid rgba(255,255,255,0.08)",
-                      color: activo ? "#fff" : "rgba(255,255,255,0.7)",
-                      borderRadius: "12px",
-                      padding: "12px 6px",
-                      cursor: "pointer",
-                      textAlign: "center",
+                      fontSize: "12px",
+                      fontWeight: 700,
+                      color: "rgba(255,255,255,0.85)",
+                      margin: 0,
                     }}
                   >
-                    <div style={{ fontSize: "13px", fontWeight: 700 }}>
-                      {v.nombre}
+                    {group.nombre}
+                  </p>
+                  {group.descripcion ? (
+                    <p
+                      style={{
+                        fontSize: "11px",
+                        color: "rgba(255,255,255,0.55)",
+                        margin: "6px 0 0",
+                      }}
+                    >
+                      {group.descripcion}
+                    </p>
+                  ) : null}
+                  {group.obligatorio && (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        marginTop: "8px",
+                        fontSize: "11px",
+                        color: "#fbbf24",
+                        fontWeight: 700,
+                      }}
+                    >
+                      Obligatorio
+                    </span>
+                  )}
+                </div>
+
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                    gap: "10px",
+                  }}
+                >
+                  {group.opciones.map((opt) => {
+                    const activo = seleccionActual === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() =>
+                          setSelecciones((prev) => ({
+                            ...prev,
+                            [group.id]: opt.id,
+                          }))
+                        }
+                        style={{
+                          background: activo
+                            ? "rgba(124,58,237,0.15)"
+                            : "#131313",
+                          border: activo
+                            ? "1px solid #7c3aed"
+                            : "1px solid rgba(255,255,255,0.08)",
+                          color: activo ? "#fff" : "rgba(255,255,255,0.7)",
+                          borderRadius: "12px",
+                          padding: "12px 10px",
+                          cursor: "pointer",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div style={{ fontSize: "13px", fontWeight: 700 }}>
+                          {opt.nombre}
+                        </div>
+                        {opt.precioExtra ? (
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: activo
+                                ? "#a78bfa"
+                                : "rgba(255,255,255,0.4)",
+                              marginTop: "2px",
+                            }}
+                          >
+                            +{fmt(opt.precioExtra)}
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              fontSize: "11px",
+                              color: "rgba(255,255,255,0.4)",
+                              marginTop: "2px",
+                            }}
+                          >
+                            Incluido
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        ) : opciones.length > 0 ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+              gap: "10px",
+            }}
+          >
+            {opciones.map((v) => {
+              const activo = v.id === varianteId;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => setVarianteId(v.id)}
+                  style={{
+                    background: activo ? "rgba(124,58,237,0.15)" : "#131313",
+                    border: activo
+                      ? "1px solid #7c3aed"
+                      : "1px solid rgba(255,255,255,0.08)",
+                    color: activo ? "#fff" : "rgba(255,255,255,0.7)",
+                    borderRadius: "12px",
+                    padding: "12px 6px",
+                    cursor: "pointer",
+                    textAlign: "center",
+                  }}
+                >
+                  <div style={{ fontSize: "13px", fontWeight: 700 }}>
+                    {v.nombre}
+                  </div>
+                  {v.precioExtra ? (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: activo ? "#a78bfa" : "rgba(255,255,255,0.4)",
+                        marginTop: "2px",
+                      }}
+                    >
+                      +{fmt(v.precioExtra)}
                     </div>
-                    {v.precioExtra ? (
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          color: activo ? "#a78bfa" : "rgba(255,255,255,0.4)",
-                          marginTop: "2px",
-                        }}
-                      >
-                        +{fmt(v.precioExtra)}
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          color: "rgba(255,255,255,0.4)",
-                          marginTop: "2px",
-                        }}
-                      >
-                        Incluido
-                      </div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "rgba(255,255,255,0.4)",
+                        marginTop: "2px",
+                      }}
+                    >
+                      Incluido
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ color: "rgba(255,255,255,0.45)", fontSize: "13px" }}>
+            Este producto no tiene opciones registradas.
           </div>
         )}
 
@@ -442,27 +701,39 @@ const ProductoDetalle = ({ producto, onClose }) => {
         <button
           type="button"
           onClick={handleAgregar}
-          disabled={noSePuedeAgregar}
+          disabled={noSePuedeAgregar || requiereSeleccionarVariante}
           style={{
             flex: 1,
             padding: "14px",
             borderRadius: "100px",
-            background: noSePuedeAgregar ? "rgba(124,58,237,0.25)" : "#7c3aed",
-            color: noSePuedeAgregar ? "rgba(255,255,255,0.5)" : "#fff",
+            background:
+              noSePuedeAgregar || requiereSeleccionarVariante
+                ? "rgba(124,58,237,0.25)"
+                : "#7c3aed",
+            color:
+              noSePuedeAgregar || requiereSeleccionarVariante
+                ? "rgba(255,255,255,0.5)"
+                : "#fff",
             fontWeight: 800,
             fontSize: "14px",
             border: "none",
-            cursor: noSePuedeAgregar ? "not-allowed" : "pointer",
-            boxShadow: noSePuedeAgregar
-              ? "none"
-              : "0 8px 32px rgba(124,58,237,0.45)",
+            cursor:
+              noSePuedeAgregar || requiereSeleccionarVariante
+                ? "not-allowed"
+                : "pointer",
+            boxShadow:
+              noSePuedeAgregar || requiereSeleccionarVariante
+                ? "none"
+                : "0 8px 32px rgba(124,58,237,0.45)",
           }}
         >
           {agotado
             ? "Agotado"
             : limiteAlcanzado
               ? "Máximo alcanzado"
-              : `Agregar · ${fmt(precioTotal)}`}
+              : requiereSeleccionarVariante
+                ? "Selecciona una opción"
+                : `Agregar · ${fmt(precioTotal)}`}
         </button>
       </div>
     </div>,
