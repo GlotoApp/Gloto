@@ -48,7 +48,6 @@ const ProductoDetalle = ({ producto, onClose }) => {
   const [opciones, setOpciones] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [selecciones, setSelecciones] = useState({});
-  const [cargandoOpciones, setCargandoOpciones] = useState(true);
   const [varianteId, setVarianteId] = useState(null);
   const [notas, setNotas] = useState("");
   const [cantidad, setCantidad] = useState(1);
@@ -202,7 +201,6 @@ const ProductoDetalle = ({ producto, onClose }) => {
       setNotas("");
       setCantidad(1);
       setVarianteId(null);
-      setCargandoOpciones(false);
     };
 
     initialize();
@@ -215,12 +213,22 @@ const ProductoDetalle = ({ producto, onClose }) => {
   if (!producto) return null;
 
   const modoGrupos = grupos.length > 0;
+
   const selectedOptions = modoGrupos
-    ? grupos
-        .map((group) =>
-          group.opciones.find((opt) => opt.id === selecciones[group.id]),
-        )
-        .filter(Boolean)
+    ? grupos.flatMap((group) => {
+        const selected = selecciones[group.id];
+        if (!selected) return [];
+
+        if (group.selectionType === "multiple") {
+          return (Array.isArray(selected) ? selected : [selected])
+            .map((id) => group.opciones.find((opt) => opt.id === id))
+            .filter(Boolean);
+        }
+
+        return group.opciones.find((opt) => opt.id === selected)
+          ? [group.opciones.find((opt) => opt.id === selected)]
+          : [];
+      })
     : [];
 
   const variante = modoGrupos
@@ -244,8 +252,20 @@ const ProductoDetalle = ({ producto, onClose }) => {
   const tieneOpcionesObligatorias = modoGrupos
     ? grupos.some((group) => group.obligatorio)
     : opciones.some((opt) => opt.obligatorio);
+
   const requiereSeleccionarVariante = modoGrupos
-    ? grupos.some((group) => group.obligatorio && !selecciones[group.id])
+    ? grupos.some((group) => {
+        if (!group.obligatorio) return false;
+
+        const selected = selecciones[group.id];
+        if (!selected) return true;
+
+        if (group.selectionType === "multiple") {
+          return !Array.isArray(selected) || selected.length === 0;
+        }
+
+        return false;
+      })
     : tieneOpcionesObligatorias && varianteId === null;
 
   // Clave exacta que ocupará esta combinación de variante + notas en el
@@ -286,349 +306,418 @@ const ProductoDetalle = ({ producto, onClose }) => {
         fontFamily: "'Inter', system-ui, sans-serif",
       }}
     >
-      {/* Imagen / emoji grande */}
       <div
         style={{
-          position: "relative",
-          height: "42vh",
-          minHeight: "240px",
-          flexShrink: 0,
-          background:
-            "radial-gradient(circle at 50% 30%, #1d1d1d 0%, #0a0a0a 70%)",
+          flex: 1,
+          overflowY: "auto",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
+          flexDirection: "column",
         }}
       >
-        <button
-          type="button"
-          onClick={onClose}
+        {/* Imagen / emoji grande */}
+        <div
           style={{
-            position: "absolute",
-            top: "16px",
-            left: "16px",
-            width: "36px",
-            height: "36px",
-            borderRadius: "50%",
-            background: "rgba(0,0,0,0.45)",
-            border: "none",
+            position: "relative",
+            height: "42vh",
+            minHeight: "300px",
+            background:
+              "radial-gradient(circle at 50% 30%, #1d1d1d 0%, #0a0a0a 70%)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            cursor: "pointer",
-            zIndex: 1,
           }}
-          aria-label="Cerrar"
         >
-          <X size={18} color="#fff" />
-        </button>
-
-        {producto.image ? (
-          <img
-            src={producto.image}
-            alt={producto.nombre}
-            onError={(event) => {
-              event.currentTarget.onerror = null;
-              event.currentTarget.src = "/default.png";
-            }}
-            style={{ width: "100%", height: "100%", objectFit: "cover" }}
-          />
-        ) : (
-          <span style={{ fontSize: "64px", fontWeight: 700, color: "#fff" }}>
-            {producto.nombre?.charAt(0).toUpperCase() || "?"}
-          </span>
-        )}
-      </div>
-
-      {/* Cuerpo scrolleable */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
-        {producto.tag && (
-          <span
+          <button
+            type="button"
+            onClick={onClose}
             style={{
-              display: "inline-block",
-              fontSize: "10px",
-              fontWeight: 700,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              color: "#a78bfa",
-              marginBottom: "6px",
+              position: "absolute",
+              top: "16px",
+              right: "16px",
+              width: "36px",
+              height: "36px",
+              borderRadius: "50%",
+              background: "rgba(0,0,0,0.45)",
+              border: "none",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              zIndex: 1,
             }}
+            aria-label="Cerrar"
           >
-            {producto.tag}
-          </span>
-        )}
+            <X size={18} color="#fff" />
+          </button>
 
-        <h2 style={{ fontSize: "20px", fontWeight: 800, margin: "0 0 6px" }}>
-          {producto.nombre}
-        </h2>
-        <p
-          style={{
-            fontSize: "13px",
-            color: "rgba(255,255,255,0.5)",
-            lineHeight: 1.6,
-            marginBottom: agotado || stockDisponible <= 5 ? "8px" : "20px",
-          }}
-        >
-          {producto.desc}
-        </p>
+          {producto.image ? (
+            <img
+              src={producto.image}
+              alt={producto.nombre}
+              onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = "/default.png";
+              }}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+            />
+          ) : (
+            <span style={{ fontSize: "64px", fontWeight: 700, color: "#fff" }}>
+              {producto.nombre?.charAt(0).toUpperCase() || "?"}
+            </span>
+          )}
+        </div>
 
-        {agotado ? (
+        <div style={{ padding: "20px" }}>
+          {producto.tag && (
+            <span
+              style={{
+                display: "inline-block",
+                fontSize: "10px",
+                fontWeight: 700,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                color: "#a78bfa",
+                marginBottom: "6px",
+              }}
+            >
+              {producto.tag}
+            </span>
+          )}
+
+          <h2 style={{ fontSize: "20px", fontWeight: 800, margin: "0 0 6px" }}>
+            {producto.nombre}
+          </h2>
           <p
             style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              color: "#e53e3e",
-              marginBottom: "20px",
+              fontSize: "13px",
+              color: "rgba(255,255,255,0.5)",
+              lineHeight: 1.6,
+              marginBottom: agotado || stockDisponible <= 5 ? "8px" : "20px",
             }}
           >
-            Producto agotado
+            {producto.desc}
           </p>
-        ) : (
-          stockDisponible <= 5 && (
+
+          {agotado ? (
             <p
               style={{
                 fontSize: "12px",
                 fontWeight: 700,
-                color: "#f6e05e",
+                color: "#e53e3e",
                 marginBottom: "20px",
               }}
             >
-              ¡Solo quedan {stockDisponible} unidades!
+              Producto agotado
             </p>
-          )
-        )}
-
-        {!agotado && yaEnCarrito > 0 && (
-          <p
-            style={{
-              fontSize: "12px",
-              fontWeight: 700,
-              color: "#a78bfa",
-              marginBottom: "20px",
-            }}
-          >
-            Ya tienes {yaEnCarrito} en tu carrito
-            {limiteAlcanzado ? " (máximo disponible)" : ""}
-          </p>
-        )}
-
-        {/* Grupos de opciones (tamaños, endulzante, etc.) */}
-        {cargandoOpciones ? (
-          <div style={{ color: "rgba(255,255,255,0.55)", fontSize: "13px" }}>
-            Cargando opciones...
-          </div>
-        ) : grupos.length > 0 ? (
-          grupos.map((group) => {
-            const seleccionActual = selecciones[group.id];
-            return (
-              <div
-                key={group.id}
+          ) : (
+            stockDisponible <= 5 && (
+              <p
                 style={{
-                  marginBottom: "22px",
-                  padding: "18px",
-                  borderRadius: "22px",
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.08)",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#f6e05e",
+                  marginBottom: "20px",
                 }}
               >
-                <div style={{ marginBottom: "12px" }}>
-                  <p
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      color: "rgba(255,255,255,0.85)",
-                      margin: 0,
-                    }}
-                  >
-                    {group.nombre}
-                  </p>
-                  {group.descripcion ? (
-                    <p
-                      style={{
-                        fontSize: "11px",
-                        color: "rgba(255,255,255,0.55)",
-                        margin: "6px 0 0",
-                      }}
-                    >
-                      {group.descripcion}
-                    </p>
-                  ) : null}
-                  {group.obligatorio && (
-                    <span
-                      style={{
-                        display: "inline-block",
-                        marginTop: "8px",
-                        fontSize: "11px",
-                        color: "#fbbf24",
-                        fontWeight: 700,
-                      }}
-                    >
-                      Obligatorio
-                    </span>
-                  )}
-                </div>
+                ¡Solo quedan {stockDisponible} unidades!
+              </p>
+            )
+          )}
 
+          {/* Grupos de opciones (tamaños, endulzante, etc.) */}
+          {grupos.length > 0 ? (
+            grupos.map((group) => {
+              const seleccionActual = selecciones[group.id];
+              const selectedValues = Array.isArray(seleccionActual)
+                ? seleccionActual
+                : seleccionActual
+                  ? [seleccionActual]
+                  : [];
+              const helperText = `${group.selectionType === "multiple" ? "Selecciona varias" : "Elige una"}${group.descripcion ? ` · ${group.descripcion}` : ""}`;
+
+              return (
                 <div
+                  key={group.id}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                    gap: "10px",
+                    marginBottom: "18px",
+                    padding: "16px",
+                    borderRadius: "18px",
+                    background: "rgba(255,255,255,0.03)",
                   }}
                 >
-                  {group.opciones.map((opt) => {
-                    const activo = seleccionActual === opt.id;
-                    return (
-                      <button
-                        key={opt.id}
-                        type="button"
-                        onClick={() =>
-                          setSelecciones((prev) => ({
-                            ...prev,
-                            [group.id]: opt.id,
-                          }))
-                        }
+                  <div style={{ marginBottom: "12px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: "10px",
+                        alignItems: "center",
+                      }}
+                    >
+                      <p
                         style={{
-                          background: activo
-                            ? "rgba(124,58,237,0.15)"
-                            : "#131313",
-                          border: activo
-                            ? "1px solid #7c3aed"
-                            : "1px solid rgba(255,255,255,0.08)",
-                          color: activo ? "#fff" : "rgba(255,255,255,0.7)",
-                          borderRadius: "12px",
-                          padding: "12px 10px",
-                          cursor: "pointer",
-                          textAlign: "center",
+                          fontSize: "15px",
+                          fontWeight: 700,
+                          color: "#fff",
+                          margin: 0,
                         }}
                       >
-                        <div style={{ fontSize: "13px", fontWeight: 700 }}>
-                          {opt.nombre}
-                        </div>
-                        {opt.precioExtra ? (
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              color: activo
-                                ? "#a78bfa"
-                                : "rgba(255,255,255,0.4)",
-                              marginTop: "2px",
-                            }}
-                          >
-                            +{fmt(opt.precioExtra)}
-                          </div>
-                        ) : (
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              color: "rgba(255,255,255,0.4)",
-                              marginTop: "2px",
-                            }}
-                          >
-                            Incluido
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })
-        ) : opciones.length > 0 ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-              gap: "10px",
-            }}
-          >
-            {opciones.map((v) => {
-              const activo = v.id === varianteId;
-              return (
-                <button
-                  key={v.id}
-                  type="button"
-                  onClick={() => setVarianteId(v.id)}
-                  style={{
-                    background: activo ? "rgba(124,58,237,0.15)" : "#131313",
-                    border: activo
-                      ? "1px solid #7c3aed"
-                      : "1px solid rgba(255,255,255,0.08)",
-                    color: activo ? "#fff" : "rgba(255,255,255,0.7)",
-                    borderRadius: "12px",
-                    padding: "12px 6px",
-                    cursor: "pointer",
-                    textAlign: "center",
-                  }}
-                >
-                  <div style={{ fontSize: "13px", fontWeight: 700 }}>
-                    {v.nombre}
+                        {group.nombre}
+                      </p>
+                      {group.obligatorio && (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            padding: "4px 10px",
+                            borderRadius: "999px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "#fefce8",
+                            background: "rgba(251,191,36,0.16)",
+                          }}
+                        >
+                          Obligatorio
+                        </span>
+                      )}
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "4px 10px",
+                          borderRadius: "999px",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "rgba(255,255,255,0.85)",
+                          background: "rgba(255,255,255,0.05)",
+                        }}
+                      >
+                        {group.selectionType === "multiple"
+                          ? "Selecciona varias"
+                          : "Elige una"}
+                      </span>
+                    </div>
+                    {group.descripcion ? (
+                      <p
+                        style={{
+                          fontSize: "12px",
+                          color: "rgba(255,255,255,0.65)",
+                          margin: "10px 0 0",
+                        }}
+                      >
+                        {group.descripcion}
+                      </p>
+                    ) : null}
                   </div>
-                  {v.precioExtra ? (
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: activo ? "#a78bfa" : "rgba(255,255,255,0.4)",
-                        marginTop: "2px",
-                      }}
-                    >
-                      +{fmt(v.precioExtra)}
-                    </div>
-                  ) : (
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: "rgba(255,255,255,0.4)",
-                        marginTop: "2px",
-                      }}
-                    >
-                      Incluido
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div style={{ color: "rgba(255,255,255,0.45)", fontSize: "13px" }}>
-            Este producto no tiene opciones registradas.
-          </div>
-        )}
 
-        {/* Indicaciones / notas para este producto */}
-        <div style={{ marginBottom: "12px" }}>
-          <label
-            htmlFor="notas-producto"
-            style={{
-              display: "block",
-              fontSize: "12px",
-              fontWeight: 700,
-              color: "rgba(255,255,255,0.7)",
-              marginBottom: "8px",
-            }}
-          >
-            Indicaciones para este producto
-          </label>
-          <textarea
-            id="notas-producto"
-            value={notas}
-            onChange={(e) => setNotas(e.target.value)}
-            placeholder="Ej: sin cebolla, salsa aparte, bien cocido..."
-            rows={3}
-            style={{
-              width: "100%",
-              resize: "vertical",
-              background: "#131313",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: "14px",
-              padding: "12px 14px",
-              color: "#fff",
-              fontSize: "13px",
-              fontFamily: "inherit",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                    }}
+                  >
+                    {group.opciones.map((opt) => {
+                      const activo = selectedValues.includes(opt.id);
+
+                      return (
+                        <button
+                          key={opt.id}
+                          type="button"
+                          onClick={() =>
+                            setSelecciones((prev) => {
+                              const current = prev[group.id];
+                              const values = Array.isArray(current)
+                                ? current
+                                : current
+                                  ? [current]
+                                  : [];
+
+                              if (group.selectionType === "multiple") {
+                                const nextValues = values.includes(opt.id)
+                                  ? values.filter((id) => id !== opt.id)
+                                  : [...values, opt.id];
+
+                                return {
+                                  ...prev,
+                                  [group.id]: nextValues,
+                                };
+                              }
+
+                              return {
+                                ...prev,
+                                [group.id]: values.includes(opt.id)
+                                  ? null
+                                  : opt.id,
+                              };
+                            })
+                          }
+                          style={{
+                            width: "100%",
+                            background: activo
+                              ? "rgba(255,255,255,0.08)"
+                              : "transparent",
+                            border: activo
+                              ? "1px solid rgba(124,58,237,0.8)"
+                              : "1px solid rgba(255,255,255,0.10)",
+                            color: "rgba(255,255,255,0.92)",
+                            borderRadius: "14px",
+                            padding: "14px 16px",
+                            cursor: "pointer",
+                            textAlign: "left",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "14px",
+                            transition:
+                              "border-color 150ms ease, background 150ms ease",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: "18px",
+                                height: "18px",
+                                borderRadius: "6px",
+                                border: activo
+                                  ? "1px solid #7c3aed"
+                                  : "1px solid rgba(255,255,255,0.25)",
+                                background: activo ? "#7c3aed" : "transparent",
+                                color: activo ? "#fff" : "transparent",
+                                fontSize: "12px",
+                                fontWeight: 800,
+                              }}
+                            >
+                              ✓
+                            </span>
+                            <div
+                              style={{
+                                fontSize: "14px",
+                                fontWeight: 700,
+                                lineHeight: 1.3,
+                              }}
+                            >
+                              {opt.nombre}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              color: "rgba(255,255,255,0.55)",
+                            }}
+                          >
+                            {opt.precioExtra
+                              ? `+${fmt(opt.precioExtra)}`
+                              : "Incluido"}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })
+          ) : opciones.length > 0 ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+                gap: "10px",
+              }}
+            >
+              {opciones.map((v) => {
+                const activo = v.id === varianteId;
+                return (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => setVarianteId(v.id)}
+                    style={{
+                      background: activo ? "rgba(124,58,237,0.15)" : "#131313",
+                      border: activo
+                        ? "1px solid #7c3aed"
+                        : "1px solid rgba(255,255,255,0.08)",
+                      color: activo ? "#fff" : "rgba(255,255,255,0.7)",
+                      borderRadius: "12px",
+                      padding: "12px 6px",
+                      cursor: "pointer",
+                      textAlign: "center",
+                    }}
+                  >
+                    <div style={{ fontSize: "13px", fontWeight: 700 }}>
+                      {v.nombre}
+                    </div>
+                    {v.precioExtra ? (
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: activo ? "#a78bfa" : "rgba(255,255,255,0.4)",
+                          marginTop: "2px",
+                        }}
+                      >
+                        +{fmt(v.precioExtra)}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          color: "rgba(255,255,255,0.4)",
+                          marginTop: "2px",
+                        }}
+                      >
+                        Incluido
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
+
+          {/* Indicaciones / notas para este producto */}
+          <div style={{ marginBottom: "12px" }}>
+            <label
+              htmlFor="notas-producto"
+              style={{
+                display: "block",
+                fontSize: "12px",
+                fontWeight: 700,
+                color: "rgba(255,255,255,0.7)",
+                marginBottom: "8px",
+              }}
+            >
+              Indicaciones extras (opcional)
+            </label>
+            <textarea
+              id="notas-producto"
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+              placeholder="Añade indicaciones extras aquí..."
+              rows={3}
+              style={{
+                width: "100%",
+                resize: "vertical",
+                background: "#131313",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "14px",
+                padding: "12px 14px",
+                color: "#fff",
+                fontSize: "13px",
+                fontFamily: "inherit",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -642,6 +731,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
           paddingBottom: "calc(16px + env(safe-area-inset-bottom))",
           borderTop: "1px solid #1a1a1a",
           flexShrink: 0,
+          background: "#050505",
         }}
       >
         <div

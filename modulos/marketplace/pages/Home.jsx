@@ -114,6 +114,10 @@ const FRASES = [
 
 const FRASES_LOOP = [...FRASES, ...FRASES];
 
+const SkeletonBlock = ({ className = "", rounded = "rounded-2xl" }) => (
+  <div className={`animate-pulse bg-background ${rounded} ${className}`} />
+);
+
 const Home = () => {
   const nombreUsuario = "Juan";
   const navigate = useNavigate();
@@ -318,6 +322,74 @@ const Home = () => {
       prev === nombreCategoria ? null : nombreCategoria,
     );
   };
+
+  const renderLoadingState = () => (
+    <div className="max-w-6xl mx-auto bg-background min-h-screen px-4 pt-4 pb-8">
+      <section className="mb-6">
+        <SkeletonBlock className="h-4 w-24 mb-2" />
+        <SkeletonBlock className="h-8 w-3/4 mb-4" />
+        <SkeletonBlock className="h-11 w-full rounded-3xl" />
+      </section>
+
+      <section className="mb-5">
+        <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+          {Array.from({ length: 8 }).map((_, idx) => (
+            <div
+              key={`cat-skeleton-${idx}`}
+              className="flex-shrink-0 flex flex-col items-center gap-2"
+            >
+              <SkeletonBlock className="h-14 w-14" rounded="rounded-2xl" />
+              <SkeletonBlock className="h-3 w-10" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-5">
+        <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <SkeletonBlock
+              key={`promo-skeleton-${idx}`}
+              className="h-24 w-[190px]"
+            />
+          ))}
+        </div>
+      </section>
+
+      <section className="mb-5">
+        <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
+          {Array.from({ length: 5 }).map((_, idx) => (
+            <SkeletonBlock
+              key={`filter-skeleton-${idx}`}
+              className="h-8 w-20"
+            />
+          ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="grid grid-cols-2 gap-4">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div
+              key={`tienda-skeleton-${idx}`}
+              className="flex flex-col rounded-3xl bg-surface border border-outline/30 p-3"
+            >
+              <SkeletonBlock className="h-24 w-full mb-3" />
+              <SkeletonBlock className="h-3.5 w-3/4 mb-2" />
+              <SkeletonBlock className="h-2.5 w-1/2 mb-3" />
+              <SkeletonBlock className="h-2.5 w-full" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <div className="mt-6 text-center text-sm font-medium text-on-surface-variant/70">
+        Estamos preparando todo para ti...
+      </div>
+    </div>
+  );
+
+  if (cargando) return renderLoadingState();
 
   return (
     <div className="max-w-6xl mx-auto bg-background min-h-screen">
@@ -560,23 +632,7 @@ const Home = () => {
 
       {!verTodasPromos && (
         <section className="px-5">
-          {cargando ? (
-            // ── SKELETON ── mismo grid de 2 columnas que las tarjetas
-            // reales, para que no haya salto de layout al llegar los datos.
-            <div className="grid grid-cols-2 gap-4 pb-8">
-              {Array.from({ length: 6 }).map((_, idx) => (
-                <div
-                  key={`tienda-skeleton-${idx}`}
-                  className="flex flex-col rounded-3xl bg-surface border border-outline/30 p-3"
-                >
-                  <div className="h-24 rounded-2xl bg-background animate-pulse mb-3" />
-                  <div className="h-3.5 w-3/4 rounded-md bg-background animate-pulse mb-2" />
-                  <div className="h-2.5 w-1/2 rounded-md bg-background animate-pulse mb-3" />
-                  <div className="h-2.5 w-full rounded-md bg-background animate-pulse" />
-                </div>
-              ))}
-            </div>
-          ) : tiendasOrdenadas.length === 0 ? (
+          {tiendasOrdenadas.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-12 text-on-surface-variant/60">
               <Search size={28} className="mb-2 opacity-50" />
               <p className="text-base font-bold">
