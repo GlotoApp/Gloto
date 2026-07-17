@@ -121,7 +121,6 @@ const SkeletonBlock = ({ className = "", rounded = "rounded-2xl" }) => (
 );
 
 const Home = () => {
-  const nombreUsuario = "Juan";
   const navigate = useNavigate();
 
   const [busqueda, setBusqueda] = useState("");
@@ -362,11 +361,14 @@ const Home = () => {
       <section className="mb-5">
         <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
           {Array.from({ length: 3 }).map((_, idx) => (
-            <div key={`promo-skeleton-${idx}`} className="w-[190px]">
+            <div
+              key={`promo-skeleton-${idx}`}
+              className="w-[140px] sm:w-[160px] md:w-[190px]"
+            >
               <SkeletonBlock className="h-24 w-full rounded-3xl" />
             </div>
           ))}
-          <div className="flex-shrink-0 w-[120px]">
+          <div className="flex-shrink-0 w-[110px] sm:w-[120px]">
             <SkeletonBlock className="h-24 w-full rounded-3xl" />
           </div>
         </div>
@@ -384,11 +386,11 @@ const Home = () => {
       </section>
 
       <section>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 8 }).map((_, idx) => (
             <div
               key={`tienda-skeleton-${idx}`}
-              className="flex flex-col rounded-3xl bg-surface border border-outline/30 p-3"
+              className="flex flex-col rounded-3xl bg-transparent p-3"
             >
               <SkeletonBlock className="h-24 w-full mb-3 rounded-3xl" />
               <SkeletonBlock className="h-3.5 w-3/4 mb-2 rounded-full" />
@@ -412,33 +414,25 @@ const Home = () => {
       {/* HERO */}
       <section className="px-4 pt-4 pb-4">
         {!buscando && !modoCategoria && !verTodasPromos && (
-          <>
-            <p className="text-[16px] mb-1 text-on-surface-variant/60">
-              ¡Hola, {nombreUsuario}!
-            </p>
-
-            <div className="h-[72px] overflow-hidden mb-5">
-              <div
-                className={
-                  animando
-                    ? "transition-transform duration-700 ease-in-out"
-                    : ""
-                }
-                style={{
-                  transform: `translateY(-${textoIndex * 72}px)`,
-                }}
-              >
-                {FRASES_LOOP.map((frase, index) => (
-                  <h1
-                    key={index}
-                    className="h-[72px] flex items-center font-black leading-none tracking-tighter text-[clamp(2rem,8vw,2.75rem)] text-on-surface"
-                  >
-                    <span className="text-primary">{frase}</span>
-                  </h1>
-                ))}
-              </div>
+          <div className="h-[72px] overflow-hidden mb-5">
+            <div
+              className={
+                animando ? "transition-transform duration-700 ease-in-out" : ""
+              }
+              style={{
+                transform: `translateY(-${textoIndex * 72}px)`,
+              }}
+            >
+              {FRASES_LOOP.map((frase, index) => (
+                <h1
+                  key={index}
+                  className="h-[72px] flex items-center font-black leading-none tracking-tighter text-[clamp(2rem,8vw,2.75rem)] text-on-surface"
+                >
+                  <span className="text-primary">{frase}</span>
+                </h1>
+              ))}
             </div>
-          </>
+          </div>
         )}
 
         {/* BUSCADOR SIEMPRE VISIBLE */}
@@ -527,7 +521,7 @@ const Home = () => {
               <Link
                 key={promo.id}
                 to={`/marketplace/tienda/${promo.slug}`}
-                className="relative flex-shrink-0 w-[190px] h-[105px] rounded-3xl bg-primary-container/80 overflow-hidden"
+                className="relative flex-shrink-0 w-[140px] sm:w-[160px] md:w-[190px] h-[105px] rounded-3xl bg-primary-container/80 overflow-hidden"
               >
                 <div className="absolute top-3 left-3 px-2 py-1 rounded-full text-[8px] font-bold bg-white/10 text-white/70">
                   {promo.tag}
@@ -545,7 +539,7 @@ const Home = () => {
 
           <button
             onClick={() => setVerTodasPromos(true)}
-            className="flex-shrink-0 w-[120px] h-[105px] rounded-3xl bg-surface flex flex-col items-center justify-center gap-2 hover:border-primary-container hover:text-primary-container transition-all"
+            className="flex-shrink-0 w-[110px] sm:w-[120px] h-[105px] rounded-3xl bg-surface flex flex-col items-center justify-center gap-2 hover:border-primary-container hover:text-primary-container transition-all"
           >
             <ArrowRight size={24} />
             <span className="text-xs font-bold">Ver más</span>
@@ -555,7 +549,7 @@ const Home = () => {
 
       {/* FILTROS (STICKY SE COMPORTA COMO PARTE DEL HEADER, se oculta mientras se busca) */}
       {!buscando && !modoCategoria && !verTodasPromos && (
-        <section className="sticky top-[54px] bg-background z-40 px-2 pt-2">
+        <section className="sticky top-14 sm:top-[54px] bg-background z-40 px-2 pt-2">
           <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar mb-2">
             {FILTROS.map((f) => (
               <button
@@ -670,7 +664,7 @@ const Home = () => {
                   className="group relative flex items-center gap-3 rounded-3xl bg-surface border border-outline/30 p-3 transition-all duration-300 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10"
                 >
                   {/* Logo */}
-                  <div className="relative flex-shrink-0 flex items-center justify-center w-20 h-20 rounded-2xl bg-background border border-outline/10 overflow-hidden">
+                  <div className="relative flex-shrink-0 flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-background border border-outline/10 overflow-hidden">
                     <img
                       src={t.logo}
                       alt={t.nombre}
@@ -729,15 +723,15 @@ const Home = () => {
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-4 pb-8">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-4 pb-8">
               {tiendasOrdenadas.map((t) => (
                 <Link
                   key={t.slug}
                   to={`/marketplace/tienda/${t.slug}`}
-                  className="group relative flex flex-col rounded-3xl bg-surface border border-outline/30 p-3 transition-all duration-300 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10"
+                  className="group relative flex flex-col rounded-3xl bg-surface  p-3 transition-all duration-300 hover:shadow-lg hover:shadow-primary-container/10"
                 >
                   {/* Contenedor del Logo con fondo sutil */}
-                  <div className="relative flex items-center justify-center h-24 rounded-2xl bg-background border border-outline/10 mb-3 overflow-hidden">
+                  <div className="relative flex items-center justify-center h-20 sm:h-24 rounded-2xl bg-background border border-outline/10 mb-3 overflow-hidden">
                     <img
                       src={t.logo}
                       alt={t.nombre}
