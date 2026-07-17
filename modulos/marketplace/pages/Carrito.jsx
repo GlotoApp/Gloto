@@ -99,7 +99,7 @@ const Carrito = ({ onIrAPagar }) => {
           display: "flex",
           alignItems: "center",
           gap: "12px",
-          padding: "16px 20px",
+          padding: "11px 4px",
           borderBottom: "1px solid #1a1a1a",
           flexShrink: 0,
         }}
@@ -111,8 +111,6 @@ const Carrito = ({ onIrAPagar }) => {
             width: "36px",
             height: "36px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.06)",
-            border: "none",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -125,8 +123,8 @@ const Carrito = ({ onIrAPagar }) => {
         </button>
         <div
           style={{
-            width: "50px",
-            height: "50px",
+            width: "40px",
+            height: "40px",
             borderRadius: "12px",
             overflow: "hidden",
             display: "flex",
@@ -213,7 +211,7 @@ const Carrito = ({ onIrAPagar }) => {
                     alignItems: "center",
                     gap: "14px",
                     padding: "14px 20px",
-                    borderBottom: "1px solid #131313",
+                    borderBottom: "1px solid #222222",
                   }}
                 >
                   <button
@@ -273,18 +271,49 @@ const Carrito = ({ onIrAPagar }) => {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <h4
                       style={{
-                        fontSize: "13px",
+                        fontSize: "15px",
                         fontWeight: 700,
-                        marginBottom: "4px",
+                        marginBottom: "6px",
                       }}
                     >
-                      {p.nombre}
+                      {p.varianteNombre
+                        ? p.nombre.replace(` · ${p.varianteNombre}`, "")
+                        : p.nombre}
                     </h4>
+                    {p.varianteNombre && (
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: "4px",
+                          marginBottom: "10px",
+                        }}
+                      >
+                        {p.varianteNombre.split(" · ").map((opt) => (
+                          <span
+                            key={opt}
+                            style={{
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              color: "#fff",
+                              background: "rgba(124,58,237,0.16)",
+                              padding: "5px 5px",
+                              borderRadius: "999px",
+                              lineHeight: 1.4,
+                            }}
+                          >
+                            {opt}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <span
                       style={{
-                        fontSize: "13px",
+                        fontSize: "14px",
                         fontWeight: 800,
                         color: "#fff",
+                        display: "block",
+                        marginBottom: p.notas ? "6px" : "0",
                       }}
                     >
                       {fmt(p.precio * qty)}
@@ -292,11 +321,11 @@ const Carrito = ({ onIrAPagar }) => {
                     {p.notas && (
                       <p
                         style={{
-                          fontSize: "11.5px",
-                          color: "rgba(255,255,255,0.4)",
+                          fontSize: "13px",
+                          color: "rgba(255,255,255,0.65)",
                           fontStyle: "italic",
-                          margin: "4px 0 0",
-                          lineHeight: 1.4,
+                          margin: "0 0 4px",
+                          lineHeight: 1.5,
                         }}
                       >
                         "{p.notas}"
@@ -305,7 +334,7 @@ const Carrito = ({ onIrAPagar }) => {
                     {alcanzoStock && (
                       <p
                         style={{
-                          fontSize: "11px",
+                          fontSize: "12px",
                           fontWeight: 700,
                           color: "#f6e05e",
                           margin: "4px 0 0",
@@ -385,14 +414,12 @@ const Carrito = ({ onIrAPagar }) => {
         {items.length > 0 && (
           <>
             {/* Observaciones generales */}
-            <div
-              style={{ padding: "16px 20px", borderTop: "1px solid #1a1a1a" }}
-            >
+            <div style={{ padding: "16px 20px" }}>
               <label
                 htmlFor="observaciones-pedido"
                 style={{
                   display: "block",
-                  fontSize: "12px",
+                  fontSize: "14px",
                   fontWeight: 700,
                   color: "rgba(255,255,255,0.7)",
                   marginBottom: "8px",
@@ -404,17 +431,16 @@ const Carrito = ({ onIrAPagar }) => {
                 id="observaciones-pedido"
                 value={observaciones}
                 onChange={(e) => setObservaciones(e.target.value)}
-                placeholder="Ej: sin cebolla, traer cubiertos, tocar el timbre..."
+                placeholder="Instrucción especial para tu pedido aquí..."
                 rows={3}
                 style={{
                   width: "100%",
                   resize: "vertical",
                   background: "#131313",
-                  border: "1px solid rgba(255,255,255,0.08)",
                   borderRadius: "14px",
                   padding: "12px 14px",
                   color: "#fff",
-                  fontSize: "13px",
+                  fontSize: "16px",
                   fontFamily: "inherit",
                   outline: "none",
                   boxSizing: "border-box",
@@ -476,9 +502,7 @@ const Carrito = ({ onIrAPagar }) => {
                         background: activo
                           ? "rgba(124,58,237,0.15)"
                           : "#131313",
-                        border: activo
-                          ? "1px solid #7c3aed"
-                          : "1px solid rgba(255,255,255,0.08)",
+
                         color: activo ? "#fff" : "rgba(255,255,255,0.7)",
                         padding: "12px 4px",
                         borderRadius: "12px",

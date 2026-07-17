@@ -441,7 +441,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
                   style={{
                     marginBottom: "18px",
                     padding: "16px",
-                    borderRadius: "18px",
+                    borderRadius: "8px",
                     background: "rgba(255,255,255,0.03)",
                   }}
                 >
@@ -524,6 +524,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
                         <button
                           key={opt.id}
                           type="button"
+                          aria-pressed={activo}
                           onClick={() =>
                             setSelecciones((prev) => {
                               const current = prev[group.id];
@@ -555,22 +556,25 @@ const ProductoDetalle = ({ producto, onClose }) => {
                           style={{
                             width: "100%",
                             background: activo
-                              ? "rgba(255,255,255,0.08)"
-                              : "transparent",
+                              ? "linear-gradient(135deg, rgba(124,58,237,0.22), rgba(124,58,237,0.12))"
+                              : "#090909",
                             border: activo
-                              ? "1px solid rgba(124,58,237,0.8)"
+                              ? "1px solid #7c3aed"
                               : "1px solid rgba(255,255,255,0.10)",
-                            color: "rgba(255,255,255,0.92)",
-                            borderRadius: "14px",
-                            padding: "14px 16px",
+                            color: activo ? "#fff" : "rgba(255,255,255,0.92)",
+                            borderRadius: "20px",
+                            padding: "16px 18px",
                             cursor: "pointer",
                             textAlign: "left",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "space-between",
                             gap: "14px",
+                            boxShadow: activo
+                              ? "0 20px 35px rgba(124,58,237,0.12)"
+                              : "none",
                             transition:
-                              "border-color 150ms ease, background 150ms ease",
+                              "border-color 150ms ease, background 150ms ease, box-shadow 150ms ease",
                           }}
                         >
                           <div
@@ -585,9 +589,9 @@ const ProductoDetalle = ({ producto, onClose }) => {
                                 display: "inline-flex",
                                 alignItems: "center",
                                 justifyContent: "center",
-                                width: "18px",
-                                height: "18px",
-                                borderRadius: "6px",
+                                width: "20px",
+                                height: "20px",
+                                borderRadius: "999px",
                                 border: activo
                                   ? "1px solid #7c3aed"
                                   : "1px solid rgba(255,255,255,0.25)",
@@ -601,9 +605,12 @@ const ProductoDetalle = ({ producto, onClose }) => {
                             </span>
                             <div
                               style={{
-                                fontSize: "14px",
+                                fontSize: "15px",
                                 fontWeight: 700,
                                 lineHeight: 1.3,
+                                color: activo
+                                  ? "#fff"
+                                  : "rgba(255,255,255,0.92)",
                               }}
                             >
                               {opt.nombre}
@@ -611,8 +618,11 @@ const ProductoDetalle = ({ producto, onClose }) => {
                           </div>
                           <div
                             style={{
-                              fontSize: "12px",
-                              color: "rgba(255,255,255,0.55)",
+                              fontSize: "14px",
+                              color: activo
+                                ? "#d8b4fe"
+                                : "rgba(255,255,255,0.65)",
+                              fontWeight: activo ? 700 : 500,
                             }}
                           >
                             {opt.precioExtra
@@ -640,28 +650,34 @@ const ProductoDetalle = ({ producto, onClose }) => {
                   <button
                     key={v.id}
                     type="button"
+                    aria-pressed={activo}
                     onClick={() => setVarianteId(v.id)}
                     style={{
-                      background: activo ? "rgba(124,58,237,0.15)" : "#131313",
+                      background: activo ? "#7c3aed" : "#080808",
                       border: activo
                         ? "1px solid #7c3aed"
                         : "1px solid rgba(255,255,255,0.08)",
-                      color: activo ? "#fff" : "rgba(255,255,255,0.7)",
-                      borderRadius: "12px",
-                      padding: "12px 6px",
+                      color: activo ? "#fff" : "rgba(255,255,255,0.75)",
+                      borderRadius: "18px",
+                      padding: "16px 14px",
                       cursor: "pointer",
                       textAlign: "center",
+                      boxShadow: activo
+                        ? "0 18px 32px rgba(124,58,237,0.2)"
+                        : "none",
+                      transition:
+                        "background 150ms ease, border-color 150ms ease, box-shadow 150ms ease",
                     }}
                   >
-                    <div style={{ fontSize: "13px", fontWeight: 700 }}>
+                    <div style={{ fontSize: "15px", fontWeight: 700 }}>
                       {v.nombre}
                     </div>
                     {v.precioExtra ? (
                       <div
                         style={{
-                          fontSize: "11px",
-                          color: activo ? "#a78bfa" : "rgba(255,255,255,0.4)",
-                          marginTop: "2px",
+                          fontSize: "14px",
+                          color: activo ? "#f8f7ff" : "rgba(255,255,255,0.55)",
+                          marginTop: "4px",
                         }}
                       >
                         +{fmt(v.precioExtra)}
@@ -669,9 +685,9 @@ const ProductoDetalle = ({ producto, onClose }) => {
                     ) : (
                       <div
                         style={{
-                          fontSize: "11px",
-                          color: "rgba(255,255,255,0.4)",
-                          marginTop: "2px",
+                          fontSize: "14px",
+                          color: activo ? "#d8b4fe" : "rgba(255,255,255,0.5)",
+                          marginTop: "4px",
                         }}
                       >
                         Incluido
@@ -689,7 +705,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
               htmlFor="notas-producto"
               style={{
                 display: "block",
-                fontSize: "12px",
+                fontSize: "16px",
                 fontWeight: 700,
                 color: "rgba(255,255,255,0.7)",
                 marginBottom: "8px",

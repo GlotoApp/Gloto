@@ -32,7 +32,7 @@ const DEFINICION_ETAPAS = {
     Icon: Clock,
   },
   preparando: {
-    label: "Preparando en cocina",
+    label: "Preparando",
     desc: "Tu pedido se está preparando.",
     Icon: Flame,
   },
@@ -74,7 +74,8 @@ const ENTREGA_LABEL = {
 };
 
 const SeguimientoPedido = ({ onCerrar }) => {
-  const { pedidoActivo, estadoPedido, avanzarEstadoPedido } = useCart();
+  const { pedidoActivo, estadoPedido, avanzarEstadoPedido, logoTienda } =
+    useCart();
 
   // Simulación de avance automático del estado del pedido (demo).
   // En producción, este estado debería actualizarse desde el backend/tienda.
@@ -148,7 +149,6 @@ const SeguimientoPedido = ({ onCerrar }) => {
             width: "36px",
             height: "36px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.06)",
             border: "none",
             display: "flex",
             alignItems: "center",
@@ -161,19 +161,56 @@ const SeguimientoPedido = ({ onCerrar }) => {
           <Store size={18} color="#fff" />
         </button>
 
-        <div style={{ minWidth: 0, textAlign: "right" }}>
-          <h2 style={{ fontSize: "16px", fontWeight: 800, margin: 0 }}>
-            Pedido {pedidoActivo.numero}
-          </h2>
-          <p
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            marginLeft: "auto",
+          }}
+        >
+          <div style={{ textAlign: "right", minWidth: 0 }}>
+            <h2 style={{ fontSize: "16px", fontWeight: 800, margin: 0 }}>
+              Pedido {pedidoActivo.numero}
+            </h2>
+            <p
+              style={{
+                fontSize: "12px",
+                color: "rgba(255,255,255,0.45)",
+                margin: 0,
+              }}
+            >
+              {pedidoActivo.nombreTienda}
+            </p>
+          </div>
+
+          <div
             style={{
-              fontSize: "12px",
-              color: "rgba(255,255,255,0.45)",
-              margin: 0,
+              width: "40px",
+              height: "40px",
+              borderRadius: "12px",
+              background: "#131313",
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
             }}
           >
-            {pedidoActivo.nombreTienda}
-          </p>
+            {logoTienda ? (
+              <img
+                src={logoTienda}
+                alt={`Logo de ${pedidoActivo.nombreTienda}`}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                onError={(event) => {
+                  event.currentTarget.onerror = null;
+                  event.currentTarget.src = "/default.png";
+                }}
+              />
+            ) : (
+              <Store size={24} style={{ color: "rgba(255,255,255,0.3)" }} />
+            )}
+          </div>
         </div>
       </div>
 

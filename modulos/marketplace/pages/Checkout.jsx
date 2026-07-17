@@ -58,7 +58,7 @@ const inputStyle = {
   borderRadius: "14px",
   padding: "12px 14px 12px 42px",
   color: "#fff",
-  fontSize: "13px",
+  fontSize: "16px",
   fontFamily: "inherit",
   outline: "none",
   boxSizing: "border-box",
@@ -89,6 +89,7 @@ const labelStyle = {
 const Checkout = ({ onVolver, onConfirmar }) => {
   const {
     nombreTienda,
+    logoTienda,
     totalPrecio,
     metodoEntrega,
     setMetodoEntrega,
@@ -121,7 +122,7 @@ const Checkout = ({ onVolver, onConfirmar }) => {
           display: "flex",
           alignItems: "center",
           gap: "12px",
-          padding: "16px 20px",
+          padding: "11px 4px",
           borderBottom: "1px solid #1a1a1a",
           flexShrink: 0,
         }}
@@ -133,7 +134,6 @@ const Checkout = ({ onVolver, onConfirmar }) => {
             width: "36px",
             height: "36px",
             borderRadius: "50%",
-            background: "rgba(255,255,255,0.06)",
             border: "none",
             display: "flex",
             alignItems: "center",
@@ -145,6 +145,33 @@ const Checkout = ({ onVolver, onConfirmar }) => {
         >
           <ChevronLeft size={20} color="#fff" />
         </button>
+        <div
+          style={{
+            width: "40px",
+            height: "40px",
+            borderRadius: "12px",
+            background: "#131313",
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          {logoTienda ? (
+            <img
+              src={logoTienda}
+              alt={`Logo de ${nombreTienda}`}
+              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              onError={(event) => {
+                event.currentTarget.onerror = null;
+                event.currentTarget.src = "/default.png";
+              }}
+            />
+          ) : (
+            <Store size={24} style={{ color: "rgba(255,255,255,0.3)" }} />
+          )}
+        </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <h2 style={{ fontSize: "16px", fontWeight: 800, margin: 0 }}>
             Entrega
@@ -185,9 +212,6 @@ const Checkout = ({ onVolver, onConfirmar }) => {
                 onClick={() => setMetodoEntrega(id)}
                 style={{
                   background: activo ? "rgba(124,58,237,0.15)" : "#131313",
-                  border: activo
-                    ? "1px solid #7c3aed"
-                    : "1px solid rgba(255,255,255,0.08)",
                   color: activo ? "#fff" : "rgba(255,255,255,0.7)",
                   // Ajusté el padding horizontal un poco para que quepan mejor 4 en fila
                   padding: "12px 4px",
