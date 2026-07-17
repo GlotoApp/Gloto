@@ -133,7 +133,6 @@ const Home = () => {
   const [busquedaPromo, setBusquedaPromo] = useState("");
   const [tiendas, setTiendas] = useState([]);
   const [cargando, setCargando] = useState(true);
-  const [showingSkeleton, setShowingSkeleton] = useState(false);
 
   // Obtener negocios de Supabase
   useEffect(() => {
@@ -328,33 +327,11 @@ const Home = () => {
     }
   })();
 
-  // Selecciona/deselecciona una categoría (toggle) con skeleton temporal
-  const handleToggleCategoria = (nombreCategoria) => {
-    setShowingSkeleton(true);
-    setTimeout(() => {
-      setCategoriaActiva((prev) =>
-        prev === nombreCategoria ? null : nombreCategoria,
-      );
-      setShowingSkeleton(false);
-    }, 250);
-  };
-
-  // Cambia filtro con skeleton temporal
-  const handleSetFiltro = (filtro) => {
-    setShowingSkeleton(true);
-    setTimeout(() => {
-      setFiltroActivo(filtro);
-      setShowingSkeleton(false);
-    }, 200);
-  };
-
-  // Mostrar 'Ver todas promos' con skeleton temporal
-  const handleVerTodasPromos = () => {
-    setShowingSkeleton(true);
-    setTimeout(() => {
-      setVerTodasPromos(true);
-      setShowingSkeleton(false);
-    }, 250);
+  // Selecciona/deselecciona una categoría (toggle)
+  const toggleCategoria = (nombreCategoria) => {
+    setCategoriaActiva((prev) =>
+      prev === nombreCategoria ? null : nombreCategoria,
+    );
   };
 
   const renderLoadingState = () => (
@@ -428,7 +405,7 @@ const Home = () => {
     </div>
   );
 
-  if (cargando || showingSkeleton) return renderLoadingState();
+  if (cargando) return renderLoadingState();
 
   return (
     <div className="max-w-6xl mx-auto bg-background min-h-screen">
@@ -519,7 +496,7 @@ const Home = () => {
               return (
                 <button
                   key={cat.n}
-                  onClick={() => handleToggleCategoria(cat.n)}
+                  onClick={() => toggleCategoria(cat.n)}
                   className={`flex-shrink-0 flex flex-col items-center gap-2 px-4 py-3 rounded-2xl min-w-[72px] transition-all ${
                     activa
                       ? "bg-primary-container text-white"
@@ -567,7 +544,7 @@ const Home = () => {
           })}
 
           <button
-            onClick={handleVerTodasPromos}
+            onClick={() => setVerTodasPromos(true)}
             className="flex-shrink-0 w-[120px] h-[105px] rounded-3xl bg-surface flex flex-col items-center justify-center gap-2 hover:border-primary-container hover:text-primary-container transition-all"
           >
             <ArrowRight size={24} />
@@ -583,7 +560,7 @@ const Home = () => {
             {FILTROS.map((f) => (
               <button
                 key={f}
-                onClick={() => handleSetFiltro(f)}
+                onClick={() => setFiltroActivo(f)}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all ${
                   filtroActivo === f
                     ? "bg-primary-container text-white"
