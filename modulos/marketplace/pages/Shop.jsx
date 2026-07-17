@@ -14,7 +14,7 @@ import {
   ShoppingBag,
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
-import { supabase } from "../../../src/lib/supabaseClient";
+import { supabase, resolveImageUrl } from "../../../src/lib/supabaseClient";
 import { useCart } from "./CartContext";
 import Carrito from "./Carrito";
 import Checkout from "./Checkout";
@@ -409,15 +409,15 @@ const Shop = () => {
               : `$${deliveryFee.toLocaleString("es-CO")}`,
           direccion: "Cra. 5 #34-21, El Centro",
           descripcion: "",
-          logo: data.logo_url || "/default.png",
-          cover: info?.cover_url || "/default.png",
+          logo: data.logo_url ? await resolveImageUrl(data.logo_url) : "/default.png",
+          cover: info?.cover_url ? await resolveImageUrl(info.cover_url) : "/default.png",
         });
 
         setCategorias(categoriasMapeadas);
         setProductosState(productosMapeados);
         setProductos(productosMapeados);
         setNombreTienda(data.name);
-        setLogoTienda(data.logo_url || "/default.png");
+        setLogoTienda(data.logo_url ? await resolveImageUrl(data.logo_url) : "/default.png");
       } catch (error) {
         console.error("Error al obtener tienda:", error);
       } finally {

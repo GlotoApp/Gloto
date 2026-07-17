@@ -25,7 +25,7 @@ import {
   ClockFading,
   Star,
 } from "lucide-react";
-import { supabase } from "../../../src/lib/supabaseClient";
+import { supabase, resolveImageUrl } from "../../../src/lib/supabaseClient";
 
 // ─── Datos ──────────────────────────────────
 
@@ -115,7 +115,9 @@ const FRASES = [
 const FRASES_LOOP = [...FRASES, ...FRASES];
 
 const SkeletonBlock = ({ className = "", rounded = "rounded-2xl" }) => (
-  <div className={`animate-pulse bg-background ${rounded} ${className}`} />
+  <div
+    className={`animate-pulse bg-surface/20 border border-outline/20 ${rounded} ${className}`}
+  />
 );
 
 const Home = () => {
@@ -131,6 +133,7 @@ const Home = () => {
   const [busquedaPromo, setBusquedaPromo] = useState("");
   const [tiendas, setTiendas] = useState([]);
   const [cargando, setCargando] = useState(true);
+  const [showingSkeleton, setShowingSkeleton] = useState(false);
 
   // Obtener negocios de Supabase
   useEffect(() => {
@@ -181,7 +184,8 @@ const Home = () => {
             slug: negocio.slug,
             nombre: negocio.name,
             tipo: info?.categoria || "Tienda",
-            logo: negocio.logo_url || "../../public/default.png",
+            // guardamos la ruta original en `logo` y la resolveremos abajo
+            logo: negocio.logo_url || null,
             rating: rating.toFixed(1),
             reviews,
             tiempo: `${deliveryMin}–${deliveryMax} min`,
@@ -194,7 +198,15 @@ const Home = () => {
           };
         });
 
-        setTiendas(tiendasMapeadas);
+        // Resolver URLs públicas para las imágenes (si vienen de Supabase Storage)
+        const tiendasConUrls = await Promise.all(
+          tiendasMapeadas.map(async (t) => ({
+            ...t,
+            logo: t.logo ? await resolveImageUrl(t.logo) : "/default.png",
+          })),
+        );
+
+        setTiendas(tiendasConUrls);
       } catch (error) {
         console.error("Error al obtener tiendas:", error);
         setTiendas([]);
@@ -316,19 +328,44 @@ const Home = () => {
     }
   })();
 
-  // Selecciona/deselecciona una categoría (toggle)
-  const toggleCategoria = (nombreCategoria) => {
-    setCategoriaActiva((prev) =>
-      prev === nombreCategoria ? null : nombreCategoria,
-    );
+  // Selecciona/deselecciona una categoría (toggle) con skeleton temporal
+  const handleToggleCategoria = (nombreCategoria) => {
+    setShowingSkeleton(true);
+    setTimeout(() => {
+      setCategoriaActiva((prev) =>
+        prev === nombreCategoria ? null : nombreCategoria,
+      );
+      setShowingSkeleton(false);
+    }, 250);
+  };
+
+  // Cambia filtro con skeleton temporal
+  const handleSetFiltro = (filtro) => {
+    setShowingSkeleton(true);
+    setTimeout(() => {
+      setFiltroActivo(filtro);
+      setShowingSkeleton(false);
+    }, 200);
+  };
+
+  // Mostrar 'Ver todas promos' con skeleton temporal
+  const handleVerTodasPromos = () => {
+    setShowingSkeleton(true);
+    setTimeout(() => {
+      setVerTodasPromos(true);
+      setShowingSkeleton(false);
+    }, 250);
   };
 
   const renderLoadingState = () => (
     <div className="max-w-6xl mx-auto bg-background min-h-screen px-4 pt-4 pb-8">
-      <section className="mb-6">
-        <SkeletonBlock className="h-4 w-24 mb-2" />
-        <SkeletonBlock className="h-8 w-3/4 mb-4" />
-        <SkeletonBlock className="h-11 w-full rounded-3xl" />
+      <section className="mb-6 space-y-4">
+        <SkeletonBlock className="h-4 w-28" />
+        <SkeletonBlock className="h-14 w-full rounded-3xl" />
+        <div className="flex items-center gap-3">
+          <SkeletonBlock className="h-10 w-full rounded-3xl" />
+          <SkeletonBlock className="h-10 w-10 rounded-full" />
+        </div>
       </section>
 
       <section className="mb-5">
@@ -348,20 +385,22 @@ const Home = () => {
       <section className="mb-5">
         <div className="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
           {Array.from({ length: 3 }).map((_, idx) => (
-            <SkeletonBlock
-              key={`promo-skeleton-${idx}`}
-              className="h-24 w-[190px]"
-            />
+            <div key={`promo-skeleton-${idx}`} className="w-[190px]">
+              <SkeletonBlock className="h-24 w-full rounded-3xl" />
+            </div>
           ))}
+          <div className="flex-shrink-0 w-[120px]">
+            <SkeletonBlock className="h-24 w-full rounded-3xl" />
+          </div>
         </div>
       </section>
 
-      <section className="mb-5">
+      <section className="sticky top-0 z-10 mb-5 bg-background pt-4">
         <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
           {Array.from({ length: 5 }).map((_, idx) => (
             <SkeletonBlock
               key={`filter-skeleton-${idx}`}
-              className="h-8 w-20"
+              className="h-8 w-20 rounded-full"
             />
           ))}
         </div>
@@ -369,15 +408,15 @@ const Home = () => {
 
       <section>
         <div className="grid grid-cols-2 gap-4">
-          {Array.from({ length: 6 }).map((_, idx) => (
+          {Array.from({ length: 8 }).map((_, idx) => (
             <div
               key={`tienda-skeleton-${idx}`}
               className="flex flex-col rounded-3xl bg-surface border border-outline/30 p-3"
             >
-              <SkeletonBlock className="h-24 w-full mb-3" />
-              <SkeletonBlock className="h-3.5 w-3/4 mb-2" />
-              <SkeletonBlock className="h-2.5 w-1/2 mb-3" />
-              <SkeletonBlock className="h-2.5 w-full" />
+              <SkeletonBlock className="h-24 w-full mb-3 rounded-3xl" />
+              <SkeletonBlock className="h-3.5 w-3/4 mb-2 rounded-full" />
+              <SkeletonBlock className="h-2.5 w-1/2 mb-3 rounded-full" />
+              <SkeletonBlock className="h-2.5 w-full rounded-full" />
             </div>
           ))}
         </div>
@@ -389,7 +428,7 @@ const Home = () => {
     </div>
   );
 
-  if (cargando) return renderLoadingState();
+  if (cargando || showingSkeleton) return renderLoadingState();
 
   return (
     <div className="max-w-6xl mx-auto bg-background min-h-screen">
@@ -480,7 +519,7 @@ const Home = () => {
               return (
                 <button
                   key={cat.n}
-                  onClick={() => toggleCategoria(cat.n)}
+                  onClick={() => handleToggleCategoria(cat.n)}
                   className={`flex-shrink-0 flex flex-col items-center gap-2 px-4 py-3 rounded-2xl min-w-[72px] transition-all ${
                     activa
                       ? "bg-primary-container text-white"
@@ -528,7 +567,7 @@ const Home = () => {
           })}
 
           <button
-            onClick={() => setVerTodasPromos(true)}
+            onClick={handleVerTodasPromos}
             className="flex-shrink-0 w-[120px] h-[105px] rounded-3xl bg-surface flex flex-col items-center justify-center gap-2 hover:border-primary-container hover:text-primary-container transition-all"
           >
             <ArrowRight size={24} />
@@ -544,7 +583,7 @@ const Home = () => {
             {FILTROS.map((f) => (
               <button
                 key={f}
-                onClick={() => setFiltroActivo(f)}
+                onClick={() => handleSetFiltro(f)}
                 className={`flex-shrink-0 px-4 py-2 rounded-full text-xs font-bold transition-all ${
                   filtroActivo === f
                     ? "bg-primary-container text-white"
@@ -660,7 +699,7 @@ const Home = () => {
                       alt={t.nombre}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        e.target.src = "/default-store.png";
+                        e.target.src = "/default.png";
                       }}
                     />
 
@@ -727,7 +766,7 @@ const Home = () => {
                       alt={t.nombre}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        e.target.src = "/default-store.png";
+                        e.target.src = "/default.png";
                       }}
                     />
 
@@ -738,7 +777,7 @@ const Home = () => {
                         alt={t.nombre}
                         className="w-full h-full object-cover rounded"
                         onError={(e) => {
-                          e.target.src = "/default-store.png";
+                          e.target.src = "/default.png";
                         }}
                       />
                     </div>
