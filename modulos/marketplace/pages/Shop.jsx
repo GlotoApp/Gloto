@@ -409,15 +409,21 @@ const Shop = () => {
               : `$${deliveryFee.toLocaleString("es-CO")}`,
           direccion: "Cra. 5 #34-21, El Centro",
           descripcion: "",
-          logo: data.logo_url ? await resolveImageUrl(data.logo_url) : "/default.png",
-          cover: info?.cover_url ? await resolveImageUrl(info.cover_url) : "/default.png",
+          logo: data.logo_url
+            ? await resolveImageUrl(data.logo_url)
+            : "/default.png",
+          cover: info?.cover_url
+            ? await resolveImageUrl(info.cover_url)
+            : "/default.png",
         });
 
         setCategorias(categoriasMapeadas);
         setProductosState(productosMapeados);
         setProductos(productosMapeados);
         setNombreTienda(data.name);
-        setLogoTienda(data.logo_url ? await resolveImageUrl(data.logo_url) : "/default.png");
+        setLogoTienda(
+          data.logo_url ? await resolveImageUrl(data.logo_url) : "/default.png",
+        );
       } catch (error) {
         console.error("Error al obtener tienda:", error);
       } finally {
@@ -1096,7 +1102,7 @@ const Shop = () => {
                   borderRadius: "25px",
                   background: "#131313",
                   color: "#fff",
-                  fontSize: "13px",
+                  fontSize: "16px",
                   outline: "none",
                   boxSizing: "border-box",
                 }}
