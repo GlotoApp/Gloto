@@ -43,7 +43,7 @@ const normalizeOptionItem = (item) => ({
   tags: item.tags ?? item.tag ?? item.categories ?? null,
 });
 
-const ProductoDetalle = ({ producto, onClose }) => {
+const ProductoDetalle = ({ producto, onClose, onAgregarIntento }) => {
   const { agregarConVariante, obtenerItemId, carrito } = useCart();
   const [opciones, setOpciones] = useState([]);
   const [grupos, setGrupos] = useState([]);
@@ -284,6 +284,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
 
   const handleAgregar = () => {
     if (noSePuedeAgregar || requiereSeleccionarVariante) return;
+    if (onAgregarIntento && !onAgregarIntento()) return;
     agregarConVariante({
       productoBase: producto,
       variante,
@@ -727,7 +728,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
                 borderRadius: "14px",
                 padding: "12px 14px",
                 color: "#fff",
-                fontSize: "13px",
+                fontSize: "16px",
                 fontFamily: "inherit",
                 outline: "none",
                 boxSizing: "border-box",
@@ -757,7 +758,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
             gap: "14px",
             background: "#131313",
             borderRadius: "100px",
-            padding: "8px 14px",
+            padding: "10px 14px",
             flexShrink: 0,
           }}
         >
@@ -810,7 +811,7 @@ const ProductoDetalle = ({ producto, onClose }) => {
           disabled={noSePuedeAgregar || requiereSeleccionarVariante}
           style={{
             flex: 1,
-            padding: "14px",
+            padding: "10px",
             borderRadius: "100px",
             background:
               noSePuedeAgregar || requiereSeleccionarVariante

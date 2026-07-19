@@ -1,17 +1,45 @@
 // CartContext.jsx
-import React, { createContext, useContext, useState, useMemo } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 const CartContext = createContext(null);
+const CART_STORAGE_KEY = "gloto_marketplace_cart_v1";
+
+const leerCarritoPersistido = () => {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = window.localStorage.getItem(CART_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+};
 
 export const CartProvider = ({ children }) => {
+  const carritoPersistido = useMemo(() => leerCarritoPersistido(), []);
+
   // carrito: { [productoId]: cantidad }
-  const [carrito, setCarrito] = useState({});
+  const [carrito, setCarrito] = useState(carritoPersistido?.carrito || {});
   // Catálogo de productos actualmente "activo" (de la tienda que se está viendo).
   // Carrito.jsx lo necesita para mostrar nombre, precio, emoji, etc.
-  const [productos, setProductos] = useState([]);
-  const [nombreTienda, setNombreTienda] = useState("");
-  const [logoTienda, setLogoTienda] = useState("");
-  const [tiendaSlug, setTiendaSlug] = useState(null);
+  const [productos, setProductos] = useState(
+    carritoPersistido?.productos || [],
+  );
+  const [nombreTienda, setNombreTienda] = useState(
+    carritoPersistido?.nombreTienda || "",
+  );
+  const [logoTienda, setLogoTienda] = useState(
+    carritoPersistido?.logoTienda || "",
+  );
+  const [tiendaSlug, setTiendaSlug] = useState(
+    carritoPersistido?.tiendaSlug || null,
+  );
   const [cartOpen, setCartOpen] = useState(false);
   const [observaciones, setObservaciones] = useState("");
   const [metodoPago, setMetodoPago] = useState([]);
@@ -27,6 +55,25 @@ export const CartProvider = ({ children }) => {
   const [pedidoActivo, setPedidoActivo] = useState(null);
   // 'recibido' | 'preparando' | 'camino' | 'entregado'
   const [estadoPedido, setEstadoPedido] = useState("recibido");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      window.localStorage.setItem(
+        CART_STORAGE_KEY,
+        JSON.stringify({
+          carrito,
+          productos,
+          nombreTienda,
+          logoTienda,
+          tiendaSlug,
+        }),
+      );
+    } catch {
+      // Si el almacenamiento no está disponible, no rompemos la experiencia.
+    }
+  }, [carrito, productos, nombreTienda, logoTienda, tiendaSlug]);
 
   const agregar = (id) =>
     setCarrito((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));

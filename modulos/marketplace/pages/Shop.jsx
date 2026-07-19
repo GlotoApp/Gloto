@@ -43,7 +43,7 @@ const fmt = (n) =>
   }).format(n);
 
 /* ── Cart Portal ── */
-const CartPortal = ({ totalItems, totalPrecio, fmt, onOpen }) =>
+const CartPortal = ({ totalItems, totalPrecio, fmt, onOpen, isAnimating }) =>
   createPortal(
     <div
       style={{
@@ -69,7 +69,11 @@ const CartPortal = ({ totalItems, totalPrecio, fmt, onOpen }) =>
           padding: "14px 20px",
           border: "none",
           cursor: "pointer",
-          boxShadow: "0 8px 32px rgba(124,58,237,0.45)",
+          boxShadow: isAnimating
+            ? "0 10px 36px rgba(124,58,237,0.65)"
+            : "0 8px 32px rgba(124,58,237,0.45)",
+          transform: isAnimating ? "scale(1.02)" : "scale(1)",
+          transition: "transform 0.3s ease, box-shadow 0.3s ease",
         }}
         aria-label="Abrir carrito"
       >
@@ -137,8 +141,59 @@ const Shop = () => {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [productoDetalle, setProductoDetalle] = useState(null);
   const [seguimientoOpen, setSeguimientoOpen] = useState(false);
+  const [cartPulse, setCartPulse] = useState(false);
+  const [tiendaAnteriorModal, setTiendaAnteriorModal] = useState("");
+  const [tiendaActualModal, setTiendaActualModal] = useState("");
+  const [tiendaConProductosModal, setTiendaConProductosModal] = useState("");
   const searchInputRef = useRef(null);
   const filtrosRef = useRef(null);
+
+  const tiendaAnteriorLabel =
+    tiendaConProductosModal ||
+    tiendaAnteriorModal ||
+    nombreTiendaEnCarrito ||
+    "tienda anterior";
+  const tiendaActualLabel =
+    tiendaData?.nombre ||
+    tiendaActualModal ||
+    (slug
+      ? slug.replace(/-/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
+      : "tienda actual");
+
+  const mostrarModalCambioTienda = (targetSlug = slug) => {
+    if (
+      !tiendaSlug ||
+      !targetSlug ||
+      tiendaSlug === targetSlug ||
+      totalItems === 0
+    ) {
+      return false;
+    }
+
+    const tiendaActualNombre =
+      tiendaData?.nombre ||
+      (targetSlug
+        ? targetSlug
+            .replace(/-/g, " ")
+            .replace(/\b\w/g, (char) => char.toUpperCase())
+        : "tienda actual");
+
+    let tiendaAnteriorNombre =
+      tiendaConProductosModal ||
+      tiendaAnteriorModal ||
+      nombreTiendaEnCarrito ||
+      "tienda anterior";
+
+    if (tiendaAnteriorNombre === tiendaActualNombre) {
+      tiendaAnteriorNombre = "la tienda anterior";
+    }
+
+    setTiendaConProductosModal(tiendaAnteriorNombre);
+    setTiendaAnteriorModal(tiendaAnteriorNombre);
+    setTiendaActualModal(tiendaActualNombre);
+    setConfirmCambioOpen(true);
+    return true;
+  };
 
   // Obtener datos de la tienda desde Supabase
   useEffect(() => {
@@ -419,11 +474,19 @@ const Shop = () => {
 
         setCategorias(categoriasMapeadas);
         setProductosState(productosMapeados);
-        setProductos(productosMapeados);
-        setNombreTienda(data.name);
-        setLogoTienda(
-          data.logo_url ? await resolveImageUrl(data.logo_url) : "/default.png",
-        );
+
+        const hayCarritoOtraTienda =
+          tiendaSlug && tiendaSlug !== slug && totalItemsRef.current > 0;
+
+        if (!hayCarritoOtraTienda) {
+          setProductos(productosMapeados);
+          setNombreTienda(data.name);
+          setLogoTienda(
+            data.logo_url
+              ? await resolveImageUrl(data.logo_url)
+              : "/default.png",
+          );
+        }
       } catch (error) {
         console.error("Error al obtener tienda:", error);
       } finally {
@@ -475,36 +538,56 @@ const Shop = () => {
   // las cantidades siguieran ahí. Con la ref, el efecto solo corre
   // cuando cambia el slug o el tiendaSlug guardado.
   const totalItemsRef = useRef(totalItems);
+  const prevTotalItemsRef = useRef(totalItems);
+
   useEffect(() => {
     totalItemsRef.current = totalItems;
   }, [totalItems]);
 
   useEffect(() => {
+    const wasIncreased = totalItems > prevTotalItemsRef.current;
+    prevTotalItemsRef.current = totalItems;
+
+    if (!wasIncreased) return;
+
+    setCartPulse(true);
+    const timer = window.setTimeout(() => setCartPulse(false), 350);
+    return () => window.clearTimeout(timer);
+  }, [totalItems]);
+
+  useEffect(() => {
     if (tiendaSlug && tiendaSlug !== slug && totalItemsRef.current > 0) {
-      setConfirmCambioOpen(true);
+      // Si ya hay carrito en otra tienda, dejamos al usuario navegar
+      // libremente en la tienda actual sin forzar el aviso inmediato.
       return;
     }
 
-    // Limpiamos el catálogo local antes de cargar la nueva tienda.
-    setProductosState([]);
-    setCategorias([]);
-    setProductos([]);
     setTiendaSlug(slug);
+    setTiendaAnteriorModal("");
+    setTiendaActualModal("");
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, tiendaSlug]);
 
   const confirmarCambioTienda = () => {
     vaciar();
-    setProductosState([]);
-    setCategorias([]);
     setProductos([]);
+    setTiendaSlug(slug);
+    setTiendaAnteriorModal("");
+    setTiendaActualModal("");
     setConfirmCambioOpen(false);
+  };
+
+  const cerrarModalCambioTienda = () => {
+    setConfirmCambioOpen(false);
+    setTiendaAnteriorModal("");
+    setTiendaActualModal("");
   };
 
   const cancelarCambioTienda = () => {
     setConfirmCambioOpen(false);
-    navigate(-1);
+    setTiendaAnteriorModal("");
+    setTiendaActualModal("");
   };
 
   // Estilo base para cada bloque "hueso" del skeleton: un degradado que
@@ -973,6 +1056,7 @@ const Shop = () => {
                 style={{
                   display: "flex",
                   alignItems: "center",
+                  justifyContent: "center",
                   gap: "8px",
                   padding: "10px 14px",
                   borderRadius: "12px",
@@ -1353,131 +1437,30 @@ const Shop = () => {
                         )}
                       </div>
 
-                      {/* Botón superpuesto en esquina inferior derecha */}
-                      {qty === 0 ? (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (tieneOpcionesProducto) {
-                              abrirDetalleProducto(p);
-                            } else {
-                              agregar(p.id);
-                            }
-                          }}
-                          style={{
-                            position: "absolute",
-                            bottom: "-10px",
-                            right: "-10px",
-                            minWidth: "32px",
-                            height: "32px",
-                            borderRadius: "50%",
-                            background: "#7c3aed",
-                            color: "#fff",
-                            fontSize: "14px",
-                            fontWeight: 700,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            cursor: "pointer",
-                            boxShadow: "0 4px 12px rgba(124,58,237,0.5)",
-                            lineHeight: 1,
-                            padding: "0 10px",
-                          }}
-                          aria-label={
-                            tieneOpcionesProducto
-                              ? `Abrir detalles de ${p.nombre}`
-                              : `Agregar ${p.nombre}`
-                          }
-                        >
-                          +
-                        </button>
-                      ) : (
-                        <div
-                          style={{
-                            position: "absolute",
-                            bottom: "-14px",
-                            left: "50%",
-                            transform: "translateX(-50%)",
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "8px",
-                            background: "#7c3aed",
-                            padding: "4px 10px",
-                            borderRadius: "100px",
-                            boxShadow: "0 4px 12px rgba(124,58,237,0.5)",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (tieneOpcionesProducto) {
-                                abrirDetalleProducto(p);
-                              } else {
-                                quitar(p.id);
-                              }
-                            }}
-                            style={{
-                              color: "#fff",
-                              fontWeight: 700,
-                              fontSize: "16px",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              lineHeight: 1,
-                              padding: 0,
-                            }}
-                            aria-label={
-                              tieneOpcionesProducto
-                                ? `Modificar ${p.nombre}`
-                                : `Quitar ${p.nombre}`
-                            }
-                          >
-                            −
-                          </button>
-                          <span
-                            style={{
-                              fontSize: "13px",
-                              fontWeight: 800,
-                              color: "#fff",
-                              minWidth: "14px",
-                              textAlign: "center",
-                            }}
-                          >
-                            {qty}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (tieneOpcionesProducto) {
-                                abrirDetalleProducto(p);
-                              } else {
-                                agregar(p.id);
-                              }
-                            }}
-                            style={{
-                              color: "#fff",
-                              fontWeight: 700,
-                              fontSize: "16px",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              lineHeight: 1,
-                              padding: 0,
-                            }}
-                            aria-label={
-                              tieneOpcionesProducto
-                                ? `Abrir detalles de ${p.nombre}`
-                                : `Agregar ${p.nombre}`
-                            }
-                          >
-                            +
-                          </button>
-                        </div>
-                      )}
+                      {/* Indicador superpuesto en esquina inferior derecha */}
+                      <div
+                        style={{
+                          position: "absolute",
+                          bottom: "-10px",
+                          right: "-10px",
+                          minWidth: "32px",
+                          height: "32px",
+                          borderRadius: "50%",
+                          background: "#7c3aed",
+                          color: "#fff",
+                          fontSize: "14px",
+                          fontWeight: 700,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          boxShadow: "0 4px 12px rgba(124,58,237,0.5)",
+                          lineHeight: 1,
+                          padding: "0 10px",
+                          pointerEvents: "none",
+                        }}
+                      >
+                        {qty === 0 ? "+" : qty}
+                      </div>
                     </div>
                   </div>
 
@@ -1499,12 +1482,13 @@ const Shop = () => {
       </div>
 
       {/* ── CARRITO ── */}
-      {totalItems > 0 && (
+      {totalItems > 0 && tiendaSlug === slug && !confirmCambioOpen && (
         <CartPortal
           totalItems={totalItems}
           totalPrecio={totalPrecio}
           fmt={fmt}
           onOpen={abrirCarrito}
+          isAnimating={cartPulse}
         />
       )}
 
@@ -1689,7 +1673,6 @@ const Shop = () => {
                 width: "100%",
                 maxWidth: "320px",
                 border: "1px solid rgba(255,255,255,0.08)",
-                boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
                 textAlign: "center",
               }}
             >
@@ -1702,7 +1685,7 @@ const Shop = () => {
                   marginBottom: "8px",
                 }}
               >
-                ¿Cambiar de tienda?
+                ¿Cambiaste de tienda?
               </h3>
               <p
                 style={{
@@ -1712,13 +1695,11 @@ const Shop = () => {
                   marginBottom: "22px",
                 }}
               >
-                Tienes productos de{" "}
-                <strong style={{ color: "#fff" }}>
-                  {nombreTiendaEnCarrito}
-                </strong>{" "}
-                en tu carrito. Si entras a{" "}
-                <strong style={{ color: "#fff" }}>{tiendaData.nombre}</strong>,
-                se eliminarán y tu carrito quedará vacío.
+                Ya tienes productos de{" "}
+                <strong style={{ color: "#fff" }}>{tiendaAnteriorLabel}</strong>{" "}
+                en tu carrito. Si quieres agregar productos de{" "}
+                <strong style={{ color: "#fff" }}>{tiendaActualLabel}</strong>,
+                tendremos que vaciar el carrito anterior para empezar limpio.
               </p>
               <div style={{ display: "flex", gap: "10px" }}>
                 <button
@@ -1801,6 +1782,12 @@ const Shop = () => {
         <ProductoDetalle
           producto={productoDetalle}
           onClose={() => setProductoDetalle(null)}
+          onAgregarIntento={() => {
+            if (mostrarModalCambioTienda(slug)) {
+              return false;
+            }
+            return true;
+          }}
         />
       )}
 
