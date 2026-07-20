@@ -214,13 +214,20 @@ export const CartProvider = ({ children }) => {
   const crearPedido = () => {
     const items = productos
       .filter((p) => carrito[p.id] > 0)
-      .map((p) => ({
-        id: p.id,
-        nombre: p.nombre,
-        cantidad: carrito[p.id],
-        precio: p.precio,
-        notas: p.notas || "",
-      }));
+      .map((p) => {
+        const baseNombre = String(p.nombre || "").split(" · ")[0];
+        return {
+          id: p.id,
+          nombre: baseNombre,
+          cantidad: carrito[p.id],
+          precio: p.precio,
+          notas: p.notas || "",
+          varianteNombre: p.varianteNombre || null,
+          opciones: p.varianteNombre
+            ? String(p.varianteNombre).split(" · ") || []
+            : [],
+        };
+      });
 
     const pedido = {
       numero: `#${Math.floor(1000 + Math.random() * 9000)}`,
@@ -228,10 +235,167 @@ export const CartProvider = ({ children }) => {
       items,
       total: totalPrecio,
       metodoEntrega,
+      metodoPago,
       datosCliente: { ...datosCliente },
       observaciones,
       nombreTienda,
     };
+
+    // Construir mensaje legible para WhatsApp
+    try {
+      const fmt = (n) =>
+        new Intl.NumberFormat("es-CO", {
+          style: "currency",
+          currency: "COP",
+          minimumFractionDigits: 0,
+        }).format(n);
+
+      const fecha = pedido.fecha.toLocaleDateString("es-CO");
+      const hora = pedido.fecha.toLocaleTimeString("es-CO");
+
+      const tipoLabel =
+        pedido.metodoEntrega === "domicilio"
+          ? "*DOMICILIO*"
+          : pedido.metodoEntrega === "recoger"
+            ? "*RECOGER EN TIENDA*"
+            : pedido.metodoEntrega === "mesa"
+              ? "*MESA*"
+              : "*EN PUNTO*";
+
+      const lines = [];
+      lines.push(tipoLabel);
+      lines.push("");
+      lines.push(`*FACTURA Nº:* ${pedido.numero}`);
+      lines.push("");
+      lines.push(`*FECHA:* ${fecha}`);
+      lines.push(`*HORA:* ${hora}`);
+      lines.push("");
+      lines.push(`*DATOS DEL USUARIO:*`);
+      lines.push(`*NOMBRE:* ${pedido.datosCliente.nombre || "-"}`);
+      lines.push(`*TELÉFONO:* ${pedido.datosCliente.telefono || "-"}`);
+      lines.push("");
+
+      if (pedido.metodoEntrega === "domicilio") {
+        lines.push(`*DIRECCIÓN:* ${pedido.datosCliente.direccion || "-"}`);
+        // El campo de punto de referencia en el checkout se llama `referencia`.
+        const referencia =
+          pedido.datosCliente.referencia || pedido.datosCliente.puntoRetiro;
+        if (referencia) lines.push(`*PUNTO DE REFERENCIA:* ${referencia}`);
+        lines.push("");
+      }
+
+      if (pedido.metodoEntrega === "mesa") {
+        lines.push(`*MESA:* ${pedido.datosCliente.mesa || "-"}`);
+        lines.push("");
+      }
+
+      if (pedido.metodoEntrega === "punto") {
+        lines.push(`*PUNTO:* ${pedido.datosCliente.puntoRetiro || "-"}`);
+        lines.push("");
+      }
+
+      lines.push(`*PRODUCTOS SELECCIONADOS:*`);
+      lines.push("");
+
+      pedido.items.forEach((it) => {
+        lines.push(
+          `*x${it.cantidad} - ${it.nombre} - ${fmt(it.precio)} = ${fmt(
+            it.precio * it.cantidad,
+          )}*`,
+        );
+
+        // Incluir opciones seleccionadas por el usuario (lista vertical)
+        if (it.opciones && it.opciones.length > 0) {
+          it.opciones.forEach((opt) => {
+            lines.push(`• ${opt}`);
+          });
+        }
+
+        // Incluir indicaciones/notas específicas del producto si existen
+        if (it.notas) {
+          lines.push(`_${it.notas}_`);
+        }
+
+        lines.push("__");
+      });
+
+      lines.push("");
+      lines.push(`*TOTAL PRODUCTOS:* ${fmt(pedido.total)}`);
+
+      // Si hay costo de delivery en datosCliente (opcional), lo mostramos
+      if (pedido.datosCliente.deliveryFee) {
+        lines.push(
+          `*COSTO DE DOMICILIO:* ${fmt(Number(pedido.datosCliente.deliveryFee) || 0)}`,
+        );
+      }
+
+      lines.push("");
+
+      // Método(s) de pago
+      if (metodoPago && metodoPago.length > 1) {
+        lines.push(`*MÉTODO DE PAGO:*`);
+        metodoPago.forEach((m) => {
+          const montoNum = Number(m.monto) || 0;
+          lines.push(`${m.metodo || "-"}: ${fmt(montoNum)}`);
+        });
+      } else {
+        const single =
+          metodoPago && metodoPago.length === 1 ? metodoPago[0] : null;
+        const singleMetodo = single ? single.metodo || "-" : "-";
+        const singleMonto = single
+          ? fmt(Number(single.monto) || pedido.total)
+          : "-";
+        lines.push(`*MÉTODO DE PAGO:* ${singleMetodo}: ${singleMonto}`);
+      }
+      lines.push("");
+
+      // Propina opcional si existe
+      if (pedido.datosCliente.propina) {
+        const prop = Number(pedido.datosCliente.propina) || 0;
+        lines.push(`*PROPINA VOLUNTARIA:* ${fmt(prop)}`);
+        lines.push(`*TOTAL CON PROPINA:* ${fmt(pedido.total + prop)}`);
+        lines.push("");
+      }
+
+      lines.push(`*OBSERVACIONES:*`);
+      lines.push(pedido.observaciones || "__");
+      lines.push("");
+
+      // Ubicación en Google Maps si lat/lng disponibles
+      if (pedido.datosCliente.lat && pedido.datosCliente.lng) {
+        lines.push(`*Ubicación en Google Maps:*`);
+        lines.push(
+          `https://www.google.com/maps?q=${pedido.datosCliente.lat},${pedido.datosCliente.lng}`,
+        );
+        lines.push("");
+      }
+
+      const trackingLink =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/marketplace/seguimiento?order=${encodeURIComponent(pedido.numero)}`
+          : "";
+
+      lines.push(`\n*Rastrea tu pedido:* ${trackingLink}`);
+      lines.push("\n\n\n\n*Envía tu pedido aqui --------->*");
+
+      const message = lines.join("\n");
+
+      // Enviamos directamente al número de prueba proporcionado mientras
+      // se conectan los números reales de los negocios.
+      // Formato internacional sin signos: 573024345404 (para +57 3024345404)
+      const TEST_WHATSAPP_PHONE = "573024345404";
+      if (typeof window !== "undefined") {
+        const url = `https://wa.me/${TEST_WHATSAPP_PHONE}?text=${encodeURIComponent(
+          message,
+        )}`;
+        // Abrimos en nueva pestaña para que el usuario confirme el envío
+        window.open(url, "_blank");
+      }
+    } catch (err) {
+      // no rompemos el flujo si algo falla al construir/enviar el mensaje
+      // (por ejemplo en SSR o navegadores sin window)
+      // console.warn(err);
+    }
 
     setPedidoActivo(pedido);
     setEstadoPedido("recibido");

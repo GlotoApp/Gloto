@@ -48,7 +48,7 @@ const DEFINICION_ETAPAS = {
   },
   listo_entregar: {
     label: "Listo para entregar",
-    desc: "Tu pedido está listo y será llevado a tu mesa.",
+    desc: "Tu pedido está listo y será llevado a tu punto.",
     Icon: PackageCheck,
   },
   entregado: {
@@ -98,10 +98,19 @@ const SeguimientoPedido = ({ onCerrar }) => {
   const ETAPAS = secuencia.map((id) => ({ id, ...DEFINICION_ETAPAS[id] }));
   const indiceActual = ETAPAS.findIndex((e) => e.id === estadoPedido);
   const esEtapaFinal = indiceActual === ETAPAS.length - 1;
-  const { datosCliente, metodoEntrega } = pedidoActivo;
+  const { datosCliente, metodoEntrega, metodoPago } = pedidoActivo;
+
+  const whatsappDestino = String(
+    pedidoActivo?.tiendaWhatsapp || "571234567890",
+  ).replace(/\D/g, "");
+  const irAWppTienda = () => {
+    if (typeof window === "undefined") return;
+    window.open(`https://wa.me/${whatsappDestino}`, "_blank");
+    onCerrar();
+  };
 
   const obtenerPasos = (metodo) => {
-    const base = ["Pedido recibido", "Preparando en cocina"];
+    const base = ["Pedido recibido", "Preparando"];
 
     switch (metodo) {
       case "recoger":
@@ -365,6 +374,22 @@ const SeguimientoPedido = ({ onCerrar }) => {
                 </span>
               </div>
             )}
+            {metodoEntrega === "domicilio" &&
+              (datosCliente?.referencia || datosCliente?.puntoRetiro) && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: "8px",
+                    alignItems: "center",
+                    marginTop: "6px",
+                  }}
+                >
+                  <Navigation size={14} color="rgba(255,255,255,0.4)" />
+                  <span style={{ fontSize: "13px" }}>
+                    {datosCliente.referencia || datosCliente.puntoRetiro}
+                  </span>
+                </div>
+              )}
             {metodoEntrega === "punto" && datosCliente?.puntoRetiro && (
               <div
                 style={{ display: "flex", gap: "8px", alignItems: "center" }}
@@ -420,17 +445,41 @@ const SeguimientoPedido = ({ onCerrar }) => {
                   {fmt(it.precio * it.cantidad)}
                 </span>
               </div>
+
+              {it.opciones && it.opciones.length > 0 && (
+                <div
+                  style={{
+                    marginTop: "8px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "6px",
+                  }}
+                >
+                  {it.opciones.map((opt, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        fontSize: "12px",
+                        color: "rgba(255,255,255,0.75)",
+                        paddingLeft: "6px",
+                      }}
+                    >
+                      • {opt}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {it.notas && (
                 <p
                   style={{
                     fontSize: "11.5px",
-                    color: "rgba(255,255,255,0.4)",
-                    fontStyle: "italic",
+                    color: "rgba(255, 255, 255, 0.4)",
                     margin: "3px 0 0",
                     lineHeight: 1.4,
                   }}
                 >
-                  "{it.notas}"
+                  Indicaciones: "{it.notas}"
                 </p>
               )}
             </div>
@@ -452,7 +501,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
                   marginBottom: "4px",
                 }}
               >
-                Observación general
+                Observaciones generales
               </p>
               <p
                 style={{
@@ -482,6 +531,78 @@ const SeguimientoPedido = ({ onCerrar }) => {
             <span>{fmt(pedidoActivo.total)}</span>
           </div>
         </div>
+
+        {/* Información de pago */}
+        <div
+          style={{
+            background: "#131313",
+            borderRadius: "16px",
+            border: "1px solid rgba(255,255,255,0.06)",
+            padding: "16px",
+            marginTop: "16px",
+          }}
+        >
+          <p
+            style={{
+              fontSize: "12px",
+              fontWeight: 700,
+              color: "rgba(255,255,255,0.7)",
+              marginBottom: "12px",
+            }}
+          >
+            Método(s) de pago
+          </p>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {metodoPago && metodoPago.length > 1 ? (
+              metodoPago.map((m) => (
+                <div
+                  key={m.id}
+                  style={{ display: "flex", justifyContent: "space-between" }}
+                >
+                  <span style={{ fontSize: "13px" }}>{m.metodo || "-"}</span>
+                  <span style={{ fontSize: "13px", fontWeight: 800 }}>
+                    {fmt(Number(m.monto) || 0)}
+                  </span>
+                </div>
+              ))
+            ) : metodoPago && metodoPago.length === 1 ? (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "13px" }}>
+                  {metodoPago[0].metodo || "-"}
+                </span>
+                <span style={{ fontSize: "13px", fontWeight: 800 }}>
+                  {fmt(Number(metodoPago[0].monto) || pedidoActivo.total)}
+                </span>
+              </div>
+            ) : (
+              <div
+                style={{ color: "rgba(255,255,255,0.45)", fontSize: "13px" }}
+              >
+                No especificado
+              </div>
+            )}
+
+            {/* Delivery y propina si existen */}
+            {pedidoActivo.datosCliente?.deliveryFee && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "13px" }}>Costo de domicilio</span>
+                <span style={{ fontSize: "13px", fontWeight: 800 }}>
+                  {fmt(Number(pedidoActivo.datosCliente.deliveryFee) || 0)}
+                </span>
+              </div>
+            )}
+
+            {pedidoActivo.datosCliente?.propina && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "13px" }}>Propina</span>
+                <span style={{ fontSize: "13px", fontWeight: 800 }}>
+                  {fmt(Number(pedidoActivo.datosCliente.propina) || 0)}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Footer: siempre visible, sin importar en qué paso esté la línea de tiempo */}
@@ -495,7 +616,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
       >
         <button
           type="button"
-          onClick={onCerrar}
+          onClick={irAWppTienda}
           style={{
             width: "100%",
             padding: "14px",
@@ -514,7 +635,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
           }}
         >
           <Store size={18} />
-          Volver a la tienda
+          Comunicarme con la tienda
         </button>
       </div>
     </div>,

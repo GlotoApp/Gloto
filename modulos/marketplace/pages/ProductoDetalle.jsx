@@ -43,8 +43,22 @@ const normalizeOptionItem = (item) => ({
   tags: item.tags ?? item.tag ?? item.categories ?? null,
 });
 
-const ProductoDetalle = ({ producto, onClose, onAgregarIntento }) => {
-  const { agregarConVariante, obtenerItemId, carrito } = useCart();
+const ProductoDetalle = ({
+  producto,
+  onClose,
+  onAgregarIntento,
+  tiendaNombre,
+  tiendaLogo,
+  tiendaSlug,
+}) => {
+  const {
+    agregarConVariante,
+    obtenerItemId,
+    carrito,
+    setNombreTienda,
+    setLogoTienda,
+    setTiendaSlug,
+  } = useCart();
   const [opciones, setOpciones] = useState([]);
   const [grupos, setGrupos] = useState([]);
   const [selecciones, setSelecciones] = useState({});
@@ -285,6 +299,16 @@ const ProductoDetalle = ({ producto, onClose, onAgregarIntento }) => {
   const handleAgregar = () => {
     if (noSePuedeAgregar || requiereSeleccionarVariante) return;
     if (onAgregarIntento && !onAgregarIntento()) return;
+    // Aseguramos que el contexto del carrito refleje la tienda desde
+    // la que se está agregando el producto.
+    try {
+      if (tiendaNombre) setNombreTienda(tiendaNombre);
+      if (tiendaLogo) setLogoTienda(tiendaLogo);
+      if (tiendaSlug) setTiendaSlug(tiendaSlug);
+    } catch (e) {
+      // no rompemos la UX si algo falla aquí
+    }
+
     agregarConVariante({
       productoBase: producto,
       variante,

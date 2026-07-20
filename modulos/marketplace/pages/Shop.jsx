@@ -486,6 +486,10 @@ const Shop = () => {
               ? await resolveImageUrl(data.logo_url)
               : "/default.png",
           );
+          // Aseguramos también registrar el slug de la tienda en el contexto
+          // para que el carrito sepa de qué tienda provienen los productos
+          // cuando el usuario agregue items.
+          setTiendaSlug(data.slug || slug);
         }
       } catch (error) {
         console.error("Error al obtener tienda:", error);
@@ -1788,6 +1792,9 @@ const Shop = () => {
             }
             return true;
           }}
+          tiendaNombre={tiendaData?.nombre}
+          tiendaLogo={tiendaData?.logo}
+          tiendaSlug={slug}
         />
       )}
 

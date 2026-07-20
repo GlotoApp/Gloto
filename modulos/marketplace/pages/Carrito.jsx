@@ -28,10 +28,10 @@ const formatNumberForInput = (value) => {
 };
 
 const METODOS_PAGO = [
-  { id: "efectivo", label: "Efectivo", Icon: Banknote },
-  { id: "tarjeta", label: "Tarjeta", Icon: CreditCard },
-  { id: "transferencia", label: "Transferencia", Icon: Landmark },
-  { id: "dividir", label: "Dividir", Icon: Split },
+  { id: "Efectivo", label: "Efectivo", Icon: Banknote },
+  { id: "Tarjeta", label: "Tarjeta", Icon: CreditCard },
+  { id: "Transferencia", label: "Transferencia", Icon: Landmark },
+  { id: "Dividir", label: "Dividir", Icon: Split },
 ];
 
 const Carrito = ({ onIrAPagar }) => {
@@ -59,6 +59,9 @@ const Carrito = ({ onIrAPagar }) => {
     totalPrecio,
     totalPagado,
   } = useCart();
+
+  const hayFilaSinMetodo =
+    metodoPago.length > 1 && metodoPago.some((it) => !it.metodo);
 
   useEffect(() => {
     setImageError(false);
@@ -473,10 +476,10 @@ const Carrito = ({ onIrAPagar }) => {
               >
                 {METODOS_PAGO.map(({ id, label, Icon }) => {
                   // Definimos si el botón está activo:
-                  // - Si es dividir: está activo si hay más de 1 elemento en el array.
+                  // - Si es Dividir: está activo si hay más de 1 elemento en el array.
                   // - Si es otro método: está activo si hay exactamente 1 elemento y es ese método.
                   const activo =
-                    id === "dividir"
+                    id === "Dividir"
                       ? metodoPago.length > 1
                       : metodoPago.length === 1 && metodoPago[0].metodo === id;
 
@@ -485,7 +488,7 @@ const Carrito = ({ onIrAPagar }) => {
                       key={id}
                       type="button"
                       onClick={() => {
-                        if (id === "dividir") {
+                        if (id === "Dividir") {
                           // Si ya estamos dividiendo, no hacemos nada (el usuario usa el botón +)
                           // Si no, iniciamos la división limpiando cualquier residuo anterior
                           if (metodoPago.length <= 1) {
@@ -546,7 +549,7 @@ const Carrito = ({ onIrAPagar }) => {
                       marginBottom: "10px",
                     }}
                   >
-                    Dividir pago entre métodos
+                    Dividir pago
                   </p>
 
                   {metodoPago.map((item) => (
@@ -562,7 +565,7 @@ const Carrito = ({ onIrAPagar }) => {
                         onClick={() => eliminarDivision(item.id)}
                         style={{
                           border: "none",
-                          color: "#e53e3e",
+                          color: "rgba(255,255,255,0.7)",
                           width: "28px",
                           height: "28px",
                           cursor: "pointer",
@@ -582,6 +585,8 @@ const Carrito = ({ onIrAPagar }) => {
                         onChange={(e) =>
                           actualizarDivision(item.id, "metodo", e.target.value)
                         }
+                        aria-invalid={!item.metodo}
+                        title={item.metodo ? "" : "Selecciona un método"}
                         style={{
                           flex: "0.8",
                           minWidth: 0,
@@ -589,15 +594,22 @@ const Carrito = ({ onIrAPagar }) => {
                           color: "#fff",
                           padding: "8px 6px",
                           borderRadius: "8px",
-                          fontSize: "13px",
+                          fontSize: "16px",
+                          border: item.metodo
+                            ? "1px solid rgba(0,0,0,0)"
+                            : "1px solid #e53e3e",
+                          boxShadow: item.metodo
+                            ? "none"
+                            : "0 0 0 4px rgba(229,62,62,0.06)",
+                          transition: "box-shadow 0.15s, border 0.15s",
                         }}
                       >
                         <option value="" disabled>
                           Método
                         </option>
-                        <option value="efectivo">Efectivo</option>
-                        <option value="tarjeta">Tarjeta</option>
-                        <option value="transferencia">Transferencia</option>
+                        <option value="Efectivo">Efectivo</option>
+                        <option value="Tarjeta">Tarjeta</option>
+                        <option value="Transferencia">Transferencia</option>
                       </select>
 
                       {/* Contenedor del input para que el signo $ se vea integrado */}
@@ -623,21 +635,35 @@ const Carrito = ({ onIrAPagar }) => {
                               : ""
                           }
                           onChange={(e) => {
-                            // Aquí limpias los puntos para que en el estado se guarde solo el número: 1000000
+                            // No permitimos escribir monto si no se escogió método
+                            if (!item.metodo) return;
                             const valorLimpio = e.target.value.replace(
                               /\D/g,
                               "",
                             );
                             actualizarDivision(item.id, "monto", valorLimpio);
                           }}
+                          // Deshabilitado hasta que el usuario elija un método
+                          disabled={!item.metodo}
+                          aria-disabled={!item.metodo}
                           style={{
                             width: "100%",
                             background: "#131313",
-                            color: "#fff",
+                            color: item.metodo
+                              ? "#fff"
+                              : "rgba(255,255,255,0.35)",
                             padding: "8px 8px 8px 25px",
                             borderRadius: "8px",
-                            fontSize: "14px",
+                            fontSize: "16px",
                             boxSizing: "border-box",
+                            cursor: item.metodo ? "text" : "not-allowed",
+                            border: item.metodo
+                              ? "1px solid rgba(0,0,0,0)"
+                              : "1px solid #e53e3e",
+                            boxShadow: item.metodo
+                              ? "none"
+                              : "0 0 0 4px rgba(229,62,62,0.06)",
+                            transition: "box-shadow 0.15s, border 0.15s",
                           }}
                         />
                       </div>
@@ -688,7 +714,7 @@ const Carrito = ({ onIrAPagar }) => {
           >
             <span>{totalItems} producto(s)</span>
             <span style={{ fontWeight: 800, color: "#fff" }}>
-              {fmt(totalPrecio)}
+              TOTAL: {fmt(totalPrecio)}
             </span>
           </div>
 
@@ -706,7 +732,9 @@ const Carrito = ({ onIrAPagar }) => {
             </p>
           )}
 
-          {/* Advertencia: Montos incompletos o excedidos al dividir */}
+          {/* Nota: se indica visualmente en cada fila si falta seleccionar método. */}
+
+          {/* Advertencia: Montos incompletos o excedidos al Dividir */}
           {metodoPago.length > 1 && totalPagado !== totalPrecio && (
             <p
               style={{
@@ -726,22 +754,30 @@ const Carrito = ({ onIrAPagar }) => {
           <button
             type="button"
             onClick={handlePedir}
-            disabled={!puedeHacerPedido}
+            disabled={!puedeHacerPedido || hayFilaSinMetodo}
             style={{
               width: "100%",
               padding: "14px",
               borderRadius: "100px",
-              background: puedeHacerPedido
-                ? "#7c3aed"
-                : "rgba(124,58,237,0.25)",
-              color: puedeHacerPedido ? "#fff" : "rgba(255,255,255,0.5)",
+              background:
+                !puedeHacerPedido || hayFilaSinMetodo
+                  ? "rgba(124,58,237,0.25)"
+                  : "#7c3aed",
+              color:
+                !puedeHacerPedido || hayFilaSinMetodo
+                  ? "rgba(255,255,255,0.5)"
+                  : "#fff",
               fontWeight: 800,
               fontSize: "14px",
               border: "none",
-              cursor: puedeHacerPedido ? "pointer" : "not-allowed",
-              boxShadow: puedeHacerPedido
-                ? "0 8px 32px rgba(124,58,237,0.45)"
-                : "none",
+              cursor:
+                !puedeHacerPedido || hayFilaSinMetodo
+                  ? "not-allowed"
+                  : "pointer",
+              boxShadow:
+                !puedeHacerPedido || hayFilaSinMetodo
+                  ? "none"
+                  : "0 8px 32px rgba(124,58,237,0.45)",
               transition: "all 0.15s",
             }}
           >
