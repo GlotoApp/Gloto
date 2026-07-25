@@ -1,6 +1,7 @@
 // SeguimientoPedido.jsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   CheckCircle2,
   Clock,
@@ -15,6 +16,7 @@ import {
   Navigation,
   X,
 } from "lucide-react";
+import { supabase } from "../../../src/lib/supabaseClient";
 import { useCart } from "./CartContext";
 
 const fmt = (n) =>
@@ -73,9 +75,130 @@ const ENTREGA_LABEL = {
   punto: "Punto de encuentro",
 };
 
+const ORDER_TYPE_TO_METODO_ENTREGA = {
+  delivery: "domicilio",
+  pickup: "recoger",
+  dine_in: "mesa",
+};
+
+const normalizeMetodoEntrega = (orderType, metadataMetodoEntrega) => {
+  if (metadataMetodoEntrega) return metadataMetodoEntrega;
+  if (!orderType) return "domicilio";
+  return ORDER_TYPE_TO_METODO_ENTREGA[orderType] || orderType;
+};
+
+const mapOrderStatusToTrackingStatus = (status, metodoEntrega) => {
+  if (!status || status === "pending" || status === "confirmed")
+    return "recibido";
+  if (status === "preparing") return "preparando";
+  if (status === "ready") {
+    return metodoEntrega === "recoger" ? "listo_recoger" : "listo_entregar";
+  }
+  if (status === "delivered") return "entregado";
+  return "recibido";
+};
+
 const SeguimientoPedido = ({ onCerrar }) => {
   const { pedidoActivo, estadoPedido, avanzarEstadoPedido, logoTienda } =
     useCart();
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const tokenParam = searchParams.get("token");
+  const [fetchedPedido, setFetchedPedido] = useState(null);
+  const [loadingPedido, setLoadingPedido] = useState(false);
+  const [pedidoError, setPedidoError] = useState(null);
+
+  const orderNumber = searchParams.get("order");
+
+  useEffect(() => {
+    if (pedidoActivo || !orderNumber) return;
+
+    const fetchPedido = async () => {
+      setLoadingPedido(true);
+      setPedidoError(null);
+      try {
+        if (!tokenParam) {
+          // La RPC exige el token de seguimiento; sin él no hay forma
+          // segura de saber a quién pertenece el pedido.
+          setPedidoError("Falta el enlace completo de seguimiento (token).");
+          setFetchedPedido(null);
+          return;
+        }
+
+        // Consulta a través de una función SECURITY DEFINER: es la única
+        // vía permitida para que un cliente anónimo lea un pedido, y
+        // exige que order_number + token coincidan exactamente.
+        const { data, error } = await supabase.rpc("get_order_by_token", {
+          p_order_number: orderNumber,
+          p_token: tokenParam,
+        });
+
+        if (error || !data) {
+          setPedidoError(error?.message || "No se encontró el pedido.");
+          setFetchedPedido(null);
+        } else {
+          const metodoEntrega = normalizeMetodoEntrega(
+            data.order_type,
+            data.metadata?.metodoEntrega,
+          );
+          const trackingStatus = mapOrderStatusToTrackingStatus(
+            data.status,
+            metodoEntrega,
+          );
+
+          setFetchedPedido({
+            ...data,
+            numero: data.order_number,
+            nombreTienda: data.metadata?.tiendaSlug || data.order_number,
+            status: trackingStatus,
+            metodoEntrega,
+            items: (data.order_items || []).map((item) => ({
+              id: item.id,
+              nombre: item.product_name,
+              cantidad: item.quantity,
+              precio: item.unit_price,
+              notas: item.notes || "",
+              opciones: item.options || [],
+            })),
+            metodoPago: [
+              {
+                id: "p0",
+                metodo: data.payment_method || "Desconocido",
+                monto: Number(data.total) || 0,
+              },
+            ],
+            datosCliente: {
+              nombre: data.customer_name || "",
+              telefono: data.customer_phone || "",
+              direccion: data.delivery_address || "",
+              referencia: data.delivery_instructions || "",
+              puntoRetiro: "",
+              deliveryFee: Number(data.delivery_fee) || 0,
+              propina: Number(data.tip_amount) || 0,
+            },
+            observaciones: data.notes || "",
+          });
+        }
+      } catch (err) {
+        setPedidoError("Error al cargar el pedido.");
+        setFetchedPedido(null);
+      } finally {
+        setLoadingPedido(false);
+      }
+    };
+
+    fetchPedido();
+  }, [pedidoActivo, orderNumber]);
+
+  const pedido = pedidoActivo || fetchedPedido;
+  const estadoPedidoActual = pedidoActivo
+    ? estadoPedido
+    : pedido?.status || "recibido";
+
+  const cerrar = () => {
+    if (onCerrar) return onCerrar();
+    navigate("/marketplace");
+  };
 
   // Simulación de avance automático del estado del pedido (demo).
   // En producción, este estado debería actualizarse desde el backend/tienda.
@@ -90,18 +213,76 @@ const SeguimientoPedido = ({ onCerrar }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estadoPedido, pedidoActivo]);
 
-  if (!pedidoActivo) return null;
+  if (loadingPedido) {
+    return createPortal(
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "#0a0a0a",
+          color: "#fff",
+          zIndex: 200,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "'Inter', system-ui, sans-serif",
+        }}
+      >
+        <span>Cargando pedido...</span>
+      </div>,
+      document.body,
+    );
+  }
+
+  if (!pedido) {
+    return createPortal(
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "#0a0a0a",
+          color: "#fff",
+          zIndex: 200,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontFamily: "'Inter', system-ui, sans-serif",
+        }}
+      >
+        <div style={{ textAlign: "center", padding: "24px" }}>
+          <p style={{ marginBottom: "16px", fontSize: "16px" }}>
+            {pedidoError || "No se encontró el pedido."}
+          </p>
+          <button
+            type="button"
+            onClick={cerrar}
+            style={{
+              padding: "12px 20px",
+              borderRadius: "999px",
+              background: "#7c3aed",
+              color: "#fff",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Volver
+          </button>
+        </div>
+      </div>,
+      document.body,
+    );
+  }
 
   const secuencia =
-    ETAPAS_POR_ENTREGA[pedidoActivo.metodoEntrega] ||
-    ETAPAS_POR_ENTREGA.domicilio;
+    ETAPAS_POR_ENTREGA[pedido.metodoEntrega] || ETAPAS_POR_ENTREGA.domicilio;
   const ETAPAS = secuencia.map((id) => ({ id, ...DEFINICION_ETAPAS[id] }));
-  const indiceActual = ETAPAS.findIndex((e) => e.id === estadoPedido);
+  const indiceActual = ETAPAS.findIndex((e) => e.id === estadoPedidoActual);
   const esEtapaFinal = indiceActual === ETAPAS.length - 1;
-  const { datosCliente, metodoEntrega, metodoPago } = pedidoActivo;
+  const { datosCliente, metodoEntrega, metodoPago } = pedido;
 
   const whatsappDestino = String(
-    pedidoActivo?.tiendaWhatsapp || "571234567890",
+    pedido?.tiendaWhatsapp || "571234567890",
   ).replace(/\D/g, "");
   const irAWppTienda = () => {
     if (typeof window === "undefined") return;
@@ -180,7 +361,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
         >
           <div style={{ textAlign: "right", minWidth: 0 }}>
             <h2 style={{ fontSize: "16px", fontWeight: 800, margin: 0 }}>
-              Pedido {pedidoActivo.numero}
+              Pedido {pedido.numero}
             </h2>
             <p
               style={{
@@ -189,7 +370,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
                 margin: 0,
               }}
             >
-              {pedidoActivo.nombreTienda}
+              {pedido.nombreTienda}
             </p>
           </div>
 
@@ -209,7 +390,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
             {logoTienda ? (
               <img
                 src={logoTienda}
-                alt={`Logo de ${pedidoActivo.nombreTienda}`}
+                alt={`Logo de ${pedido.nombreTienda}`}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 onError={(event) => {
                   event.currentTarget.onerror = null;
@@ -423,7 +604,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
             Tu pedido
           </p>
 
-          {pedidoActivo.items.map((it) => (
+          {pedido.items.map((it) => (
             <div
               key={it.id}
               style={{
@@ -485,7 +666,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
             </div>
           ))}
 
-          {pedidoActivo.observaciones && (
+          {pedido.observaciones && (
             <div
               style={{
                 marginTop: "12px",
@@ -511,7 +692,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
                   margin: 0,
                 }}
               >
-                "{pedidoActivo.observaciones}"
+                "{pedido.observaciones}"
               </p>
             </div>
           )}
@@ -528,7 +709,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
             }}
           >
             <span>Total</span>
-            <span>{fmt(pedidoActivo.total)}</span>
+            <span>{fmt(pedido.total)}</span>
           </div>
         </div>
 
@@ -572,7 +753,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
                   {metodoPago[0].metodo || "-"}
                 </span>
                 <span style={{ fontSize: "13px", fontWeight: 800 }}>
-                  {fmt(Number(metodoPago[0].monto) || pedidoActivo.total)}
+                  {fmt(Number(metodoPago[0].monto) || pedido.total)}
                 </span>
               </div>
             ) : (
@@ -584,20 +765,20 @@ const SeguimientoPedido = ({ onCerrar }) => {
             )}
 
             {/* Delivery y propina si existen */}
-            {pedidoActivo.datosCliente?.deliveryFee && (
+            {pedido.datosCliente?.deliveryFee && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: "13px" }}>Costo de domicilio</span>
                 <span style={{ fontSize: "13px", fontWeight: 800 }}>
-                  {fmt(Number(pedidoActivo.datosCliente.deliveryFee) || 0)}
+                  {fmt(Number(pedido.datosCliente.deliveryFee) || 0)}
                 </span>
               </div>
             )}
 
-            {pedidoActivo.datosCliente?.propina && (
+            {pedido.datosCliente?.propina && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: "13px" }}>Propina</span>
                 <span style={{ fontSize: "13px", fontWeight: 800 }}>
-                  {fmt(Number(pedidoActivo.datosCliente.propina) || 0)}
+                  {fmt(Number(pedido.datosCliente.propina) || 0)}
                 </span>
               </div>
             )}

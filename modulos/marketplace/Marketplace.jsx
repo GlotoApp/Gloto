@@ -1,13 +1,21 @@
 import React, { useState } from "react";
-import { Routes, Route, useLocation, Link } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  useLocation,
+  useNavigate,
+  Link,
+} from "react-router-dom";
 import { MapPin, Globe } from "lucide-react";
 
 import Home from "./pages/Home";
 import Shop from "./pages/Shop";
+import SeguimientoPedido from "./pages/SeguimientoPedido";
 import { CartProvider } from "./pages/CartContext";
 
 const Marketplace = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const isShopPage = location.pathname.includes("/tienda/");
 
   return (
@@ -48,6 +56,12 @@ const Marketplace = () => {
           <Routes>
             <Route path="/" element={<Home />} />
             <Route path="/tienda/:slug" element={<Shop />} />
+            <Route
+              path="/seguimiento"
+              element={
+                <SeguimientoPedido onCerrar={() => navigate("/marketplace")} />
+              }
+            />
           </Routes>
         </CartProvider>
       </main>

@@ -129,6 +129,8 @@ const Shop = () => {
     setLogoTienda,
     tiendaSlug,
     setTiendaSlug,
+    businessId,
+    setBusinessId,
     vaciar,
     crearPedido,
     finalizarPedido,
@@ -486,6 +488,7 @@ const Shop = () => {
               ? await resolveImageUrl(data.logo_url)
               : "/default.png",
           );
+          setBusinessId(data.id);
           // Aseguramos también registrar el slug de la tienda en el contexto
           // para que el carrito sepa de qué tienda provienen los productos
           // cuando el usuario agregue items.
@@ -1763,20 +1766,12 @@ const Shop = () => {
             setCheckoutOpen(false);
             abrirCarrito();
           }}
-          onConfirmar={() => {
-            crearPedido();
+          onConfirmar={async () => {
+            const pedido = await crearPedido();
             setCheckoutOpen(false);
-            setSeguimientoOpen(true);
-          }}
-        />
-      )}
-
-      {/* ── SEGUIMIENTO DEL PEDIDO (pantalla completa) ── */}
-      {seguimientoOpen && (
-        <SeguimientoPedido
-          onCerrar={() => {
-            setSeguimientoOpen(false);
-            finalizarPedido();
+            if (pedido) {
+              setSeguimientoOpen(true);
+            }
           }}
         />
       )}

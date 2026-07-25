@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
+import { supabase } from "../../../src/lib/supabaseClient";
 
 const CartContext = createContext(null);
 const CART_STORAGE_KEY = "gloto_marketplace_cart_v1";
@@ -40,6 +41,9 @@ export const CartProvider = ({ children }) => {
   const [tiendaSlug, setTiendaSlug] = useState(
     carritoPersistido?.tiendaSlug || null,
   );
+  const [businessId, setBusinessId] = useState(
+    carritoPersistido?.businessId || null,
+  );
   const [cartOpen, setCartOpen] = useState(false);
   const [observaciones, setObservaciones] = useState("");
   const [metodoPago, setMetodoPago] = useState([]);
@@ -68,12 +72,13 @@ export const CartProvider = ({ children }) => {
           nombreTienda,
           logoTienda,
           tiendaSlug,
+          businessId,
         }),
       );
     } catch {
       // Si el almacenamiento no está disponible, no rompemos la experiencia.
     }
-  }, [carrito, productos, nombreTienda, logoTienda, tiendaSlug]);
+  }, [carrito, productos, nombreTienda, logoTienda, tiendaSlug, businessId]);
 
   const agregar = (id) =>
     setCarrito((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
@@ -209,15 +214,25 @@ export const CartProvider = ({ children }) => {
     }));
   };
 
+  const generarUuid = () =>
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+          const r = (Math.random() * 16) | 0;
+          const v = c === "x" ? r : (r & 0x3) | 0x8;
+          return v.toString(16);
+        });
+
   // Crea un pedido a partir del carrito actual (snapshot) y lo deja
   // listo para el seguimiento en pantalla.
-  const crearPedido = () => {
+  const crearPedido = async () => {
     const items = productos
       .filter((p) => carrito[p.id] > 0)
       .map((p) => {
         const baseNombre = String(p.nombre || "").split(" · ")[0];
         return {
           id: p.id,
+          productId: p.productoBaseId || p.id,
           nombre: baseNombre,
           cantidad: carrito[p.id],
           precio: p.precio,
@@ -229,8 +244,28 @@ export const CartProvider = ({ children }) => {
         };
       });
 
+    const orderNumber = `ORD-${Math.random().toString(36).slice(2, 10).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const deliveryFee = Number(datosCliente.deliveryFee) || 0;
+    const tipAmount = Number(datosCliente.propina) || 0;
+    const paymentMethod = metodoPago
+      .map((item) => item.metodo || "Desconocido")
+      .filter(Boolean)
+      .join(", ");
+    const paymentStatus = totalPagado === totalPrecio ? "paid" : "pending";
+    const orderStatus = paymentStatus === "paid" ? "confirmed" : "pending";
+    const orderTypeMap = {
+      domicilio: "delivery",
+      recoger: "pickup",
+      mesa: "dine_in",
+      punto: "delivery",
+    };
+    const orderType = orderTypeMap[metodoEntrega] || "pickup";
+
+    const trackingToken = generarUuid();
+
     const pedido = {
-      numero: `#${Math.floor(1000 + Math.random() * 9000)}`,
+      numero: orderNumber,
+      trackingToken,
       fecha: new Date(),
       items,
       total: totalPrecio,
@@ -240,6 +275,76 @@ export const CartProvider = ({ children }) => {
       observaciones,
       nombreTienda,
     };
+
+    const orderPayload = {
+      business_id: businessId,
+      status: orderStatus,
+      total: totalPrecio,
+      order_number: orderNumber,
+      updated_at: new Date().toISOString(),
+      scheduled_at: null,
+      delivery_address: datosCliente.direccion || null,
+      delivery_instructions:
+        datosCliente.referencia || datosCliente.puntoRetiro || null,
+      delivery_fee: deliveryFee,
+      tax_amount: 0,
+      discount_amount: 0,
+      tip_amount: tipAmount,
+      payment_method: paymentMethod || null,
+      payment_status: paymentStatus,
+      order_type: orderType,
+      customer_name: datosCliente.nombre || null,
+      customer_phone: datosCliente.telefono || null,
+      currency: "COP",
+      notes: observaciones || null,
+      metadata: {
+        tiendaSlug,
+        canal: "marketplace",
+        createdFrom: "web_app",
+        metodoEntrega,
+        tracking_token: trackingToken,
+        cliente: {
+          nombre: datosCliente.nombre || null,
+          telefono: datosCliente.telefono || null,
+          direccion: datosCliente.direccion || null,
+          referencia:
+            datosCliente.referencia || datosCliente.puntoRetiro || null,
+        },
+      },
+    };
+
+    let savedOrderId = null;
+    try {
+      // orderItemsPayload va sin `order_id`: la función lo asigna del
+      // lado del servidor una vez crea la orden, en la misma transacción.
+      const orderItemsPayload = items.map((item) => ({
+        product_id: item.productId,
+        quantity: item.cantidad,
+        unit_price: item.precio,
+        subtotal: item.precio * item.cantidad,
+        product_name: item.nombre,
+        product_sku: item.product_sku || null,
+        unit_name: item.unit_name || "unidad",
+        options: item.opciones || [],
+        notes: item.notas || null,
+      }));
+
+      const { data: rpcData, error: rpcError } = await supabase.rpc(
+        "create_order",
+        {
+          p_order: orderPayload,
+          p_items: orderItemsPayload,
+        },
+      );
+
+      if (rpcError) {
+        console.error("Error guardando orden en Supabase:", rpcError);
+      } else {
+        savedOrderId = rpcData?.id;
+      }
+    } catch (error) {
+      console.error("Error guardando orden en Supabase:", error);
+    }
 
     // Construir mensaje legible para WhatsApp
     try {
@@ -372,7 +477,9 @@ export const CartProvider = ({ children }) => {
 
       const trackingLink =
         typeof window !== "undefined"
-          ? `${window.location.origin}/marketplace/seguimiento?order=${encodeURIComponent(pedido.numero)}`
+          ? `${window.location.origin}/marketplace/seguimiento?order=${encodeURIComponent(
+              pedido.numero,
+            )}&token=${encodeURIComponent(pedido.trackingToken)}`
           : "";
 
       lines.push(`\n*Rastrea tu pedido:* ${trackingLink}`);
@@ -455,6 +562,8 @@ export const CartProvider = ({ children }) => {
     setLogoTienda,
     tiendaSlug,
     setTiendaSlug,
+    businessId,
+    setBusinessId,
     cartOpen,
     abrirCarrito,
     cerrarCarrito,
