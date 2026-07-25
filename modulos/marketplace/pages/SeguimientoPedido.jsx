@@ -24,6 +24,7 @@ const fmt = (n) =>
     style: "currency",
     currency: "COP",
     minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(n);
 
 // Definición de cada posible etapa (icono + textos)
@@ -361,7 +362,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
         >
           <div style={{ textAlign: "right", minWidth: 0 }}>
             <h2 style={{ fontSize: "16px", fontWeight: 800, margin: 0 }}>
-              Pedido {pedido.numero}
+              PEDIDO Nº: {pedido.numero}
             </h2>
             <p
               style={{
@@ -765,7 +766,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
             )}
 
             {/* Delivery y propina si existen */}
-            {pedido.datosCliente?.deliveryFee && (
+            {Number(pedido.datosCliente?.deliveryFee) > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: "13px" }}>Costo de domicilio</span>
                 <span style={{ fontSize: "13px", fontWeight: 800 }}>
@@ -774,7 +775,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
               </div>
             )}
 
-            {pedido.datosCliente?.propina && (
+            {Number(pedido.datosCliente?.propina) > 0 && (
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ fontSize: "13px" }}>Propina</span>
                 <span style={{ fontSize: "13px", fontWeight: 800 }}>

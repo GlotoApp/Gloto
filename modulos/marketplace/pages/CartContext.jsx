@@ -244,7 +244,7 @@ export const CartProvider = ({ children }) => {
         };
       });
 
-    const orderNumber = `ORD-${Math.random().toString(36).slice(2, 10).toUpperCase()}-${Date.now().toString(36).toUpperCase()}`;
+    const orderNumber = Math.random().toString(36).slice(2, 8).toUpperCase();
     const deliveryFee = Number(datosCliente.deliveryFee) || 0;
     const tipAmount = Number(datosCliente.propina) || 0;
     const paymentMethod = metodoPago
@@ -353,6 +353,7 @@ export const CartProvider = ({ children }) => {
           style: "currency",
           currency: "COP",
           minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
         }).format(n);
 
       const fecha = pedido.fecha.toLocaleDateString("es-CO");
@@ -370,7 +371,7 @@ export const CartProvider = ({ children }) => {
       const lines = [];
       lines.push(tipoLabel);
       lines.push("");
-      lines.push(`*FACTURA Nº:* ${pedido.numero}`);
+      lines.push(`*PEDIDO Nº:* ${pedido.numero}`);
       lines.push("");
       lines.push(`*FECHA:* ${fecha}`);
       lines.push(`*HORA:* ${hora}`);

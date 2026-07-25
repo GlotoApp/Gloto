@@ -40,6 +40,7 @@ const fmt = (n) =>
     style: "currency",
     currency: "COP",
     minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
   }).format(n);
 
 /* ── Cart Portal ── */
@@ -1770,7 +1771,11 @@ const Shop = () => {
             const pedido = await crearPedido();
             setCheckoutOpen(false);
             if (pedido) {
-              setSeguimientoOpen(true);
+              navigate(
+                `/marketplace/seguimiento?order=${encodeURIComponent(
+                  pedido.numero,
+                )}&token=${encodeURIComponent(pedido.trackingToken)}`,
+              );
             }
           }}
         />
