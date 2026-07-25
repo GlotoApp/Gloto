@@ -147,6 +147,23 @@ const SeguimientoPedido = ({ onCerrar }) => {
             metodoEntrega,
           );
 
+          const paymentMethodsFromMetadata = data.metadata?.payment_methods;
+          const metodoPagoFromMetadata =
+            Array.isArray(paymentMethodsFromMetadata) &&
+            paymentMethodsFromMetadata.length > 0
+              ? paymentMethodsFromMetadata.map((item, index) => ({
+                  id: `p${index}`,
+                  metodo: item.metodo || item.method || "Desconocido",
+                  monto: Number(item.monto) || 0,
+                }))
+              : [
+                  {
+                    id: "p0",
+                    metodo: data.payment_method || "Desconocido",
+                    monto: Number(data.total) || 0,
+                  },
+                ];
+
           setFetchedPedido({
             ...data,
             numero: data.order_number,
@@ -161,13 +178,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
               notas: item.notes || "",
               opciones: item.options || [],
             })),
-            metodoPago: [
-              {
-                id: "p0",
-                metodo: data.payment_method || "Desconocido",
-                monto: Number(data.total) || 0,
-              },
-            ],
+            metodoPago: metodoPagoFromMetadata,
             datosCliente: {
               nombre: data.customer_name || "",
               telefono: data.customer_phone || "",

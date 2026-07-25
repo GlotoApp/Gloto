@@ -303,6 +303,16 @@ export const CartProvider = ({ children }) => {
         createdFrom: "web_app",
         metodoEntrega,
         tracking_token: trackingToken,
+        payment_methods: metodoPago
+          .filter(
+            (item) =>
+              (item.metodo && String(item.metodo).trim()) ||
+              Number(item.monto) > 0,
+          )
+          .map((item) => ({
+            metodo: item.metodo || "Desconocido",
+            monto: Number(item.monto) || 0,
+          })),
         cliente: {
           nombre: datosCliente.nombre || null,
           telefono: datosCliente.telefono || null,
