@@ -74,6 +74,24 @@ const Carrito = ({ onIrAPagar }) => {
   }, [totalPrecio]);
 
   const [confirmVaciarOpen, setConfirmVaciarOpen] = useState(false);
+  const [removingItems, setRemovingItems] = useState([]);
+
+  useEffect(() => {
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
+
+  const handleEliminar = (id) => {
+    if (removingItems.includes(id)) return;
+    setRemovingItems((prev) => [...prev, id]);
+    window.setTimeout(() => {
+      eliminar(id);
+      setRemovingItems((prev) => prev.filter((itemId) => itemId !== id));
+    }, 220);
+  };
 
   const items = productos.filter((p) => carrito[p.id] > 0);
 
@@ -215,11 +233,16 @@ const Carrito = ({ onIrAPagar }) => {
                     gap: "14px",
                     padding: "14px 20px",
                     borderBottom: "1px solid #222222",
+                    opacity: removingItems.includes(p.id) ? 0 : 1,
+                    transform: removingItems.includes(p.id)
+                      ? "translateX(-18px)"
+                      : "translateX(0)",
+                    transition: "opacity 0.22s ease, transform 0.22s ease",
                   }}
                 >
                   <button
                     type="button"
-                    onClick={() => eliminar(p.id)}
+                    onClick={() => handleEliminar(p.id)}
                     style={{
                       background: "none",
                       border: "none",
@@ -635,32 +658,25 @@ const Carrito = ({ onIrAPagar }) => {
                               : ""
                           }
                           onChange={(e) => {
-                            // No permitimos escribir monto si no se escogió método
-                            if (!item.metodo) return;
                             const valorLimpio = e.target.value.replace(
                               /\D/g,
                               "",
                             );
                             actualizarDivision(item.id, "monto", valorLimpio);
                           }}
-                          // Deshabilitado hasta que el usuario elija un método
-                          disabled={!item.metodo}
-                          aria-disabled={!item.metodo}
                           style={{
                             width: "100%",
                             background: "#131313",
-                            color: item.metodo
-                              ? "#fff"
-                              : "rgba(255,255,255,0.35)",
+                            color: "#fff",
                             padding: "8px 8px 8px 25px",
                             borderRadius: "8px",
                             fontSize: "16px",
                             boxSizing: "border-box",
-                            cursor: item.metodo ? "text" : "not-allowed",
-                            border: item.metodo
+                            cursor: "text",
+                            border: item.monto
                               ? "1px solid rgba(0,0,0,0)"
                               : "1px solid #e53e3e",
-                            boxShadow: item.metodo
+                            boxShadow: item.monto
                               ? "none"
                               : "0 0 0 4px rgba(229,62,62,0.06)",
                             transition: "box-shadow 0.15s, border 0.15s",
@@ -747,7 +763,7 @@ const Carrito = ({ onIrAPagar }) => {
             >
               {totalPagado < totalPrecio
                 ? `Faltan ${fmt(totalPrecio - totalPagado)} para completar el pago.`
-                : `Excediste el pago por ${fmt(totalPagado - totalPrecio)}. El total es ${fmt(totalPrecio)}.`}
+                : `Excediste el pago por ${fmt(totalPagado - totalPrecio)}.`}
             </p>
           )}
 

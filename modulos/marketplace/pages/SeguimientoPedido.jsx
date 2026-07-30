@@ -31,7 +31,7 @@ const fmt = (n) =>
 const DEFINICION_ETAPAS = {
   recibido: {
     label: "Pedido recibido",
-    desc: "La tienda confirmó tu pedido.",
+    desc: "La tienda tiene tu pedido.",
     Icon: Clock,
   },
   preparando: {
@@ -93,7 +93,9 @@ const mapOrderStatusToTrackingStatus = (status, metodoEntrega) => {
     return "recibido";
   if (status === "preparing") return "preparando";
   if (status === "ready") {
-    return metodoEntrega === "recoger" ? "listo_recoger" : "listo_entregar";
+    if (metodoEntrega === "domicilio") return "camino";
+    if (metodoEntrega === "recoger") return "listo_recoger";
+    return "listo_entregar";
   }
   if (status === "delivered") return "entregado";
   return "recibido";
@@ -112,20 +114,12 @@ const SeguimientoPedido = ({ onCerrar }) => {
   const orderNumber = searchParams.get("order");
 
   useEffect(() => {
-    if (pedidoActivo || !orderNumber) return;
+    if (!orderNumber || !tokenParam) return;
 
     const fetchPedido = async () => {
       setLoadingPedido(true);
       setPedidoError(null);
       try {
-        if (!tokenParam) {
-          // La RPC exige el token de seguimiento; sin él no hay forma
-          // segura de saber a quién pertenece el pedido.
-          setPedidoError("Falta el enlace completo de seguimiento (token).");
-          setFetchedPedido(null);
-          return;
-        }
-
         // Consulta a través de una función SECURITY DEFINER: es la única
         // vía permitida para que un cliente anónimo lea un pedido, y
         // exige que order_number + token coincidan exactamente.
@@ -168,6 +162,8 @@ const SeguimientoPedido = ({ onCerrar }) => {
             ...data,
             numero: data.order_number,
             nombreTienda: data.metadata?.tiendaSlug || data.order_number,
+            businessWhatsapp: data.metadata?.business_whatsapp || "",
+            rawStatus: data.status,
             status: trackingStatus,
             metodoEntrega,
             items: (data.order_items || []).map((item) => ({
@@ -202,10 +198,15 @@ const SeguimientoPedido = ({ onCerrar }) => {
     fetchPedido();
   }, [pedidoActivo, orderNumber]);
 
-  const pedido = pedidoActivo || fetchedPedido;
-  const estadoPedidoActual = pedidoActivo
-    ? estadoPedido
-    : pedido?.status || "recibido";
+  const isRemoteTracking = Boolean(orderNumber && tokenParam);
+  const pedido = isRemoteTracking
+    ? fetchedPedido || pedidoActivo
+    : pedidoActivo || fetchedPedido;
+  const estadoPedidoActual = isRemoteTracking
+    ? pedido?.status || "recibido"
+    : pedidoActivo
+      ? estadoPedido
+      : pedido?.status || "recibido";
 
   const cerrar = () => {
     if (onCerrar) return onCerrar();
@@ -215,7 +216,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
   // Simulación de avance automático del estado del pedido (demo).
   // En producción, este estado debería actualizarse desde el backend/tienda.
   useEffect(() => {
-    if (!pedidoActivo) return;
+    if (!pedidoActivo || isRemoteTracking) return;
     const secuencia =
       ETAPAS_POR_ENTREGA[pedidoActivo.metodoEntrega] ||
       ETAPAS_POR_ENTREGA.domicilio;
@@ -223,7 +224,7 @@ const SeguimientoPedido = ({ onCerrar }) => {
     const t = setTimeout(() => avanzarEstadoPedido(), 9000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [estadoPedido, pedidoActivo]);
+  }, [estadoPedido, pedidoActivo, isRemoteTracking]);
 
   if (loadingPedido) {
     return createPortal(
@@ -293,11 +294,13 @@ const SeguimientoPedido = ({ onCerrar }) => {
   const esEtapaFinal = indiceActual === ETAPAS.length - 1;
   const { datosCliente, metodoEntrega, metodoPago } = pedido;
 
-  const whatsappDestino = String(
-    pedido?.tiendaWhatsapp || "571234567890",
-  ).replace(/\D/g, "");
+  const whatsappDestino = String(pedido?.businessWhatsapp || "").replace(
+    /\D/g,
+    "",
+  );
+  const tieneWhatsappDestino = Boolean(whatsappDestino);
   const irAWppTienda = () => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || !tieneWhatsappDestino) return;
     window.open(`https://wa.me/${whatsappDestino}`, "_blank");
     onCerrar();
   };

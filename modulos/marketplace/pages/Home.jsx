@@ -144,7 +144,8 @@ const Home = () => {
             id, 
             name, 
             slug, 
-            logo_url, 
+            logo_url,
+            cover_url,
             is_active,
             created_at,
             business_info (
@@ -179,11 +180,13 @@ const Home = () => {
             : 2500;
 
           return {
+            id: negocio.id,
             slug: negocio.slug,
             nombre: negocio.name,
             tipo: info?.categoria || "Tienda",
             // guardamos la ruta original en `logo` y la resolveremos abajo
             logo: negocio.logo_url || null,
+            cover: negocio.cover_url || null,
             rating: rating.toFixed(1),
             reviews,
             tiempo: `${deliveryMin}–${deliveryMax} min`,
@@ -196,11 +199,38 @@ const Home = () => {
           };
         });
 
+        // Si alguna tienda no tiene `cover`, intentar obtener la primera
+        // imagen de producto disponible como fallback antes de resolver URLs.
+        const tiendasConPortada = await Promise.all(
+          tiendasMapeadas.map(async (t) => {
+            if (t.cover) return t;
+            try {
+              const prodRes = await supabase
+                .from("products")
+                .select("image_url")
+                .eq("business_id", t.id)
+                .eq("is_active", true)
+                .order("created_at", { ascending: true })
+                .limit(1);
+
+              const firstImg =
+                Array.isArray(prodRes.data) && prodRes.data[0]
+                  ? prodRes.data[0].image_url
+                  : null;
+
+              return { ...t, cover: firstImg || null };
+            } catch (e) {
+              return t;
+            }
+          }),
+        );
+
         // Resolver URLs públicas para las imágenes (si vienen de Supabase Storage)
         const tiendasConUrls = await Promise.all(
-          tiendasMapeadas.map(async (t) => ({
+          tiendasConPortada.map(async (t) => ({
             ...t,
             logo: t.logo ? await resolveImageUrl(t.logo) : "/default.png",
+            cover: t.cover ? await resolveImageUrl(t.cover) : "/default.png",
           })),
         );
 
@@ -663,16 +693,29 @@ const Home = () => {
                   to={`/marketplace/tienda/${t.slug}`}
                   className="group relative flex items-center gap-3 rounded-3xl bg-surface border border-outline/30 p-3 transition-all duration-300 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/10"
                 >
-                  {/* Logo */}
+                  {/* Cover + logo */}
                   <div className="relative flex-shrink-0 flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-background border border-outline/10 overflow-hidden">
                     <img
-                      src={t.logo}
+                      src={t.cover || t.logo}
                       alt={t.nombre}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        e.target.src = "/default.png";
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = t.logo || "/default.png";
                       }}
                     />
+
+                    <div className="absolute bottom-0 right-0 w-8 h-8 overflow-hidden shadow-md rounded-full border border-white/20 bg-background">
+                      <img
+                        src={t.logo || t.cover}
+                        alt={t.nombre}
+                        className="w-full h-full object-cover rounded-full"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "/default.png";
+                        }}
+                      />
+                    </div>
 
                     {t.badge && (
                       <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-md bg-primary-container text-white text-[7px] font-bold uppercase tracking-wider shadow-sm">
@@ -730,25 +773,26 @@ const Home = () => {
                   to={`/marketplace/tienda/${t.slug}`}
                   className="group relative flex flex-col rounded-3xl bg-surface  p-3 transition-all duration-300 hover:shadow-lg hover:shadow-primary-container/10"
                 >
-                  {/* Contenedor del Logo con fondo sutil */}
+                  {/* Contenedor de portada con logo superpuesto */}
                   <div className="relative flex items-center justify-center h-20 sm:h-24 rounded-2xl bg-background border border-outline/10 mb-3 overflow-hidden">
                     <img
-                      src={t.logo}
+                      src={t.cover || t.logo}
                       alt={t.nombre}
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        e.target.src = "/default.png";
+                        e.currentTarget.onerror = null;
+                        e.currentTarget.src = t.logo || "/default.png";
                       }}
                     />
 
-                    {/* Logo pequeño en esquina inferior derecha */}
-                    <div className="absolute bottom-2 right-2 w-7 h-7 overflow-hidden shadow-md">
+                    <div className="absolute bottom-2 right-2 w-8 h-8 overflow-hidden shadow-md">
                       <img
-                        src={t.logo}
+                        src={t.logo || t.cover}
                         alt={t.nombre}
-                        className="w-full h-full object-cover rounded"
+                        className="w-full h-full object-cover rounded-[9px]"
                         onError={(e) => {
-                          e.target.src = "/default.png";
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = "/default.png";
                         }}
                       />
                     </div>

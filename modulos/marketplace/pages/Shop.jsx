@@ -132,6 +132,8 @@ const Shop = () => {
     setTiendaSlug,
     businessId,
     setBusinessId,
+    businessWhatsapp,
+    setBusinessWhatsapp,
     vaciar,
     crearPedido,
     finalizarPedido,
@@ -211,7 +213,8 @@ const Shop = () => {
               id,
               name,
               slug,
-              logo_url
+              logo_url,
+              cover_url
             `,
             )
             .eq(campo, valor)
@@ -237,7 +240,8 @@ const Shop = () => {
             delivery_time_max,
             delivery_fee,
             free_delivery_min_order,
-            categoria
+            categoria,
+            whatsapp_phone
           `,
           )
           .eq("business_id", data.id)
@@ -454,6 +458,12 @@ const Shop = () => {
           };
         });
 
+        const primerProductoConImagen =
+          productosMapeados.find((producto) => producto.image)?.image || "";
+
+        const portadaUrl =
+          data.cover_url || primerProductoConImagen || "/default.png";
+
         setTiendaData({
           nombre: data.name,
           tipo: categoria,
@@ -470,8 +480,8 @@ const Shop = () => {
           logo: data.logo_url
             ? await resolveImageUrl(data.logo_url)
             : "/default.png",
-          cover: info?.cover_url
-            ? await resolveImageUrl(info.cover_url)
+          cover: portadaUrl
+            ? await resolveImageUrl(portadaUrl)
             : "/default.png",
         });
 
@@ -480,6 +490,13 @@ const Shop = () => {
 
         const hayCarritoOtraTienda =
           tiendaSlug && tiendaSlug !== slug && totalItemsRef.current > 0;
+
+        const normalizeWhatsappNumber = (value) => {
+          const digits = String(value || "").replace(/\D/g, "");
+          if (!digits) return "";
+          if (digits.startsWith("57")) return digits;
+          return `57${digits.replace(/^0+/, "")}`;
+        };
 
         if (!hayCarritoOtraTienda) {
           setProductos(productosMapeados);
@@ -490,6 +507,9 @@ const Shop = () => {
               : "/default.png",
           );
           setBusinessId(data.id);
+          setBusinessWhatsapp(
+            normalizeWhatsappNumber(info?.whatsapp_phone || "") || "",
+          );
           // Aseguramos también registrar el slug de la tienda en el contexto
           // para que el carrito sepa de qué tienda provienen los productos
           // cuando el usuario agregue items.
@@ -505,7 +525,7 @@ const Shop = () => {
     if (slug) {
       obtenerTienda();
     }
-  }, [slug, setNombreTienda, setLogoTienda]);
+  }, [slug, setNombreTienda, setLogoTienda, setBusinessWhatsapp]);
 
   // Lleva la vista al punto exacto donde la barra de filtros queda fija
   // arriba, mostrando el primer producto del filtro justo debajo.

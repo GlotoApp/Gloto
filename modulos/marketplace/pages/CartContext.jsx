@@ -44,6 +44,9 @@ export const CartProvider = ({ children }) => {
   const [businessId, setBusinessId] = useState(
     carritoPersistido?.businessId || null,
   );
+  const [businessWhatsapp, setBusinessWhatsapp] = useState(
+    carritoPersistido?.businessWhatsapp || "",
+  );
   const [cartOpen, setCartOpen] = useState(false);
   const [observaciones, setObservaciones] = useState("");
   const [metodoPago, setMetodoPago] = useState([]);
@@ -73,12 +76,21 @@ export const CartProvider = ({ children }) => {
           logoTienda,
           tiendaSlug,
           businessId,
+          businessWhatsapp,
         }),
       );
     } catch {
       // Si el almacenamiento no está disponible, no rompemos la experiencia.
     }
-  }, [carrito, productos, nombreTienda, logoTienda, tiendaSlug, businessId]);
+  }, [
+    carrito,
+    productos,
+    nombreTienda,
+    logoTienda,
+    tiendaSlug,
+    businessId,
+    businessWhatsapp,
+  ]);
 
   const agregar = (id) =>
     setCarrito((prev) => ({ ...prev, [id]: (prev[id] || 0) + 1 }));
@@ -223,6 +235,30 @@ export const CartProvider = ({ children }) => {
           return v.toString(16);
         });
 
+  const generarNumeroPedido = (telefono = "") => {
+    const ahora = new Date();
+    const pad = (value, length = 2) => String(value).padStart(length, "0");
+
+    const year = pad(ahora.getFullYear() % 100);
+    const month = pad(ahora.getMonth() + 1);
+    const day = pad(ahora.getDate());
+    const hours = pad(ahora.getHours());
+    const minutes = pad(ahora.getMinutes());
+    const seconds = pad(ahora.getSeconds());
+
+    const telefonoSoloNumeros = String(telefono).replace(/\D/g, "");
+    const ultimosTres = telefonoSoloNumeros.slice(-3).padStart(3, "0");
+
+    return `${year}${month}${day}${hours}${minutes}${seconds}${ultimosTres}`;
+  };
+
+  const normalizeWhatsappNumber = (value) => {
+    const digits = String(value || "").replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.startsWith("57")) return digits;
+    return `57${digits.replace(/^0+/, "")}`;
+  };
+
   // Crea un pedido a partir del carrito actual (snapshot) y lo deja
   // listo para el seguimiento en pantalla.
   const crearPedido = async () => {
@@ -244,7 +280,7 @@ export const CartProvider = ({ children }) => {
         };
       });
 
-    const orderNumber = Math.random().toString(36).slice(2, 8).toUpperCase();
+    const orderNumber = generarNumeroPedido(datosCliente.telefono);
     const deliveryFee = Number(datosCliente.deliveryFee) || 0;
     const tipAmount = Number(datosCliente.propina) || 0;
     const paymentMethod = metodoPago
@@ -274,6 +310,7 @@ export const CartProvider = ({ children }) => {
       datosCliente: { ...datosCliente },
       observaciones,
       nombreTienda,
+      businessWhatsapp,
     };
 
     const orderPayload = {
@@ -303,6 +340,7 @@ export const CartProvider = ({ children }) => {
         createdFrom: "web_app",
         metodoEntrega,
         tracking_token: trackingToken,
+        business_whatsapp: normalizeWhatsappNumber(businessWhatsapp) || null,
         payment_methods: metodoPago
           .filter(
             (item) =>
@@ -497,16 +535,12 @@ export const CartProvider = ({ children }) => {
       lines.push("\n\n\n\n*Envía tu pedido aqui --------->*");
 
       const message = lines.join("\n");
+      const whatsappDestino = normalizeWhatsappNumber(businessWhatsapp);
 
-      // Enviamos directamente al número de prueba proporcionado mientras
-      // se conectan los números reales de los negocios.
-      // Formato internacional sin signos: 573024345404 (para +57 3024345404)
-      const TEST_WHATSAPP_PHONE = "573024345404";
-      if (typeof window !== "undefined") {
-        const url = `https://wa.me/${TEST_WHATSAPP_PHONE}?text=${encodeURIComponent(
+      if (whatsappDestino && typeof window !== "undefined") {
+        const url = `https://wa.me/${whatsappDestino}?text=${encodeURIComponent(
           message,
         )}`;
-        // Abrimos en nueva pestaña para que el usuario confirme el envío
         window.open(url, "_blank");
       }
     } catch (err) {
@@ -575,6 +609,8 @@ export const CartProvider = ({ children }) => {
     setTiendaSlug,
     businessId,
     setBusinessId,
+    businessWhatsapp,
+    setBusinessWhatsapp,
     cartOpen,
     abrirCarrito,
     cerrarCarrito,
