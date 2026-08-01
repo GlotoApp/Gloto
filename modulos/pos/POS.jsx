@@ -2031,7 +2031,7 @@ const POS = () => {
                 <textarea
                   autoFocus
                   id="instruction-textarea"
-                  className="w-full bg-background border border-outline rounded-lg p-4 text-on-surface text-sm placeholder:text-on-surface-variant/40 outline-none min-h-[140px] resize-none transition-all duration-300 focus:border-primary focus:ring-1 focus:ring-primary/20"
+                  className="w-full bg-background border border-outline rounded-lg p-4 text-on-surface text-base placeholder:text-on-surface-variant/40 outline-none min-h-[140px] resize-none transition-all duration-300 focus:border-primary focus:ring-1 focus:ring-primary/20"
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
                   placeholder="Añade una instrucción especial (opcional)"
@@ -2213,7 +2213,7 @@ const POS = () => {
                   <textarea
                     value={optionNote}
                     onChange={(e) => setOptionNote(e.target.value)}
-                    className="w-full min-h-[110px] rounded-[1.5rem] border border-white/10 bg-background/90 p-4 text-sm text-on-surface outline-none resize-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                    className="w-full min-h-[110px] rounded-[1.5rem] border border-white/10 bg-background/90 p-4 text-base text-on-surface outline-none resize-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
                     placeholder="Añade una instrucción especial (opcional)"
                   />
                 </div>
