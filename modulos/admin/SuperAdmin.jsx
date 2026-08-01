@@ -29,11 +29,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../src/lib/supabaseClient";
 import { useNavigate } from "react-router-dom";
-
-const handleLogout = async () => {
-  await supabase.auth.signOut();
-  navigate("/login-superadmin"); // Redirige al login de superadmin al salir
-};
+import CrearTiendaWizard from "./CrearTiendaWizard";
 
 const STORAGE_KEY = "superadmin_tiendas";
 
@@ -105,6 +101,75 @@ const slugify = (texto) =>
     .replace(/-+/g, "-");
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const generarEmailAdmin = (slug) => {
+  const base = slugify(slug || "tienda")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  const suffix = Date.now().toString().slice(-4);
+  return `${base || "tienda"}-${suffix}@gloto.com`;
+};
+
+const crearTiendaEnSupabase = async ({ nombre, slug, activo }) => {
+  try {
+    const { data, error } = await supabase.rpc("create_business", {
+      business_name: nombre,
+      business_slug: slug,
+      business_active: activo,
+      business_created_at: new Date().toISOString(),
+    });
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error(
+      "No se pudo crear la tienda con RPC, se intentará fallback:",
+      error,
+    );
+    throw error;
+  }
+};
+
+const crearUsuarioAdministrador = async ({ businessId, slug, nombre }) => {
+  const email = generarEmailAdmin(slug);
+  const password = "123456";
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        business_id: businessId,
+        role: "admin",
+        business_name: nombre,
+      },
+    },
+  });
+
+  if (error) throw error;
+
+  if (!data?.user?.id) {
+    throw new Error("No se pudo crear el usuario en Auth");
+  }
+
+  const payload = {
+    id: data.user.id,
+    email,
+    rol: "admin",
+    business_id: businessId,
+  };
+
+  const { error: profileError } = await supabase
+    .from("profiles")
+    .insert(payload);
+
+  if (profileError) {
+    console.error("No se pudo crear el profile del usuario:", profileError);
+    throw profileError;
+  }
+
+  return { email, password, userId: data.user.id };
+};
 
 const tiendaVacia = () => ({
   id: null,
@@ -265,8 +330,17 @@ const SuperAdmin = ({ onVolver }) => {
   const [tiendaEditando, setTiendaEditando] = useState(null); // null = creando nueva
   const [form, setForm] = useState(tiendaVacia());
   const [slugManual, setSlugManual] = useState(false); // si el usuario editó el slug a mano
+  const [mostrarWizard, setMostrarWizard] = useState(false);
+  const [vistaCreacion, setVistaCreacion] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [mensajeEstado, setMensajeEstado] = useState({ tipo: "", texto: "" });
+  const [progresoCreacion, setProgresoCreacion] = useState({
+    activo: false,
+    pasos: [],
+  });
 
   const [tiendaAEliminar, setTiendaAEliminar] = useState(null);
+  const navigate = useNavigate();
 
   // Cargar desde localStorage al montar
   useEffect(() => {
@@ -300,10 +374,23 @@ const SuperAdmin = ({ onVolver }) => {
 
   // ── Acciones ──
 
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("No se pudo cerrar la sesión:", err);
+    }
+    navigate("/login-superadmin");
+  };
+
   const abrirCrear = () => {
     setTiendaEditando(null);
     setForm(tiendaVacia());
     setSlugManual(false);
+    setMensajeEstado({ tipo: "", texto: "" });
+    setProgresoCreacion({ activo: false, pasos: [] });
+    setMostrarWizard(false);
+    setVistaCreacion(true);
     setModalAbierto(true);
   };
 
@@ -311,10 +398,18 @@ const SuperAdmin = ({ onVolver }) => {
     setTiendaEditando(tienda);
     setForm(tienda);
     setSlugManual(true); // al editar, no regeneramos el slug automáticamente
+    setMensajeEstado({ tipo: "", texto: "" });
+    setProgresoCreacion({ activo: false, pasos: [] });
     setModalAbierto(true);
   };
 
-  const cerrarModal = () => setModalAbierto(false);
+  const cerrarModal = () => {
+    setMensajeEstado({ tipo: "", texto: "" });
+    setProgresoCreacion({ activo: false, pasos: [] });
+    setMostrarWizard(false);
+    setVistaCreacion(false);
+    setModalAbierto(false);
+  };
 
   const handleNombreChange = (valor) => {
     setForm((f) => ({
@@ -324,29 +419,138 @@ const SuperAdmin = ({ onVolver }) => {
     }));
   };
 
-  const handleGuardar = () => {
-    if (!form.nombre.trim()) return; // nombre es obligatorio
+  const handleGuardar = async (datosCreacion) => {
+    const nombreFinal = datosCreacion?.nombre || form.nombre.trim();
+    const slugFinal =
+      (datosCreacion?.slug || form.slug || "").trim() || slugify(nombreFinal);
 
-    const slugFinal = form.slug.trim() || slugify(form.nombre);
+    if (!nombreFinal.trim()) return; // nombre es obligatorio
+
+    setGuardando(true);
+    setMensajeEstado({ tipo: "", texto: "" });
+
+    setForm((prev) => ({ ...prev, nombre: nombreFinal, slug: slugFinal }));
+
+    const pasosBase = [
+      { id: "local", label: "Preparando tienda local", estado: "loading" },
+      {
+        id: "usuario",
+        label: "Creando usuario administrador",
+        estado: "pendiente",
+      },
+      { id: "final", label: "Finalizando creación", estado: "pendiente" },
+    ];
+
+    setProgresoCreacion({ activo: true, pasos: pasosBase });
 
     if (tiendaEditando) {
-      setTiendas((prev) =>
-        prev.map((t) =>
-          t.id === tiendaEditando.id ? { ...form, slug: slugFinal } : t,
-        ),
+      const tiendasActualizadas = tiendas.map((t) =>
+        t.id === tiendaEditando.id ? { ...form, slug: slugFinal } : t,
       );
-    } else {
-      setTiendas((prev) => [
-        ...prev,
-        {
-          ...form,
-          id: uid(),
-          slug: slugFinal,
-          creadoEn: Date.now(),
-        },
-      ]);
+      setTiendas(tiendasActualizadas);
+      guardarTiendas(tiendasActualizadas);
+      setModalAbierto(false);
+      setGuardando(false);
+      return;
     }
-    setModalAbierto(false);
+
+    try {
+      setProgresoCreacion((prev) => ({
+        ...prev,
+        pasos: prev.pasos.map((paso) =>
+          paso.id === "local" ? { ...paso, estado: "completado" } : paso,
+        ),
+      }));
+
+      const nuevaTienda = {
+        ...form,
+        nombre: nombreFinal,
+        slug: slugFinal,
+        id: uid(),
+        creadoEn: Date.now(),
+        business_id: null,
+      };
+
+      const tiendasActualizadas = [...tiendas, nuevaTienda];
+      setTiendas(tiendasActualizadas);
+      guardarTiendas(tiendasActualizadas);
+
+      setProgresoCreacion((prev) => ({
+        ...prev,
+        pasos: prev.pasos.map((paso) =>
+          paso.id === "usuario" ? { ...paso, estado: "loading" } : paso,
+        ),
+      }));
+
+      try {
+        const { userId } = await crearUsuarioAdministrador({
+          businessId: null,
+          slug: slugFinal,
+          nombre: nombreFinal,
+        });
+
+        setProgresoCreacion((prev) => ({
+          ...prev,
+          pasos: prev.pasos.map((paso) =>
+            paso.id === "usuario" ? { ...paso, estado: "completado" } : paso,
+          ),
+        }));
+
+        setProgresoCreacion((prev) => ({
+          ...prev,
+          pasos: prev.pasos.map((paso) =>
+            paso.id === "final" ? { ...paso, estado: "loading" } : paso,
+          ),
+        }));
+
+        setMensajeEstado({
+          tipo: "success",
+          texto: `Usuario creado correctamente. ID de perfil: ${userId}`,
+        });
+      } catch (authError) {
+        console.error("Error creando usuario administrador:", authError);
+        setProgresoCreacion((prev) => ({
+          ...prev,
+          pasos: prev.pasos.map((paso) =>
+            paso.id === "usuario"
+              ? { ...paso, estado: "error", detalle: "No se pudo completar" }
+              : paso,
+          ),
+        }));
+        setMensajeEstado({
+          tipo: "error",
+          texto:
+            "No se pudo crear el usuario o el profile. Revisa la consola y las políticas RLS.",
+        });
+      }
+
+      setProgresoCreacion((prev) => ({
+        ...prev,
+        pasos: prev.pasos.map((paso) =>
+          paso.id === "final" ? { ...paso, estado: "completado" } : paso,
+        ),
+      }));
+      setModalAbierto(false);
+    } catch (error) {
+      console.error("Error al guardar la tienda en Supabase:", error);
+      const tiendaFallback = {
+        ...form,
+        nombre: nombreFinal,
+        slug: slugFinal,
+        id: uid(),
+        creadoEn: Date.now(),
+      };
+      const tiendasActualizadas = [...tiendas, tiendaFallback];
+      setTiendas(tiendasActualizadas);
+      guardarTiendas(tiendasActualizadas);
+      setMensajeEstado({
+        tipo: "error",
+        texto:
+          "No se pudo guardar la tienda en Supabase; se almacenó de forma local.",
+      });
+    } finally {
+      setGuardando(false);
+    }
   };
 
   const toggleActivo = (id) => {
@@ -478,6 +682,29 @@ const SuperAdmin = ({ onVolver }) => {
             color="#f87171"
           />
         </div>
+
+        {mensajeEstado.texto && (
+          <div
+            role="status"
+            style={{
+              marginBottom: "14px",
+              padding: "10px 12px",
+              borderRadius: "12px",
+              border:
+                mensajeEstado.tipo === "error"
+                  ? "1px solid rgba(248,113,113,0.28)"
+                  : "1px solid rgba(52,211,153,0.28)",
+              background:
+                mensajeEstado.tipo === "error"
+                  ? "rgba(248,113,113,0.12)"
+                  : "rgba(52,211,153,0.12)",
+              color: mensajeEstado.tipo === "error" ? "#fda4af" : "#bbf7d0",
+              fontSize: "12px",
+            }}
+          >
+            {mensajeEstado.texto}
+          </div>
+        )}
 
         {/* Búsqueda */}
         <div style={{ position: "relative", marginBottom: "12px" }}>
@@ -802,239 +1029,386 @@ const SuperAdmin = ({ onVolver }) => {
             <div
               style={{ display: "flex", flexDirection: "column", gap: "14px" }}
             >
-              <div>
-                <label style={labelStyle}>Nombre de la tienda</label>
-                <input
-                  autoFocus
-                  value={form.nombre}
-                  onChange={(e) => handleNombreChange(e.target.value)}
-                  placeholder="Ej: Sushi Roll Express"
-                  style={inputStyle}
-                />
-              </div>
-
-              <div>
-                <label style={labelStyle}>
-                  URL / slug{" "}
-                  <span style={{ color: "rgba(255,255,255,0.3)" }}>
-                    (se genera solo, pero puedes cambiarlo)
-                  </span>
-                </label>
-                <input
-                  value={form.slug}
-                  onChange={(e) => {
-                    setSlugManual(true);
-                    setForm((f) => ({ ...f, slug: slugify(e.target.value) }));
+              {vistaCreacion ? (
+                <CrearTiendaWizard
+                  onCancel={cerrarModal}
+                  onSuccess={async (datos) => {
+                    setMostrarWizard(true);
+                    await handleGuardar(datos);
                   }}
-                  placeholder="sushi-roll-express"
-                  style={inputStyle}
                 />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Categoría</label>
-                <select
-                  value={form.categoria}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, categoria: e.target.value }))
-                  }
-                  style={inputStyle}
-                >
-                  {CATEGORIAS.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Plan</label>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "8px",
-                  }}
-                >
-                  {PLANES.map((plan) => {
-                    const activo = form.plan === plan.id;
-                    const PlanIcon = plan.icon;
-                    return (
-                      <button
-                        key={plan.id}
-                        type="button"
-                        onClick={() =>
-                          setForm((f) => ({ ...f, plan: plan.id }))
-                        }
+              ) : (
+                <>
+                  {progresoCreacion.activo && (
+                    <div
+                      style={{
+                        background: "#131313",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: "14px",
+                        padding: "14px",
+                      }}
+                    >
+                      <div
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "12px",
-                          textAlign: "left",
-                          background: activo
-                            ? "rgba(124,58,237,0.12)"
-                            : "#131313",
-                          border: activo
-                            ? "1px solid #7c3aed"
-                            : "1px solid rgba(255,255,255,0.08)",
-                          borderRadius: "14px",
-                          padding: "12px 14px",
-                          cursor: "pointer",
+                          justifyContent: "space-between",
+                          marginBottom: "10px",
                         }}
                       >
-                        <div
-                          style={{
-                            width: "34px",
-                            height: "34px",
-                            borderRadius: "10px",
-                            background: `${plan.color}1f`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            flexShrink: 0,
-                          }}
-                        >
-                          <PlanIcon size={16} color={plan.color} />
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "baseline",
-                              justifyContent: "space-between",
-                              gap: "8px",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: "13px",
-                                fontWeight: 800,
-                                color: "#fff",
-                              }}
-                            >
-                              {plan.name}
-                            </span>
-                            <span
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: 700,
-                                color: plan.color,
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              {plan.isCommission
-                                ? plan.commissionText
-                                : `${fmtCOP(plan.priceMonthly)}/mes`}
-                            </span>
-                          </div>
+                        <div>
                           <p
                             style={{
-                              fontSize: "11px",
-                              color: "rgba(255,255,255,0.45)",
-                              margin: "2px 0 0",
+                              margin: 0,
+                              fontSize: "12px",
+                              fontWeight: 800,
+                              color: "#fff",
                             }}
                           >
-                            {plan.isCommission
-                              ? plan.subText
-                              : plan.description}
+                            Creando tienda en etapas
+                          </p>
+                          <p
+                            style={{
+                              margin: "2px 0 0",
+                              fontSize: "11px",
+                              color: "rgba(255,255,255,0.45)",
+                            }}
+                          >
+                            Seguimiento del proceso en tiempo real
                           </p>
                         </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            color: "rgba(255,255,255,0.55)",
+                          }}
+                        >
+                          {
+                            progresoCreacion.pasos.filter(
+                              (p) => p.estado === "completado",
+                            ).length
+                          }
+                          /{progresoCreacion.pasos.length}
+                        </span>
+                      </div>
 
-              <div>
-                <label style={labelStyle}>Teléfono de contacto</label>
-                <input
-                  value={form.telefono}
-                  inputMode="tel"
-                  onChange={(e) => {
-                    const v = e.target.value.replace(/[^0-9+]/g, "");
-                    setForm((f) => ({ ...f, telefono: v }));
-                  }}
-                  placeholder="+573001234567"
-                  style={inputStyle}
-                />
-              </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "8px",
+                        }}
+                      >
+                        {progresoCreacion.pasos.map((paso) => {
+                          const color =
+                            paso.estado === "completado"
+                              ? "#34d399"
+                              : paso.estado === "error"
+                                ? "#f87171"
+                                : paso.estado === "loading"
+                                  ? "#a78bfa"
+                                  : "rgba(255,255,255,0.25)";
 
-              <div>
-                <label style={labelStyle}>Descripción (opcional)</label>
-                <textarea
-                  value={form.descripcion}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, descripcion: e.target.value }))
-                  }
-                  rows={3}
-                  placeholder="Breve descripción del negocio..."
-                  style={{ ...inputStyle, resize: "vertical" }}
-                />
-              </div>
+                          return (
+                            <div
+                              key={paso.id}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "10px",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  width: "10px",
+                                  height: "10px",
+                                  borderRadius: "50%",
+                                  background: color,
+                                  flexShrink: 0,
+                                }}
+                              />
+                              <div style={{ flex: 1 }}>
+                                <div
+                                  style={{ fontSize: "12px", fontWeight: 700 }}
+                                >
+                                  {paso.label}
+                                </div>
+                                <div
+                                  style={{
+                                    fontSize: "11px",
+                                    color: "rgba(255,255,255,0.45)",
+                                  }}
+                                >
+                                  {paso.estado === "loading"
+                                    ? "En curso"
+                                    : paso.estado === "completado"
+                                      ? "Completado"
+                                      : paso.estado === "error"
+                                        ? "Falló"
+                                        : "Pendiente"}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  background: "#131313",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  borderRadius: "14px",
-                  padding: "12px 14px",
-                }}
-              >
-                <div>
-                  <p
+                  <div>
+                    <label style={labelStyle}>Nombre de la tienda</label>
+                    <input
+                      autoFocus
+                      value={form.nombre}
+                      onChange={(e) => handleNombreChange(e.target.value)}
+                      placeholder="Ej: Sushi Roll Express"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>
+                      URL / slug{" "}
+                      <span style={{ color: "rgba(255,255,255,0.3)" }}>
+                        (se genera solo, pero puedes cambiarlo)
+                      </span>
+                    </label>
+                    <input
+                      value={form.slug}
+                      onChange={(e) => {
+                        setSlugManual(true);
+                        setForm((f) => ({
+                          ...f,
+                          slug: slugify(e.target.value),
+                        }));
+                      }}
+                      placeholder="sushi-roll-express"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Categoría</label>
+                    <select
+                      value={form.categoria}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, categoria: e.target.value }))
+                      }
+                      style={inputStyle}
+                    >
+                      {CATEGORIAS.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Plan</label>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "8px",
+                      }}
+                    >
+                      {PLANES.map((plan) => {
+                        const activo = form.plan === plan.id;
+                        const PlanIcon = plan.icon;
+                        return (
+                          <button
+                            key={plan.id}
+                            type="button"
+                            onClick={() =>
+                              setForm((f) => ({ ...f, plan: plan.id }))
+                            }
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "12px",
+                              textAlign: "left",
+                              background: activo
+                                ? "rgba(124,58,237,0.12)"
+                                : "#131313",
+                              border: activo
+                                ? "1px solid #7c3aed"
+                                : "1px solid rgba(255,255,255,0.08)",
+                              borderRadius: "14px",
+                              padding: "12px 14px",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <div
+                              style={{
+                                width: "34px",
+                                height: "34px",
+                                borderRadius: "10px",
+                                background: `${plan.color}1f`,
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <PlanIcon size={16} color={plan.color} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "baseline",
+                                  justifyContent: "space-between",
+                                  gap: "8px",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    fontSize: "13px",
+                                    fontWeight: 800,
+                                    color: "#fff",
+                                  }}
+                                >
+                                  {plan.name}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: "12px",
+                                    fontWeight: 700,
+                                    color: plan.color,
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {plan.isCommission
+                                    ? plan.commissionText
+                                    : `${fmtCOP(plan.priceMonthly)}/mes`}
+                                </span>
+                              </div>
+                              <p
+                                style={{
+                                  fontSize: "11px",
+                                  color: "rgba(255,255,255,0.45)",
+                                  margin: "2px 0 0",
+                                }}
+                              >
+                                {plan.isCommission
+                                  ? plan.subText
+                                  : plan.description}
+                              </p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Teléfono de contacto</label>
+                    <input
+                      value={form.telefono}
+                      inputMode="tel"
+                      onChange={(e) => {
+                        const v = e.target.value.replace(/[^0-9+]/g, "");
+                        setForm((f) => ({ ...f, telefono: v }));
+                      }}
+                      placeholder="+573001234567"
+                      style={inputStyle}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={labelStyle}>Descripción (opcional)</label>
+                    <textarea
+                      value={form.descripcion}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, descripcion: e.target.value }))
+                      }
+                      rows={3}
+                      placeholder="Breve descripción del negocio..."
+                      style={{ ...inputStyle, resize: "vertical" }}
+                    />
+                  </div>
+
+                  <div
                     style={{
-                      fontSize: "13px",
-                      fontWeight: 700,
-                      margin: 0,
-                      marginBottom: "2px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      background: "#131313",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: "14px",
+                      padding: "12px 14px",
                     }}
                   >
-                    Tienda activa
-                  </p>
-                  <p
+                    <div>
+                      <p
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 700,
+                          margin: 0,
+                          marginBottom: "2px",
+                        }}
+                      >
+                        Tienda activa
+                      </p>
+                      <p
+                        style={{
+                          fontSize: "11px",
+                          color: "rgba(255,255,255,0.4)",
+                          margin: 0,
+                        }}
+                      >
+                        Si la desactivas, no será visible para los clientes.
+                      </p>
+                    </div>
+                    <Toggle
+                      activo={form.activo}
+                      onClick={() =>
+                        setForm((f) => ({ ...f, activo: !f.activo }))
+                      }
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleGuardar({ nombre: form.nombre, slug: form.slug })
+                    }
+                    disabled={!form.nombre.trim() || guardando}
                     style={{
-                      fontSize: "11px",
-                      color: "rgba(255,255,255,0.4)",
-                      margin: 0,
+                      width: "100%",
+                      padding: "14px",
+                      borderRadius: "100px",
+                      background:
+                        form.nombre.trim() && !guardando
+                          ? "#7c3aed"
+                          : "rgba(124,58,237,0.25)",
+                      color:
+                        form.nombre.trim() && !guardando
+                          ? "#fff"
+                          : "rgba(255,255,255,0.5)",
+                      fontWeight: 800,
+                      fontSize: "14px",
+                      border: "none",
+                      cursor:
+                        form.nombre.trim() && !guardando
+                          ? "pointer"
+                          : "not-allowed",
+                      marginTop: "6px",
+                      boxShadow:
+                        form.nombre.trim() && !guardando
+                          ? "0 8px 32px rgba(124,58,237,0.45)"
+                          : "none",
                     }}
                   >
-                    Si la desactivas, no será visible para los clientes.
-                  </p>
-                </div>
-                <Toggle
-                  activo={form.activo}
-                  onClick={() => setForm((f) => ({ ...f, activo: !f.activo }))}
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={handleGuardar}
-                disabled={!form.nombre.trim()}
-                style={{
-                  width: "100%",
-                  padding: "14px",
-                  borderRadius: "100px",
-                  background: form.nombre.trim()
-                    ? "#7c3aed"
-                    : "rgba(124,58,237,0.25)",
-                  color: form.nombre.trim() ? "#fff" : "rgba(255,255,255,0.5)",
-                  fontWeight: 800,
-                  fontSize: "14px",
-                  border: "none",
-                  cursor: form.nombre.trim() ? "pointer" : "not-allowed",
-                  marginTop: "6px",
-                  boxShadow: form.nombre.trim()
-                    ? "0 8px 32px rgba(124,58,237,0.45)"
-                    : "none",
-                }}
-              >
-                {tiendaEditando ? "Guardar cambios" : "Crear tienda"}
-              </button>
+                    {guardando
+                      ? "Creando tienda..."
+                      : tiendaEditando
+                        ? "Guardar cambios"
+                        : "Crear tienda"}
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

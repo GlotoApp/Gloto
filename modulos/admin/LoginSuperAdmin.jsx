@@ -37,6 +37,7 @@ const LoginSuperAdmin = () => {
         .eq("id", data.user.id);
 
       if (profile && profile.length > 0 && profile[0].rol === "superadmin") {
+        await supabase.auth.updateUser({ data: { role: "super_admin" } });
         navigate("/superadmin");
       } else {
         setErrorMsg("Acceso denegado: no tienes permisos de administrador");
