@@ -312,7 +312,7 @@ const POS = () => {
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([{ id: "all", name: "Todo" }]);
   const [categoryMap, setCategoryMap] = useState({});
-  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [businessId, setBusinessId] = useState(null);
   const toastTimers = useRef({});
   const cartScrollRef = useRef(null);
@@ -1050,7 +1050,22 @@ const POS = () => {
           </div>
 
           <div className="flex-1 flex flex-col p-4">
-            {filteredProducts.length === 0 ? (
+            {isLoadingProducts ? (
+              <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
+                {[...Array(6)].map((_, idx) => (
+                  <div
+                    key={idx}
+                    className="group relative bg-surface rounded-[2.5rem] p-3 flex flex-col animate-pulse"
+                  >
+                    <div className="bg-surface-hover/50 rounded-[1.8rem] h-32 mb-4 border border-outline/[0.03]" />
+                    <div className="px-1 flex-1">
+                      <div className="h-4 bg-white/10 rounded-full w-3/4 mb-3" />
+                      <div className="h-5 bg-white/10 rounded-full w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredProducts.length === 0 ? (
               <div className="flex-1 flex flex-col items-center justify-center gap-3">
                 <span className="material-symbols-outlined text-5xl text-on-surface-variant/40">
                   search_off
@@ -1070,7 +1085,7 @@ const POS = () => {
                   <div
                     key={product.id}
                     onClick={() => addToCart(product)}
-                    className="group relative bg-surface  rounded-[2.5rem] p-3 hover:bg-surface-hover/50 hover:border-primary-container/40 transition-all duration-500 cursor-pointer flex flex-col active:scale-[0.97]"
+                    className="group relative bg-surface  rounded-[25px] hover:bg-surface-hover/50 hover:border-primary-container/40 transition-all duration-500 cursor-pointer flex flex-col active:scale-[0.97]"
                   >
                     {/* Botón Info - Elevado con Glassmorphism */}
                     <button
@@ -1080,10 +1095,10 @@ const POS = () => {
                           showInfo === product.id ? null : product.id,
                         );
                       }}
-                      className={`absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center transition-all duration-300  ${
+                      className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-300  ${
                         showInfo === product.id
                           ? "bg-on-surface text-background border-on-surface"
-                          : "bg-primary-container/20 text-primary border-primary/30 hover:bg-primary-container hover:text-on-surface"
+                          : "bg-primary-container/50 text-primary border-primary/30 hover:bg-primary-container hover:text-on-surface"
                       } z-10`}
                     >
                       <span className="material-symbols-outlined text-sm">
@@ -1092,7 +1107,7 @@ const POS = () => {
                     </button>
 
                     {/* Contenedor del icono image */}
-                    <div className="bg-surface-hover/50 rounded-[1.8rem] h-32 mb-4 flex items-center justify-center border border-outline/[0.03] overflow-hidden relative">
+                    <div className="bg-surface-hover/50 rounded-t-[1.8rem] h-32  flex items-center justify-center border border-outline/[0.03] overflow-hidden relative">
                       <div className="absolute inset-0 bg-gradient-to-br from-primary-container/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
                       {product.image_url ? (
                         <img
@@ -1109,18 +1124,17 @@ const POS = () => {
 
                     {/* Información de Producto */}
                     <div className="px-1">
-                      <p className="font-bold text-on-surface text-sm mb-1 group-hover:text-primary transition-colors">
+                      <p className="font-bold text-on-surface text-sl px-2 group-hover:text-primary transition-colors">
                         {product.name}
                       </p>
 
-                      <div className="flex items-center justify-between mt-1">
-                        <p className="text-primary font-black text-xl tracking-tight">
+                      <div className="flex items-center justify-between  pr-2 pl-2 pb-2">
+                        <p className="text-primary font-black text-ml md:text-lg tracking-tight">
                           $ {formatPrice(product.price)}
                         </p>
-
                         <button
                           onClick={(e) => openNoteModal(e, product)}
-                          className="w-10 h-10 flex items-center justify-center bg-surface-hover hover:bg-primary-container text-on-surface-variant hover:text-on-surface rounded-full transition-all  shadow-lg group-hover:border-primary/30"
+                          className="w-5 h-5 flex items-center justify-center text-on-surface-variant hover:text-primary-container transition-colors "
                         >
                           <span className="material-symbols-outlined text-xl">
                             add_notes
@@ -1136,14 +1150,14 @@ const POS = () => {
                           e.stopPropagation();
                           setShowInfo(null);
                         }}
-                        className="absolute inset-0 bg-surface/95 backdrop-blur-md rounded-[2.5rem] p-6 flex flex-col justify-center items-center text-center animate-in fade-in zoom-in-95 duration-300 z-20 cursor-pointer"
+                        className="absolute inset-0 bg-surface/95 backdrop-blur-md rounded-[25px] p-6 flex flex-col justify-center items-center text-center animate-in fade-in zoom-in-95 duration-300 z-20 cursor-pointer"
                       >
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setShowInfo(null);
                           }}
-                          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface bg-background/20 hover:bg-background/40 rounded-full transition-all"
+                          className="absolute top-2 right-2 w-7 h-7 flex items-center justify-center text-on-surface-variant hover:text-on-surface bg-background/20 hover:bg-background/40 rounded-full transition-all"
                         >
                           <span className="material-symbols-outlined text-lg">
                             close
