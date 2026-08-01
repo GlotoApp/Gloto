@@ -1,5 +1,7 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import SplitPaymentModal from "./SplitPaymentModal";
+import { supabase } from "../../src/lib/supabaseClient";
+import { useAuth } from "../../src/components/AuthContext";
 
 const pasteToField = async (setter) => {
   if (!navigator?.clipboard) return;
@@ -55,6 +57,128 @@ const formatPrice = (price) => {
   return Math.round(price)
     .toString()
     .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+const normalizeOptionGroup = (group, items = []) => {
+  const isRequired =
+    group.is_required ?? group.es_requerido ?? group.required ?? false;
+  const selectionType =
+    group.selection_type ?? group.selectionType ?? group.type ?? "single";
+
+  const opciones = (items || [])
+    .map((item) => ({
+      id: item.id,
+      nombre:
+        item.nombre ||
+        item.name ||
+        item.title ||
+        item.label ||
+        item.option_name ||
+        item.option ||
+        item.text ||
+        item.value ||
+        `Opción ${item.id}`,
+      precio_extra:
+        Number(
+          item.precio_extra ??
+            item.price ??
+            item.price_extra ??
+            item.extra_price ??
+            0,
+        ) || 0,
+      obligatorio:
+        item.es_opcion_obligatoria ??
+        item.mandatory ??
+        item.is_mandatory ??
+        item.required ??
+        item.is_required ??
+        false,
+      order: Number(item.order_index ?? item.order ?? 0),
+    }))
+    .sort((a, b) => a.order - b.order);
+
+  return {
+    id: group.id,
+    nombre: group.name || group.nombre || group.title || `Grupo ${group.id}`,
+    descripcion: group.description || group.descripcion || group.hint || "",
+    obligatorio: Boolean(isRequired),
+    selectionType,
+    order: Number(group.order_index ?? group.orderIndex ?? group.order ?? 0),
+    opciones,
+  };
+};
+
+const initializeOptionSelections = (product) => {
+  const selections = {};
+  (product.optionGroups || []).forEach((group) => {
+    const includedOptions = (group.opciones || []).filter(
+      (option) => Number(option.precio_extra || 0) === 0,
+    );
+
+    if (group.selectionType === "multiple") {
+      selections[group.id] = includedOptions.map((option) => option.id);
+    } else {
+      const defaultOption = includedOptions[0] || group.opciones?.[0] || null;
+      selections[group.id] = defaultOption?.id || null;
+    }
+  });
+  return selections;
+};
+
+const getSelectedOptionItems = (product, selections) => {
+  if (!product || !product.optionGroups) return [];
+  return product.optionGroups.flatMap((group) => {
+    const selected = selections[group.id];
+    if (group.selectionType === "multiple") {
+      return (Array.isArray(selected) ? selected : [])
+        .map((optionId) => group.opciones.find((opt) => opt.id === optionId))
+        .filter(Boolean);
+    }
+    const option = group.opciones.find((opt) => opt.id === selected);
+    return option ? [option] : [];
+  });
+};
+
+const getOptionIdsKey = (selectedOptions) =>
+  selectedOptions
+    .map((opt) => opt.id)
+    .filter(Boolean)
+    .sort()
+    .join("__") || null;
+
+const getOptionNames = (selectedOptions) =>
+  selectedOptions.map((opt) => opt.nombre).filter(Boolean);
+
+const getOptionExtraPrice = (selectedOptions) =>
+  selectedOptions.reduce((sum, opt) => sum + (opt.precio_extra || 0), 0);
+
+const createCartItemFromSelection = (
+  product,
+  selectedOptions,
+  note,
+  qty = 1,
+) => {
+  const optionIdsKey = getOptionIdsKey(selectedOptions);
+  const optionNames = getOptionNames(selectedOptions);
+  const extraPrice = getOptionExtraPrice(selectedOptions);
+  const cartId = Date.now();
+  const name = optionNames.length
+    ? `${product.name} · ${optionNames.join(" · ")}`
+    : product.name;
+
+  return {
+    ...product,
+    id: product.id,
+    productId: product.id,
+    cartId,
+    qty,
+    note: note?.trim() || "",
+    optionIdsKey,
+    optionNames,
+    selectedOptions,
+    price: Number(product.price || 0) + extraPrice,
+    name,
+  };
 };
 
 const numeroALetras = (num) => {
@@ -167,22 +291,179 @@ const numeroALetras = (num) => {
 };
 
 const POS = () => {
+  const { user } = useAuth();
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [removingItems, setRemovingItems] = useState(new Set());
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [optionModalOpen, setOptionModalOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
+  const [optionSelections, setOptionSelections] = useState({});
+  const [optionNote, setOptionNote] = useState("");
+  const [optionQuantity, setOptionQuantity] = useState(1);
+  const [optionValidationError, setOptionValidationError] = useState("");
   const [instruction, setInstruction] = useState("");
   const [showInfo, setShowInfo] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [mobilePanel, setMobilePanel] = useState("products");
   const [toastItems, setToastItems] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [categories, setCategories] = useState([{ id: "all", name: "Todo" }]);
+  const [categoryMap, setCategoryMap] = useState({});
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [businessId, setBusinessId] = useState(null);
   const toastTimers = useRef({});
   const cartScrollRef = useRef(null);
   const cartScrollRefMobile = useRef(null);
   const tableInputRef = useRef(null);
+
+  const fetchCategoriesForBusiness = async (businessId) => {
+    try {
+      const { data, error } = await supabase
+        .from("categories_shop")
+        .select("id,name")
+        .eq("business_id", businessId)
+        .eq("is_active", true)
+        .order("order_index", { ascending: true });
+
+      if (error) {
+        console.error("Error cargando categorías:", error);
+        return { categories: [{ id: "all", name: "Todo" }], categoryMap: {} };
+      }
+
+      const categoryOptions = [
+        { id: "all", name: "Todo" },
+        ...(data || []).map((item) => ({ id: item.id, name: item.name })),
+      ];
+      const categoryMapResult = (data || []).reduce((acc, item) => {
+        acc[item.id] = item.name;
+        return acc;
+      }, {});
+
+      setCategories(categoryOptions);
+      setCategoryMap(categoryMapResult);
+      return { categories: categoryOptions, categoryMap: categoryMapResult };
+    } catch (error) {
+      console.error("Error cargando categorías:", error);
+      return { categories: [{ id: "all", name: "Todo" }], categoryMap: {} };
+    }
+  };
+
+  const fetchProductsForBusiness = async (businessId, categoryMap = {}) => {
+    setIsLoadingProducts(true);
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "id,name,description,price,stock,image_url,is_active,category_id",
+        )
+        .eq("business_id", businessId)
+        .eq("is_active", true)
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Error cargando productos:", error);
+        setProducts([]);
+        return;
+      }
+
+      let optionGroupsByProduct = {};
+      if ((data || []).length > 0) {
+        const productIds = data.map((item) => item.id);
+        const [groupsRes, itemsRes] = await Promise.all([
+          supabase
+            .from("product_option_groups")
+            .select("*")
+            .in("product_id", productIds)
+            .order("order_index", { ascending: true }),
+          supabase
+            .from("products_items")
+            .select("*")
+            .in("product_id", productIds)
+            .order("order_index", { ascending: true }),
+        ]);
+
+        if (itemsRes.error) {
+          console.error("Error cargando opciones de producto:", itemsRes.error);
+        }
+        if (groupsRes.error) {
+          console.error("Error cargando grupos de opciones:", groupsRes.error);
+        }
+
+        const itemsByGroup = {};
+        (itemsRes.data || []).forEach((item) => {
+          const groupId = item.option_group_id;
+          if (!groupId) return;
+          itemsByGroup[groupId] = itemsByGroup[groupId] || [];
+          itemsByGroup[groupId].push(item);
+        });
+
+        const groupsByProduct = {};
+        (groupsRes.data || []).forEach((group) => {
+          const productId = group.product_id;
+          groupsByProduct[productId] = groupsByProduct[productId] || [];
+          groupsByProduct[productId].push(
+            normalizeOptionGroup(group, itemsByGroup[group.id] || []),
+          );
+        });
+
+        optionGroupsByProduct = groupsByProduct;
+      }
+
+      setProducts(
+        (data || []).map((item) => {
+          const groups = optionGroupsByProduct[item.id] || [];
+          const productDescription = item.description || item.desc || "";
+          return {
+            id: item.id,
+            productId: item.id,
+            name: item.name,
+            category: item.category_id || "otros",
+            categoryName: categoryMap[item.category_id] || "Otros",
+            price: Number(item.price || 0),
+            description: productDescription,
+            desc: productDescription,
+            image_url: item.image_url || "",
+            optionGroups: groups,
+            hasOptionGroups: groups.length > 0,
+          };
+        }),
+      );
+    } catch (error) {
+      console.error("Error cargando productos:", error);
+      setProducts([]);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  };
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user?.id) return;
+
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("business_id")
+        .eq("id", user.id)
+        .single();
+
+      if (error) {
+        console.error("Error cargando perfil:", error);
+        return;
+      }
+
+      if (profile?.business_id) {
+        setBusinessId(profile.business_id);
+        const { categoryMap: fetchedCategoryMap } =
+          await fetchCategoriesForBusiness(profile.business_id);
+        await fetchProductsForBusiness(profile.business_id, fetchedCategoryMap);
+      }
+    };
+
+    loadProfile();
+  }, [user]);
 
   // Estado para el item que cambia de color
   const [highlightItem, setHighlightItem] = useState(null);
@@ -262,81 +543,6 @@ const POS = () => {
     dividir: { label: "Dividir", icon: "call_split" }, // El nuevo método
   };
 
-  const products = [
-    {
-      id: 1,
-      name: "Pepperoni Pizza",
-      category: "pizzas",
-      price: 12000,
-      desc: "Pepperoni premium.",
-      icon: "local_pizza",
-    },
-    {
-      id: 2,
-      name: "Margherita Pizza",
-      category: "pizzas",
-      price: 10000,
-      desc: "Albahaca fresca.",
-      icon: "local_pizza",
-    },
-    {
-      id: 3,
-      name: "Truffle Burger",
-      category: "burgers",
-      price: 14000,
-      desc: "Carne angus.",
-      icon: "fastfood",
-    },
-    {
-      id: 4,
-      name: "Classic Burger",
-      category: "burgers",
-      price: 9000,
-      desc: "Carne de res 150g.",
-      icon: "fastfood",
-    },
-    {
-      id: 5,
-      name: "Garlic Knots",
-      category: "appetizers",
-      price: 5000,
-      desc: "Nudos de masa.",
-      icon: "bakery_dining",
-    },
-    {
-      id: 6,
-      name: "Sweet Potato Fries",
-      category: "appetizers",
-      price: 6000,
-      desc: "Batatas fritas.",
-      icon: "takeout_dining",
-    },
-    {
-      id: 7,
-      name: "Coke Zero",
-      category: "drinks",
-      price: 2990,
-      desc: "Refresco sin azúcar.",
-      icon: "local_drink",
-    },
-    {
-      id: 8,
-      name: "Orange Juice",
-      category: "drinks",
-      price: 3990,
-      desc: "Zumo natural.",
-      icon: "local_drink",
-    },
-  ];
-
-  const categories = [
-    { id: "all", name: "Todo" },
-    { id: "pizzas", name: "Pizzas" },
-    { id: "burgers", name: "Burgers" },
-    { id: "appetizers", name: "Entrantes" },
-    { id: "drinks", name: "Bebidas" },
-  ];
-
   const filteredProducts = products.filter((p) => {
     const matchesSearch =
       searchTerm === "" ||
@@ -369,9 +575,21 @@ const POS = () => {
     if (typeof window !== "undefined" && window.innerWidth < 1024) {
       addProductToast(product.name);
     }
+
+    if (product?.hasOptionGroups) {
+      setActiveProduct(product);
+      setOptionSelections(initializeOptionSelections(product));
+      setOptionNote("");
+      setOptionQuantity(1);
+      setOptionValidationError("");
+      setOptionModalOpen(true);
+      return;
+    }
+
     setCart((prevCart) => {
       const existingItem = prevCart.find(
-        (item) => item.id === product.id && !item.note,
+        (item) =>
+          item.productId === product.id && !item.optionIdsKey && !item.note,
       );
 
       if (existingItem) {
@@ -414,7 +632,16 @@ const POS = () => {
       }, 0);
       setTimeout(() => setHighlightItem(null), 500);
 
-      return [...prevCart, { ...product, cartId, qty: 1, note: "" }];
+      return [
+        ...prevCart,
+        {
+          ...product,
+          productId: product.id,
+          cartId,
+          qty: 1,
+          note: "",
+        },
+      ];
     });
   };
 
@@ -426,9 +653,77 @@ const POS = () => {
 
   const openNoteModal = (e, product, existingNote = "") => {
     e.stopPropagation();
+    if (product?.cartId) {
+      setActiveProduct(product);
+      setInstruction(existingNote);
+      setIsModalOpen(true);
+      return;
+    }
+    if (product?.hasOptionGroups) {
+      setActiveProduct(product);
+      setOptionSelections(initializeOptionSelections(product));
+      setOptionNote(existingNote);
+      setOptionValidationError("");
+      setOptionModalOpen(true);
+      return;
+    }
     setActiveProduct(product);
     setInstruction(existingNote);
     setIsModalOpen(true);
+  };
+
+  const confirmOptionSelection = () => {
+    if (!activeProduct) return;
+    const selectedOptions = getSelectedOptionItems(
+      activeProduct,
+      optionSelections,
+    );
+
+    const missingRequired = (activeProduct.optionGroups || []).some((group) => {
+      if (!group.obligatorio) return false;
+      const selected = optionSelections[group.id];
+      if (group.selectionType === "multiple") {
+        return !Array.isArray(selected) || selected.length === 0;
+      }
+      return !selected;
+    });
+
+    if (missingRequired) {
+      setOptionValidationError("Selecciona todas las opciones obligatorias.");
+      return;
+    }
+
+    const newItem = createCartItemFromSelection(
+      activeProduct,
+      selectedOptions,
+      optionNote,
+      optionQuantity,
+    );
+
+    setCart((prevCart) => {
+      const existingItem = prevCart.find(
+        (item) =>
+          item.productId === newItem.productId &&
+          item.optionIdsKey === newItem.optionIdsKey &&
+          item.note === newItem.note,
+      );
+
+      if (existingItem) {
+        return prevCart.map((item) =>
+          item.cartId === existingItem.cartId
+            ? { ...item, qty: item.qty + optionQuantity }
+            : item,
+        );
+      }
+
+      return [...prevCart, newItem];
+    });
+
+    setOptionModalOpen(false);
+    setActiveProduct(null);
+    setOptionSelections({});
+    setOptionNote("");
+    setOptionValidationError("");
   };
 
   const confirmWithNote = () => {
@@ -533,6 +828,14 @@ const POS = () => {
   const remainingLabel = remaining > 0 ? "Faltante" : "Cambio";
   const remainingDisplay = formatPrice(Math.abs(remaining));
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
+
+  const activeProductSelectedOptions = getSelectedOptionItems(
+    activeProduct,
+    optionSelections,
+  );
+  const activeProductSelectedPrice =
+    Number(activeProduct?.price || 0) +
+    getOptionExtraPrice(activeProductSelectedOptions);
 
   // Componente único de "División de Pago" reutilizable
   const splitPaymentPreview =
@@ -762,7 +1065,7 @@ const POS = () => {
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] md:grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4">
                 {filteredProducts.map((product) => (
                   <div
                     key={product.id}
@@ -791,9 +1094,17 @@ const POS = () => {
                     {/* Contenedor del icono image */}
                     <div className="bg-surface-hover/50 rounded-[1.8rem] h-32 mb-4 flex items-center justify-center border border-outline/[0.03] overflow-hidden relative">
                       <div className="absolute inset-0 bg-gradient-to-br from-primary-container/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                      <span className="material-symbols-outlined text-5xl text-on-surface-variant group-hover:text-primary group-hover:scale-110 transition-all duration-500">
-                        image
-                      </span>
+                      {product.image_url ? (
+                        <img
+                          src={product.image_url}
+                          alt={product.name}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="material-symbols-outlined text-5xl text-on-surface-variant group-hover:text-primary group-hover:scale-110 transition-all duration-500">
+                          image
+                        </span>
+                      )}
                     </div>
 
                     {/* Información de Producto */}
@@ -1191,39 +1502,14 @@ const POS = () => {
                     </div>
 
                     <div className="flex justify-between items-center">
-                      {/* Selector de Cantidad Estilizado */}
                       <div
-                        className={`flex items-center gap-2 rounded-lg px-1 border ${
+                        className={`rounded-lg px-3 py-2 text-[11px] font-black text-on-surface ${
                           highlightItem === item.cartId
-                            ? "bg-background/20 border-outline"
-                            : "bg-background/40 border-outline"
+                            ? "bg-background/20"
+                            : "bg-background/40"
                         }`}
                       >
-                        <button
-                          onClick={() => updateQty(item.cartId, item.qty - 1)}
-                          className="text-on-surface hover:text-primary font-bold"
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          min="0"
-                          value={item.qty}
-                          onChange={(e) => {
-                            const newQty = parseInt(e.target.value) || 0;
-                            updateQty(item.cartId, newQty);
-                          }}
-                          /* Añadimos appearance-none y clases para ocultar flechas en Chrome/Safari/Firefox */
-                          className="text-[11px] font-black w-6 text-center bg-transparent border-none outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none text-on-surface"
-                          onFocus={(e) => e.target.select()}
-                          style={{ MozAppearance: "textfield" }} // Esto es para Firefox
-                        />
-                        <button
-                          onClick={() => updateQty(item.cartId, item.qty + 1)}
-                          className="text-on-surface hover:text-primary font-bold"
-                        >
-                          +
-                        </button>
+                        x{item.qty}
                       </div>
                       <p className="font-black text-sm text-white">
                         $ {formatPrice(item.price * item.qty)}
@@ -1384,37 +1670,14 @@ const POS = () => {
                     </div>
 
                     <div className="flex justify-between items-center">
-                      {/* Selector de Cantidad Estilizado */}
                       <div
-                        className={`flex items-center gap-5 rounded-lg px-1 border ${
+                        className={`rounded-lg px-3 py-2 text-[11px] font-black text-on-surface ${
                           highlightItem === item.cartId
-                            ? "bg-background/20 border-outline"
-                            : "bg-background/40 border-outline"
+                            ? "bg-background/20"
+                            : "bg-background/40"
                         }`}
                       >
-                        <button
-                          onClick={() => updateQty(item.cartId, item.qty - 1)}
-                          className="text-on-surface hover:text-primary font-bold"
-                        >
-                          -
-                        </button>
-                        <input
-                          type="number"
-                          min="0"
-                          value={item.qty}
-                          onChange={(e) => {
-                            const newQty = parseInt(e.target.value) || 0;
-                            updateQty(item.cartId, newQty);
-                          }}
-                          className="text-[11px] font-black w-6 text-center bg-transparent border-none outline-none text-on-surface"
-                          onFocus={(e) => e.target.select()}
-                        />
-                        <button
-                          onClick={() => updateQty(item.cartId, item.qty + 1)}
-                          className="text-on-surface hover:text-primary font-bold"
-                        >
-                          +
-                        </button>
+                        x{item.qty}
                       </div>
                       <p className="font-black text-sm text-white">
                         $ {formatPrice(item.price * item.qty)}
@@ -1603,6 +1866,216 @@ const POS = () => {
                 >
                   {activeProduct?.cartId ? "Guardar" : "Añadir"}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+        {optionModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-0 lg:p-6">
+            <div className="relative flex h-full w-full max-w-full flex-col overflow-hidden rounded-none bg-black text-on-surface shadow-[0_30px_80px_rgba(0,0,0,0.55)] lg:h-auto lg:max-h-[90vh] lg:max-w-2xl lg:rounded-[2rem]">
+              <div className="flex items-start justify-between gap-4 px-4 py-4 lg:px-6 lg:py-5">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white/5 overflow-hidden">
+                    {activeProduct?.image_url ? (
+                      <img
+                        src={activeProduct.image_url}
+                        alt={activeProduct.name}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <span className="material-symbols-outlined text-3xl text-on-surface-variant">
+                        image
+                      </span>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-semibold tracking-tight text-on-surface truncate">
+                      {activeProduct?.name || "Seleccionar opciones"}
+                    </h3>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setOptionModalOpen(false);
+                    setActiveProduct(null);
+                    setOptionSelections({});
+                    setOptionNote("");
+                    setOptionValidationError("");
+                  }}
+                  className="text-on-surface-variant hover:text-on-surface"
+                  aria-label="Cerrar opciones"
+                >
+                  <span className="material-symbols-outlined text-xl">
+                    close
+                  </span>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto px-4 py-4 lg:px-6 lg:py-5">
+                {(activeProduct?.description ||
+                  activeProduct?.desc ||
+                  activeProduct?.descripcion) && (
+                  <div className="mb-4 text-sm leading-6 text-on-surface-variant">
+                    {activeProduct.description ||
+                      activeProduct.desc ||
+                      activeProduct.descripcion}
+                  </div>
+                )}
+                {(activeProduct?.optionGroups || []).map((group) => {
+                  const selected = optionSelections[group.id];
+                  return (
+                    <div
+                      key={group.id}
+                      className="border-b border-white/10 pb-5 pt-5 last:border-b-0 last:pb-0"
+                    >
+                      <div className="flex flex-col gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold text-on-surface">
+                            {group.nombre}
+                          </p>
+                          {group.obligatorio ? (
+                            <span className="rounded-full bg-red-500/10 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-red-300">
+                              Obligatorio
+                            </span>
+                          ) : null}
+                          <span className="rounded-full bg-white/5 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-on-surface-variant">
+                            {group.selectionType === "multiple"
+                              ? "Elige varias"
+                              : "Elige una"}
+                          </span>
+                        </div>
+                        {group.descripcion ? (
+                          <p className="text-xs leading-5 text-on-surface-variant">
+                            {group.descripcion}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="mt-4 grid gap-2">
+                        {group.opciones.map((option) => {
+                          const isSelected =
+                            group.selectionType === "multiple"
+                              ? Array.isArray(selected) &&
+                                selected.includes(option.id)
+                              : selected === option.id;
+                          return (
+                            <button
+                              key={option.id}
+                              type="button"
+                              onClick={() => {
+                                setOptionSelections((prev) => {
+                                  const next = { ...prev };
+                                  if (group.selectionType === "multiple") {
+                                    const current = Array.isArray(
+                                      prev[group.id],
+                                    )
+                                      ? prev[group.id]
+                                      : [];
+                                    if (current.includes(option.id)) {
+                                      next[group.id] = current.filter(
+                                        (id) => id !== option.id,
+                                      );
+                                    } else {
+                                      next[group.id] = [...current, option.id];
+                                    }
+                                  } else {
+                                    next[group.id] = option.id;
+                                  }
+                                  return next;
+                                });
+                              }}
+                              className={`w-full rounded-[1.5rem] px-4 py-4 text-left transition ${
+                                isSelected
+                                  ? "text-on-surface bg-primary-container/10"
+                                  : "bg-white/5 text-on-surface-variant hover:bg-white/10"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-4">
+                                <div className="flex items-center gap-3">
+                                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/20 bg-white/5 text-[10px] text-on-surface-variant">
+                                    {isSelected ? (
+                                      <span className="material-symbols-outlined text-[14px] leading-none">
+                                        check
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                  <p className="text-sm font-medium line-clamp-1">
+                                    {option.nombre}
+                                  </p>
+                                </div>
+                                {option.precio_extra ? (
+                                  <p className="text-sm text-on-surface-variant">
+                                    +$ {formatPrice(option.precio_extra)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="mt-5">
+                  <label className="block text-[10px] font-semibold uppercase tracking-[0.22em] text-on-surface-variant mb-2">
+                    Nota de producto
+                  </label>
+                  <textarea
+                    value={optionNote}
+                    onChange={(e) => setOptionNote(e.target.value)}
+                    className="w-full min-h-[110px] rounded-[1.5rem] border border-white/10 bg-background/90 p-4 text-sm text-on-surface outline-none resize-none focus:border-primary/50 focus:ring-1 focus:ring-primary/20"
+                    placeholder="Añade una instrucción especial (opcional)"
+                  />
+                </div>
+                {optionValidationError ? (
+                  <p className="mt-3 text-sm font-semibold text-error">
+                    {optionValidationError}
+                  </p>
+                ) : null}
+              </div>
+
+              <div className="border-t border-white/10 bg-background/90 px-4 py-4 lg:px-6 lg:py-5">
+                <div className="flex flex-row flex-wrap items-center justify-between gap-3">
+                  <div className="inline-flex items-center justify-between gap-3 rounded-full bg-white/5 px-3 py-2 text-sm font-semibold text-on-surface">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOptionQuantity((prev) => Math.max(1, prev - 1))
+                      }
+                      className="text-on-surface-variant hover:text-on-surface transition-colors"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      value={optionQuantity}
+                      onChange={(e) => {
+                        const digits = e.target.value.replace(/\D/g, "");
+                        setOptionQuantity(
+                          digits ? Math.max(1, Number(digits)) : 1,
+                        );
+                      }}
+                      className="w-12 bg-transparent text-center text-sm font-semibold text-on-surface outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setOptionQuantity((prev) => prev + 1)}
+                      className="text-on-surface-variant hover:text-on-surface transition-colors"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={confirmOptionSelection}
+                    className="flex-1 rounded-[1.5rem] bg-primary-container px-4 py-3 text-sm font-semibold uppercase tracking-[0.18em] text-on-primary transition-colors duration-200 hover:bg-primary"
+                  >
+                    Agregar • ${" "}
+                    {formatPrice(activeProductSelectedPrice * optionQuantity)}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

@@ -102,39 +102,71 @@ const slugify = (texto) =>
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const generarEmailAdmin = (slug) => {
   const base = slugify(slug || "tienda")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
-  const suffix = Date.now().toString().slice(-4);
-  return `${base || "tienda"}-${suffix}@gloto.com`;
+  const unique = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 4)}`;
+  return `${base || "tienda"}-${unique}@gloto.com`;
 };
 
 const crearTiendaEnSupabase = async ({ nombre, slug, activo }) => {
   try {
-    const { data, error } = await supabase.rpc("create_business", {
-      business_name: nombre,
-      business_slug: slug,
-      business_active: activo,
-      business_created_at: new Date().toISOString(),
-    });
+    const { data, error } = await supabase
+      .from("businesses")
+      .insert({
+        name: nombre,
+        slug,
+        is_active: activo,
+        created_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
 
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error(
-      "No se pudo crear la tienda con RPC, se intentará fallback:",
-      error,
-    );
-    throw error;
+    console.error("No se pudo crear la tienda en Supabase:", error);
+    return null;
   }
+};
+
+const signUpWithRetry = async (
+  { email, password, options },
+  attempts = 3,
+  delayMs = 5000,
+) => {
+  let lastError = null;
+
+  for (let i = 0; i < attempts; i += 1) {
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options,
+    });
+
+    if (!error) return { data };
+
+    lastError = error;
+    const isRateLimit =
+      error.status === 429 || /rate limit/i.test(error.message || "");
+    if (!isRateLimit) break;
+
+    if (i < attempts - 1) {
+      await sleep(delayMs);
+    }
+  }
+
+  throw lastError;
 };
 
 const crearUsuarioAdministrador = async ({ businessId, slug, nombre }) => {
   const email = generarEmailAdmin(slug);
   const password = "123456";
 
-  const { data, error } = await supabase.auth.signUp({
+  const { data, error } = await signUpWithRetry({
     email,
     password,
     options: {
@@ -154,8 +186,9 @@ const crearUsuarioAdministrador = async ({ businessId, slug, nombre }) => {
 
   const payload = {
     id: data.user.id,
+    username: email,
     email,
-    rol: "admin",
+    role: "admin",
     business_id: businessId,
   };
 
@@ -462,13 +495,31 @@ const SuperAdmin = ({ onVolver }) => {
         ),
       }));
 
+      let businessId = null;
+      try {
+        const negocio = await crearTiendaEnSupabase({
+          nombre: nombreFinal,
+          slug: slugFinal,
+          activo: form.activo,
+        });
+        businessId = negocio?.id ?? null;
+      } catch (error) {
+        console.warn("No se pudo crear la tienda en Supabase:", error);
+      }
+
+      if (!businessId) {
+        throw new Error(
+          "No se pudo crear la tienda en Supabase. Revisa las políticas RLS de businesses y asegúrate de que el superadmin tenga permisos.",
+        );
+      }
+
       const nuevaTienda = {
         ...form,
         nombre: nombreFinal,
         slug: slugFinal,
         id: uid(),
         creadoEn: Date.now(),
-        business_id: null,
+        business_id: businessId,
       };
 
       const tiendasActualizadas = [...tiendas, nuevaTienda];
@@ -483,8 +534,8 @@ const SuperAdmin = ({ onVolver }) => {
       }));
 
       try {
-        const { userId } = await crearUsuarioAdministrador({
-          businessId: null,
+        const { userId, email, password } = await crearUsuarioAdministrador({
+          businessId,
           slug: slugFinal,
           nombre: nombreFinal,
         });
@@ -517,10 +568,16 @@ const SuperAdmin = ({ onVolver }) => {
               : paso,
           ),
         }));
+
+        const isRateLimit =
+          authError?.status === 429 ||
+          /rate limit/i.test(authError?.message || "");
+
         setMensajeEstado({
           tipo: "error",
-          texto:
-            "No se pudo crear el usuario o el profile. Revisa la consola y las políticas RLS.",
+          texto: isRateLimit
+            ? "Límite de creación de usuarios alcanzado. Espera unos minutos y vuelve a intentarlo."
+            : "No se pudo crear el usuario o el profile. Revisa la consola y las políticas RLS.",
         });
       }
 

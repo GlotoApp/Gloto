@@ -33,10 +33,10 @@ const LoginSuperAdmin = () => {
 
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
-        .select("rol")
+        .select("role")
         .eq("id", data.user.id);
 
-      if (profile && profile.length > 0 && profile[0].rol === "superadmin") {
+      if (profile && profile.length > 0 && profile[0].role === "superadmin") {
         await supabase.auth.updateUser({ data: { role: "super_admin" } });
         navigate("/superadmin");
       } else {
