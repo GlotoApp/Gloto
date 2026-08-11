@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Trash2, Pencil } from "lucide-react";
 import SplitPaymentModal from "./SplitPaymentModal";
 import { supabase } from "../../src/lib/supabaseClient";
 import { useAuth } from "../../src/components/AuthContext";
@@ -56,6 +57,12 @@ const TextField = ({
 const formatPrice = (price) => {
   return Math.round(price)
     .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+};
+
+const formatInteger = (value) => {
+  return String(value)
+    .replace(/\D/g, "")
     .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
 };
 
@@ -288,6 +295,39 @@ const numeroALetras = (num) => {
   return `${letras.trim()} PESOS`.replace(/\s+/g, " ");
 };
 
+const generarUuid = () =>
+  typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === "x" ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+
+const generarNumeroPedido = (telefono = "") => {
+  const ahora = new Date();
+  const pad = (value, length = 2) => String(value).padStart(length, "0");
+
+  const year = pad(ahora.getFullYear() % 100);
+  const month = pad(ahora.getMonth() + 1);
+  const day = pad(ahora.getDate());
+  const hours = pad(ahora.getHours());
+  const minutes = pad(ahora.getMinutes());
+  const seconds = pad(ahora.getSeconds());
+
+  const telefonoSoloNumeros = String(telefono).replace(/\D/g, "");
+  const ultimosTres = telefonoSoloNumeros.slice(-3).padStart(3, "0");
+
+  return `${year}${month}${day}${hours}${minutes}${seconds}${ultimosTres}`;
+};
+
+const normalizeWhatsappNumber = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("57")) return digits;
+  return `57${digits.replace(/^0+/, "")}`;
+};
+
 const POS = () => {
   const { user } = useAuth();
   const [cart, setCart] = useState([]);
@@ -295,6 +335,8 @@ const POS = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [removingItems, setRemovingItems] = useState(new Set());
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showOrderSentModal, setShowOrderSentModal] = useState(false);
+  const [sentOrder, setSentOrder] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [optionModalOpen, setOptionModalOpen] = useState(false);
   const [activeProduct, setActiveProduct] = useState(null);
@@ -499,6 +541,7 @@ const POS = () => {
   const [referencePoint, setReferencePoint] = useState("");
   const [locationText, setLocationText] = useState("");
   const [moneyPaid, setMoneyPaid] = useState("");
+  const [orderNotes, setOrderNotes] = useState("");
 
   const normalizePhoneNumber = (value) => {
     const cleaned = value.replace(/[^\d+]/g, "");
@@ -574,23 +617,24 @@ const POS = () => {
       selectedCategory === "all" || p.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
-  const addProductToast = (name) => {
+  const addToast = (name, type = "success") => {
     const id = Date.now() + Math.random(); // ID único para cada burbuja
 
-    // Agregamos el nuevo toast a la lista
-    setToastItems((prev) => [...prev, { id, name, exiting: false }]);
+    setToastItems((prev) => [...prev, { id, name, type, exiting: false }]);
 
-    // Programamos el inicio del desvanecimiento (fade-out) a los 2.2s
     setTimeout(() => {
       setToastItems((prev) =>
         prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
       );
 
-      // Eliminamos el elemento del DOM después de que termine la animación (400ms después)
       setTimeout(() => {
         setToastItems((prev) => prev.filter((t) => t.id !== id));
       }, 400);
     }, 2200);
+  };
+
+  const addProductToast = (name) => {
+    addToast(name, "success");
   };
 
   const addToCart = (product) => {
@@ -734,12 +778,41 @@ const POS = () => {
       );
 
       if (existingItem) {
+        setHighlightItem(existingItem.cartId);
+        setTimeout(() => {
+          const element = document.querySelector(
+            `[data-cart-id="${existingItem.cartId}"]`,
+          );
+          if (element && cartScrollRef.current) {
+            cartScrollRef.current.scrollTop = element.offsetTop - 100;
+          }
+          if (element && cartScrollRefMobile.current) {
+            cartScrollRefMobile.current.scrollTop = element.offsetTop - 100;
+          }
+        }, 0);
+        setTimeout(() => setHighlightItem(null), 500);
+
         return prevCart.map((item) =>
           item.cartId === existingItem.cartId
             ? { ...item, qty: item.qty + optionQuantity }
             : item,
         );
       }
+
+      setHighlightItem(newItem.cartId);
+      setTimeout(() => {
+        const element = document.querySelector(
+          `[data-cart-id="${newItem.cartId}"]`,
+        );
+        if (element && cartScrollRef.current) {
+          cartScrollRef.current.scrollTop = cartScrollRef.current.scrollHeight;
+        }
+        if (element && cartScrollRefMobile.current) {
+          cartScrollRefMobile.current.scrollTop =
+            cartScrollRefMobile.current.scrollHeight;
+        }
+      }, 0);
+      setTimeout(() => setHighlightItem(null), 500);
 
       return [...prevCart, newItem];
     });
@@ -860,6 +933,380 @@ const POS = () => {
   const remainingDisplay = formatPrice(Math.abs(remaining));
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
 
+  const getOrderValidationErrors = () => {
+    const errors = [];
+    if (cart.length === 0) {
+      errors.push("Agregar al menos un producto");
+    }
+    if (!deliveryMethod) {
+      errors.push("Seleccionar método de entrega");
+    }
+    if (!customerName.trim()) {
+      errors.push("Ingresar nombre del cliente");
+    }
+    if (!customerNumber.trim()) {
+      errors.push("Ingresar número de cliente");
+    }
+    if (deliveryMethod === "delivery" && !address.trim()) {
+      errors.push("Ingresar dirección de entrega");
+    }
+    if (deliveryMethod === "table" && !selectedTable.trim()) {
+      errors.push("Seleccionar número de mesa");
+    }
+    if (deliveryMethod === "point" && !locationText.trim()) {
+      errors.push("Ingresar ubicación de retiro");
+    }
+    if (!paymentMethod) {
+      errors.push("Seleccionar método de pago");
+    }
+    if (
+      paymentMethod === "efectivo" &&
+      total > 0 &&
+      !(parseFloat(moneyPaid) > 0)
+    ) {
+      errors.push("Ingresar monto recibido para efectivo");
+    }
+    if (paymentMethod === "dividir" && !splitPayments.some((p) => p.amount)) {
+      errors.push("Agregar al menos una división de pago");
+    }
+    return errors;
+  };
+
+  const crearPedidoPOS = async () => {
+    const validationErrors = getOrderValidationErrors();
+    if (validationErrors.length > 0) {
+      addToast(validationErrors.join(" · "), "error");
+      return;
+    }
+    if (!businessId || cart.length === 0) return;
+
+    const items = cart.map((item) => ({
+      id: item.cartId,
+      productId: item.productId || item.id,
+      nombre: item.name || "Producto",
+      cantidad: Number(item.qty || 1),
+      precio: Number(item.price || 0),
+      notas: item.note || "",
+      varianteNombre: item.optionNames?.length
+        ? item.optionNames.join(" · ")
+        : null,
+      opciones: Array.isArray(item.optionNames) ? item.optionNames : [],
+    }));
+
+    const orderNumber = generarNumeroPedido(customerNumber);
+    const trackingToken = generarUuid();
+    const deliveryMethodKey =
+      deliveryMethod === "delivery"
+        ? "domicilio"
+        : deliveryMethod === "pickup"
+          ? "recoger"
+          : deliveryMethod === "table"
+            ? "mesa"
+            : deliveryMethod === "point"
+              ? "punto"
+              : null;
+
+    const orderTypeMap = {
+      delivery: "delivery",
+      pickup: "pickup",
+      table: "dine_in",
+      point: "delivery",
+    };
+
+    const paymentMethodText =
+      paymentMethod === "dividir"
+        ? splitPayments
+            .filter(
+              (item) =>
+                (item.method && String(item.method).trim()) ||
+                Number(item.amount) > 0,
+            )
+            .map((item) => item.method || "Desconocido")
+            .join(", ")
+        : paymentMethod || null;
+
+    const paymentMethodsPayload =
+      paymentMethod === "dividir"
+        ? splitPayments
+            .filter(
+              (item) =>
+                (item.method && String(item.method).trim()) ||
+                Number(item.amount) > 0,
+            )
+            .map((item) => ({
+              metodo: item.method || "Desconocido",
+              monto: Number(item.amount) || 0,
+            }))
+        : paymentMethod
+          ? [
+              {
+                metodo: paymentMethod,
+                monto:
+                  paymentMethod === "efectivo"
+                    ? Number(moneyPaid) || 0
+                    : Number(total) || 0,
+              },
+            ]
+          : [];
+
+    const totalPagado =
+      paymentMethod === "efectivo"
+        ? Number(moneyPaid) || 0
+        : paymentMethod === "dividir"
+          ? splitPayments.reduce(
+              (sum, item) => sum + (Number(item.amount) || 0),
+              0,
+            )
+          : 0;
+
+    const paymentStatus = totalPagado >= total ? "paid" : "pending";
+    const orderStatus = paymentStatus === "paid" ? "confirmed" : "pending";
+
+    const orderPayload = {
+      business_id: businessId,
+      status: orderStatus,
+      total: Number(total) || 0,
+      order_number: orderNumber,
+      updated_at: new Date().toISOString(),
+      scheduled_at: null,
+      delivery_address: deliveryMethod === "delivery" ? address || null : null,
+      delivery_instructions:
+        deliveryMethod === "delivery" ? referencePoint || null : null,
+      delivery_fee: 0,
+      tax_amount: 0,
+      discount_amount: 0,
+      tip_amount: 0,
+      payment_method: paymentMethodText || null,
+      payment_status: paymentStatus,
+      order_type: orderTypeMap[deliveryMethod] || "pickup",
+      customer_name: customerName || null,
+      customer_phone: customerNumber || null,
+      currency: "COP",
+      notes: (() => {
+        const orderNotesList = cart
+          .filter((item) => item.note)
+          .map((item) => `${item.name}: ${item.note}`);
+        const generalNotes = orderNotes ? [orderNotes] : [];
+        return [...generalNotes, ...orderNotesList].join(" | ") || null;
+      })(),
+      metadata: {
+        tiendaSlug: null,
+        canal: "pos",
+        createdFrom: "pos_app",
+        metodoEntrega: deliveryMethodKey,
+        tracking_token: trackingToken,
+        business_whatsapp: normalizeWhatsappNumber("") || null,
+        payment_methods: paymentMethodsPayload,
+        cliente: {
+          nombre: customerName || null,
+          telefono: customerNumber || null,
+          direccion: deliveryMethod === "delivery" ? address || null : null,
+          referencia: referencePoint || null,
+        },
+        mesa: deliveryMethod === "table" ? selectedTable || null : null,
+        puntoRetiro: deliveryMethod === "point" ? referencePoint || null : null,
+      },
+    };
+
+    const orderItemsPayload = items.map((item) => ({
+      product_id: item.productId,
+      quantity: item.cantidad,
+      unit_price: item.precio,
+      subtotal: item.precio * item.cantidad,
+      product_name: item.nombre,
+      product_sku: item.product_sku || null,
+      unit_name: item.unit_name || "unidad",
+      options: item.opciones || [],
+      notes: item.notas || null,
+    }));
+
+    try {
+      const { error } = await supabase.rpc("create_order", {
+        p_order: orderPayload,
+        p_items: orderItemsPayload,
+      });
+
+      if (error) {
+        console.error("Error guardando orden desde POS:", error);
+        return;
+      }
+
+      const sentOrderPayload = {
+        ...orderPayload,
+        items,
+        orderNumber,
+        trackingToken,
+        total,
+        paymentMethods: paymentMethodsPayload,
+      };
+
+      setSentOrder(sentOrderPayload);
+      setShowOrderSentModal(true);
+    } catch (error) {
+      console.error("Error guardando orden desde POS:", error);
+    }
+  };
+
+  const buildSentOrderText = (order) => {
+    if (!order) return "";
+    const lines = [
+      `Pedido Nº: ${order.orderNumber}`,
+      `Total: $ ${formatPrice(order.total || 0)}`,
+      `Cliente: ${order.customer_name || "Consumidor"}`,
+      `Teléfono: ${order.customer_phone || "Sin teléfono"}`,
+      `Método de entrega: ${order.metadata?.metodoEntrega || "No definido"}`,
+      `Método de pago: ${order.payment_method || "No especificado"}`,
+      "",
+      "Productos:",
+    ];
+
+    (order.items || []).forEach((item) => {
+      lines.push(
+        `- ${item.nombre} x${item.cantidad} = $ ${formatPrice(item.precio * item.cantidad)}`,
+      );
+      if (item.notas) {
+        lines.push(`  Nota: ${item.notas}`);
+      }
+    });
+
+    if (order.notes) {
+      lines.push("", `Observaciones: ${order.notes}`);
+    }
+
+    return lines.join("\n");
+  };
+
+  const openOrderPrintWindow = (order) => {
+    if (!order) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+
+    const formatPriceLocal = (price) =>
+      Math.round(price)
+        .toString()
+        .replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+
+    const orderItems = (order.items || [])
+      .map(
+        (item) => `
+          <tr>
+            <td>${item.nombre}</td>
+            <td>${item.cantidad}</td>
+            <td class="text-right">$ ${formatPriceLocal(item.precio)}</td>
+            <td class="text-right">$ ${formatPriceLocal(item.precio * item.cantidad)}</td>
+          </tr>`,
+      )
+      .join("");
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Factura ${order.orderNumber}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+            h1, h2, h3, h4, h5, h6 { margin: 0; }
+            .invoice-header { text-align: center; margin-bottom: 24px; }
+            .invoice-section { margin-bottom: 18px; }
+            .invoice-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+            .invoice-table th, .invoice-table td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+            .invoice-table th { background: #f5f5f5; }
+            .text-right { text-align: right; }
+            .small { font-size: 12px; color: #555; }
+          </style>
+        </head>
+        <body>
+          <div class="invoice-header">
+            <h1>Factura</h1>
+            <p class="small">Pedido Nº ${order.orderNumber}</p>
+            <p class="small">Canal: ${order.metadata?.canal || "POS"}</p>
+          </div>
+          <div class="invoice-section">
+            <p><strong>Cliente:</strong> ${order.customer_name || "Consumidor"}</p>
+            <p><strong>Teléfono:</strong> ${order.customer_phone || "Sin teléfono"}</p>
+            ${order.metadata?.cliente?.direccion ? `<p><strong>Dirección:</strong> ${order.metadata.cliente.direccion}</p>` : ""}
+            <p><strong>Método de entrega:</strong> ${order.metadata?.metodoEntrega || "No definido"}</p>
+            <p><strong>Método de pago:</strong> ${order.payment_method || "No especificado"}</p>
+          </div>
+          <table class="invoice-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Cant.</th>
+                <th class="text-right">Precio</th>
+                <th class="text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${orderItems}
+            </tbody>
+          </table>
+          <div class="mt-4 text-right">
+            <p><strong>Total:</strong> $ ${formatPriceLocal(order.total || 0)}</p>
+          </div>
+        </body>
+      </html>
+    `);
+
+    printWindow.document.close();
+    printWindow.focus();
+    return printWindow;
+  };
+
+  const handlePrintSentOrder = (order) => {
+    const printWindow = openOrderPrintWindow(order);
+    if (!printWindow) return;
+    printWindow.print();
+    printWindow.close();
+  };
+
+  const handleSavePdfSentOrder = (order) => {
+    const printWindow = openOrderPrintWindow(order);
+    if (!printWindow) return;
+    printWindow.print();
+    printWindow.close();
+  };
+
+  const handleShareSentOrder = async (order) => {
+    if (!order) return;
+    const text = buildSentOrderText(order);
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Pedido ${order.orderNumber}`,
+          text,
+        });
+      } catch (error) {
+        console.error("Error compartiendo pedido:", error);
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Resumen del pedido copiado al portapapeles.");
+    } catch (error) {
+      console.error("Error al copiar pedido:", error);
+      alert("No se pudo compartir el pedido. Intenta copiar manualmente.");
+    }
+  };
+
+  const handleCloseSentOrderModal = () => {
+    setShowOrderSentModal(false);
+    setSentOrder(null);
+    setCart([]);
+    setDeliveryMethod("");
+    setPaymentMethod("");
+    setMoneyPaid("");
+    setAddress("");
+    setCustomerName("");
+    setCustomerNumber("");
+    setSelectedTable("");
+    setReferencePoint("");
+    setOrderNotes("");
+    setSplitPayments([{ method: "efectivo", amount: "" }]);
+  };
+
   const activeProductSelectedOptions = getSelectedOptionItems(
     activeProduct,
     optionSelections,
@@ -868,49 +1315,47 @@ const POS = () => {
     Number(activeProduct?.price || 0) +
     getOptionExtraPrice(activeProductSelectedOptions);
 
-  // Componente único de "División de Pago" reutilizable
+  {
+    /* Componente único de "División de Pago" reutilizable */
+  }
   const splitPaymentPreview =
     paymentMethod === "dividir" && splitPayments.some((p) => p.amount) ? (
-      <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-300">
-        <div className="rounded-2xl border border-primary/30 bg-primary-container/10 p-4 my-3">
-          <div className="flex justify-between items-start gap-3">
-            <div className="flex-1">
-              <p className="text-[10px] font-black uppercase tracking-wider text-on-surface-variant mb-2">
+      <div className="mt-2 animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="rounded-xl  bg-surface-variant/20 px-3.5 py-2.5 my-2">
+          <div className="space-y-1.5">
+            {/* Header con flex justify-between para colocar el título y el lápiz alineados */}
+            <div className="flex justify-between items-center">
+              <span className="text-[10px] font-semibold text-on-surface-variant/70 tracking-wide uppercase">
                 División de Pago
-              </p>
-              <div className="space-y-1">
-                {splitPayments.map(
-                  (pay, index) =>
-                    pay.amount && (
-                      <div
-                        key={index}
-                        className="flex justify-between items-center text-[9px]"
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded bg-primary-container text-on-surface text-[7px] font-black flex items-center justify-center">
-                            {index + 1}
-                          </span>
-                          <span className="text-on-surface-variant">
-                            {pay.method.toUpperCase()}
-                          </span>
-                        </div>
-                        <span className="font-black text-on-surface">
-                          ${formatPrice(parseFloat(pay.amount) || 0)}
-                        </span>
-                      </div>
-                    ),
-                )}
-              </div>
-            </div>
-            <button
-              onClick={() => setShowSplitModal(true)}
-              className="text-on-surface-variant hover:text-primary transition-colors flex-shrink-0"
-              title="Editar división"
-            >
-              <span className="material-symbols-outlined text-[14px] leading-none">
-                edit
               </span>
-            </button>
+              <button
+                onClick={() => setShowSplitModal(true)}
+                className="text-on-surface-variant/60 hover:text-primary transition-colors p-1 flex-shrink-0 flex items-center justify-center"
+                title="Editar división"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Lista de montos */}
+            <div className="space-y-1">
+              {splitPayments.map(
+                (pay, index) =>
+                  pay.amount && (
+                    <div
+                      key={index}
+                      className="flex justify-between items-center text-[10px]"
+                    >
+                      <span className="text-on-surface-variant font-medium">
+                        {pay.method.toUpperCase()}
+                      </span>
+                      <span className="font-semibold text-on-surface">
+                        ${formatPrice(parseFloat(pay.amount) || 0)}
+                      </span>
+                    </div>
+                  ),
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -939,7 +1384,7 @@ const POS = () => {
             <span className="material-symbols-outlined text-base lg:text-lg">
               {paymentLabels[method].icon}
             </span>
-            <span className="text-[7px] lg:text-[8px] font-black uppercase">
+            <span className="text-[7px]  font-black uppercase">
               {paymentLabels[method].label}
             </span>
           </button>
@@ -995,17 +1440,20 @@ const POS = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 h-screen bg-background font-sans selection:bg-primary-container/30 pb-20 lg:pb-0">
         {/* Stacked product toasts - mobile only */}
         {/* Contenedor de Toasts con Orden Invertido - Mobile */}
-        <div className="lg:hidden fixed top-6 left-0 right-0 z-50 flex flex-col-reverse items-center gap-2 pointer-events-none px-6">
+        <div className="fixed top-6 left-0 right-0 z-50 flex flex-col-reverse items-center gap-2 pointer-events-none px-6">
           {toastItems.map((toast) => (
             <div
               key={toast.id}
-              className={`flex items-center gap-3 rounded-3xl border border-success/20 bg-success/90 backdrop-blur-md px-5 py-3 text-on-surface shadow-xl transition-all duration-400 ${
+              className={`flex items-center gap-3 rounded-3xl border px-5 py-3 text-on-surface shadow-xl transition-all duration-400 pointer-events-auto ${
                 toast.exiting
                   ? "opacity-0 -translate-y-4 scale-90"
                   : "opacity-100 translate-y-0 scale-100"
+              } ${
+                toast.type === "error"
+                  ? "border-error/20 bg-error/95"
+                  : "border-success/20 bg-success/90"
               }`}
               style={{
-                // Mantenemos la animación de entrada desde arriba
                 animation: !toast.exiting
                   ? "slideInFromTop 0.3s cubic-bezier(0.34,1.56,0.64,1) both"
                   : "",
@@ -1014,8 +1462,8 @@ const POS = () => {
               <span className="text-[11px] font-black uppercase tracking-wider">
                 {toast.name}
               </span>
-              <span className="material-symbols-outlined text-base text-fff">
-                check_circle
+              <span className="material-symbols-outlined text-base text-on-surface">
+                {toast.type === "error" ? "error" : "check_circle"}
               </span>
             </div>
           ))}
@@ -1209,7 +1657,7 @@ const POS = () => {
                     onClick={() => setShowInfo(null)}
                     className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface bg-background/20 hover:bg-background/40 rounded-full transition-all"
                   >
-                    <span className="material-symbols-outlined">close</span>
+                    <Trash2 className="h-5 w-5" />
                   </button>
 
                   <p className="text-xs font-bold text-primary uppercase tracking-widest mb-2">
@@ -1530,10 +1978,10 @@ const POS = () => {
                       : "bg-neutral-900/40 border-white/5 z-10 hover:border-white/10"
                 }`}
               >
-                <div className="flex gap-3 items-center min-w-0">
+                <div className="flex gap-3  min-w-0">
                   {/* Miniatura / Imagen real del producto */}
                   <div
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden ${
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden ${
                       highlightItem === item.cartId
                         ? "bg-white/20 border-white/20"
                         : "bg-neutral-800 border-white/5"
@@ -1554,43 +2002,46 @@ const POS = () => {
                   </div>
 
                   <div className="flex-1 min-w-0 space-y-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="font-bold text-[13px] uppercase tracking-tight text-white leading-tight truncate">
-                        {item.name}
-                      </p>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-bold text-[12px] uppercase tracking-tight text-white leading-tight truncate">
+                          {item.name}
+                        </p>
+                        <p className="font-black text-[12px] text-white">
+                          $ {formatPrice(item.price)}
+                        </p>
+                      </div>
+
                       <button
                         onClick={() => removeFromCart(item.cartId)}
-                        className="opacity-40 hover:opacity-100 hover:text-red-500 transition-all flex-shrink-0 mt-0.5"
+                        className="opacity-40 hover:opacity-100 hover:text-red-500 transition-all flex-shrink-0 flex"
                         aria-label="Eliminar producto"
                       >
-                        <span className="material-symbols-outlined text-sm">
-                          close
-                        </span>
+                        <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
-
-                    {item.selectedOptions &&
-                      item.selectedOptions.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {item.selectedOptions.map((opt, idx) => (
-                            <span
-                              key={idx}
-                              className="text-[10px] font-bold text-violet-300 bg-violet-500/10 px-2 py-0.5 rounded-full"
-                            >
-                              {opt.nombre}
-                              {opt.precio_extra > 0
-                                ? ` (+$${formatPrice(opt.precio_extra)})`
-                                : ""}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between gap-3 mt-3">
+                {item.selectedOptions && item.selectedOptions.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {item.selectedOptions.map((opt, idx) => (
+                      <span
+                        key={idx}
+                        className="text-[10px] font-bold text-violet-300 bg-violet-500/10 px-2 py-0.5 rounded-full"
+                      >
+                        {opt.nombre}
+                        {opt.precio_extra > 0
+                          ? ` (+$${formatPrice(opt.precio_extra)})`
+                          : ""}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-2 mt-2">
                   <div
-                    className={`flex items-center gap-1 rounded-lg px-2 py-1 flex-shrink-0 ${
+                    className={`flex items-center gap-2 rounded-full px-4 py-1 flex-shrink-0 ${
                       highlightItem === item.cartId
                         ? "bg-background/20"
                         : "bg-neutral-800/80"
@@ -1598,10 +2049,10 @@ const POS = () => {
                   >
                     <button
                       onClick={() => updateQty(item.cartId, item.qty - 1)}
-                      className="opacity-60 hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full hover:text-primary-container"
+                      className="opacity-60 hover:opacity-100 transition-opacity w-2 h-2 flex items-center justify-center rounded-full hover:text-primary-container"
                       aria-label="Disminuir cantidad"
                     >
-                      <span className="material-symbols-outlined text-xs">
+                      <span className="material-symbols-outlined text-[12px]">
                         remove
                       </span>
                     </button>
@@ -1609,24 +2060,25 @@ const POS = () => {
                       type="tel"
                       inputMode="numeric"
                       pattern="[0-9]*"
-                      value={item.qty}
+                      value={formatInteger(item.qty)}
                       onChange={(e) =>
                         handleQtyInputChange(item.cartId, e.target.value)
                       }
-                      className="w-8 bg-transparent text-center text-[16px] font-black text-on-surface outline-none appearance-none"
+                      className="w-8 bg-transparent text-center text-[11px] font-black text-on-surface outline-none appearance-none"
                       aria-label="Cantidad del producto"
                     />
                     <button
                       onClick={() => updateQty(item.cartId, item.qty + 1)}
-                      className="opacity-60 hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full hover:text-primary-container"
+                      className="opacity-60 hover:opacity-100 transition-opacity w-2 h-2 flex items-center justify-center rounded-full hover:text-primary-container"
                       aria-label="Aumentar cantidad"
                     >
-                      <span className="material-symbols-outlined text-xs">
+                      <span className="material-symbols-outlined text-[12px]">
                         add
                       </span>
                     </button>
                   </div>
-                  <p className="font-black text-[16px] text-white">
+
+                  <p className="font-black text-[12px] text-white">
                     $ {formatPrice(item.price * item.qty)}
                   </p>
                 </div>
@@ -1695,10 +2147,20 @@ const POS = () => {
               </div>
               {/* Lectura de número */}
               {total > 0 && (
-                <p className="text-[7px] text-on-surface text-right mt-1 uppercase  tracking-wider">
+                <p className="text-[10px] text-on-surface text-right mt-1 uppercase  tracking-wider">
                   {numeroALetras(total)}
                 </p>
               )}
+            </div>
+
+            {/* Observaciones Generales */}
+            <div className="mb-3">
+              <textarea
+                value={orderNotes}
+                onChange={(e) => setOrderNotes(e.target.value)}
+                placeholder="Observaciones generales..."
+                className="w-full min-h-[72px] resize-none rounded-2xl border border-outline bg-background px-3 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20"
+              />
             </div>
 
             {/* Métodos de Pago */}
@@ -1707,7 +2169,11 @@ const POS = () => {
             {splitPaymentPreview}
 
             {/* Botón de Acción Principal */}
-            <button className="w-full bg-primary-container hover:bg-success active:scale-[0.98] text-on-surface font-black py-4 rounded-2xl transition-all uppercase text-[11px] tracking-[0.2em] ">
+            <button
+              onClick={crearPedidoPOS}
+              disabled={cart.length === 0}
+              className="w-full bg-primary-container hover:bg-success active:scale-[0.98] text-on-surface font-black py-4 rounded-2xl transition-all uppercase text-[11px] tracking-[0.2em] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               Confirmar
             </button>
           </div>
@@ -1740,7 +2206,7 @@ const POS = () => {
           {/* Lista de Productos - Scrollable */}
           <div
             ref={cartScrollRefMobile}
-            className="flex-1 min-h-0 overflow-y-auto px-4 custom-sidebar py-4 space-y-2"
+            className="flex-1 min-h-0 overflow-y-auto px-4 custom-sidebar py-4"
           >
             {cart.map((item) => {
               const isHighlighted = highlightItem === item.cartId;
@@ -1750,7 +2216,7 @@ const POS = () => {
                 <div
                   key={item.cartId}
                   data-cart-id={item.cartId}
-                  className={`relative border transition-all duration-300 rounded-2xl p-2 ${
+                  className={`relative border transition-all duration-300 rounded-2xl p-2 mb-2 ${
                     isRemoving
                       ? "opacity-0 scale-95 -translate-x-4"
                       : isHighlighted
@@ -1758,10 +2224,10 @@ const POS = () => {
                         : "bg-neutral-900/40 border-white/5 z-10 hover:border-white/10"
                   }`}
                 >
-                  <div className="flex gap-3 items-center min-w-0">
+                  <div className="flex gap-3 min-w-0">
                     {/* Miniatura / Imagen real del producto */}
                     <div
-                      className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden ${
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden ${
                         isHighlighted
                           ? "bg-white/20 border-white/20"
                           : "bg-neutral-800 border-white/5"
@@ -1782,52 +2248,55 @@ const POS = () => {
                     </div>
 
                     <div className="flex-1 min-w-0 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-bold text-[13px] uppercase tracking-tight text-white leading-tight truncate">
-                          {item.name}
-                        </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-[12px] uppercase tracking-tight text-white leading-tight truncate">
+                            {item.name}
+                          </p>
+                          <p className="font-black text-[12px] text-white">
+                            $ {formatPrice(item.price)}
+                          </p>
+                        </div>
+
                         <button
                           onClick={() => removeFromCart(item.cartId)}
-                          className="opacity-40 hover:opacity-100 hover:text-red-500 transition-all flex-shrink-0 mt-0.5"
+                          className="opacity-40 hover:opacity-100 hover:text-red-500 transition-all flex-shrink-0 flex"
                           aria-label="Eliminar producto"
                         >
-                          <span className="material-symbols-outlined text-sm">
-                            close
-                          </span>
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-
-                      {item.selectedOptions &&
-                        item.selectedOptions.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {item.selectedOptions.map((opt, idx) => (
-                              <span
-                                key={idx}
-                                className="text-[10px] font-bold text-violet-300 bg-violet-500/10 px-2 py-0.5 rounded-full"
-                              >
-                                {opt.nombre}
-                                {opt.precio_extra > 0
-                                  ? ` (+$${formatPrice(opt.precio_extra)})`
-                                  : ""}
-                              </span>
-                            ))}
-                          </div>
-                        )}
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between gap-3 mt-3">
+                  {item.selectedOptions && item.selectedOptions.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {item.selectedOptions.map((opt, idx) => (
+                        <span
+                          key={idx}
+                          className="text-[10px] font-bold text-violet-300 bg-violet-500/10 px-2 py-0.5 rounded-full"
+                        >
+                          {opt.nombre}
+                          {opt.precio_extra > 0
+                            ? ` (+$${formatPrice(opt.precio_extra)})`
+                            : ""}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between gap-2 mt-2">
                     <div
-                      className={`flex items-center gap-1 rounded-lg px-2 py-1 flex-shrink-0 ${
+                      className={`flex items-center gap-2 rounded-full px-4 py-1 flex-shrink-0 ${
                         isHighlighted ? "bg-background/20" : "bg-neutral-800/80"
                       }`}
                     >
                       <button
                         onClick={() => updateQty(item.cartId, item.qty - 1)}
-                        className="opacity-60 hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full hover:text-primary-container"
+                        className="opacity-60 hover:opacity-100 transition-opacity w-2 h-2 flex items-center justify-center rounded-full hover:text-primary-container"
                         aria-label="Disminuir cantidad"
                       >
-                        <span className="material-symbols-outlined text-xs">
+                        <span className="material-symbols-outlined text-[12px]">
                           remove
                         </span>
                       </button>
@@ -1835,25 +2304,25 @@ const POS = () => {
                         type="tel"
                         inputMode="numeric"
                         pattern="[0-9]*"
-                        value={item.qty}
+                        value={formatInteger(item.qty)}
                         onChange={(e) =>
                           handleQtyInputChange(item.cartId, e.target.value)
                         }
-                        className="w-5 bg-transparent text-center text-[16px] font-black text-on-surface outline-none appearance-none"
+                        className="w-8 bg-transparent text-center text-[11px] font-black text-on-surface outline-none appearance-none"
                         aria-label="Cantidad del producto"
                       />
                       <button
                         onClick={() => updateQty(item.cartId, item.qty + 1)}
-                        className="opacity-60 hover:opacity-100 transition-opacity w-5 h-5 flex items-center justify-center rounded-full hover:text-primary-container"
+                        className="opacity-60 hover:opacity-100 transition-opacity w-2 h-2 flex items-center justify-center rounded-full hover:text-primary-container"
                         aria-label="Aumentar cantidad"
                       >
-                        <span className="material-symbols-outlined text-xs">
+                        <span className="material-symbols-outlined text-[12px]">
                           add
                         </span>
                       </button>
                     </div>
 
-                    <p className="font-black text-[16px] text-white">
+                    <p className="font-black text-[12px] text-white">
                       $ {formatPrice(item.price * item.qty)}
                     </p>
                   </div>
@@ -1933,6 +2402,16 @@ const POS = () => {
               )}
             </div>
 
+            {/* Observaciones Generales */}
+            <div className="mb-3">
+              <textarea
+                value={orderNotes}
+                onChange={(e) => setOrderNotes(e.target.value)}
+                placeholder="Observaciones generales..."
+                className="w-full min-h-[72px] resize-none rounded-2xl border border-outline bg-background px-3 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20"
+              />
+            </div>
+
             {/* Métodos de Pago */}
             {paymentMethodsSection}
 
@@ -1940,8 +2419,12 @@ const POS = () => {
             {splitPaymentPreview}
 
             {/* Botón de Acción Principal */}
-            <button className="w-full bg-primary-container hover:bg-success active:scale-[0.98] text-on-surface font-black py-3 rounded-2xl transition-all uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-primary-container/20">
-              Finalizar
+            <button
+              onClick={crearPedidoPOS}
+              disabled={cart.length === 0}
+              className="w-full bg-primary-container hover:bg-success active:scale-[0.98] text-on-surface font-black py-3 rounded-2xl transition-all uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-primary-container/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Confirmar
             </button>
           </div>
         </div>
@@ -2297,6 +2780,145 @@ const POS = () => {
                 className="flex-1 bg-surface-hover hover:bg-surface text-on-surface font-bold py-2 rounded-lg transition-colors"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showOrderSentModal && sentOrder && (
+        <div className="fixed inset-0 bg-background bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-outline rounded-lg p-6 max-w-2xl w-full mx-4 overflow-y-auto max-h-[calc(100vh-4rem)]">
+            <h3 className="text-on-surface text-lg font-bold mb-4">
+              Pedido enviado
+            </h3>
+            <p className="text-on-surface-variant mb-4">
+              El pedido se envió correctamente. Puedes imprimir la orden desde
+              aquí.
+            </p>
+
+            <div className="mb-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg bg-surface-hover border border-outline p-4">
+                <p className="text-sm font-bold uppercase tracking-[0.15em] text-on-surface-variant mb-2">
+                  Resumen
+                </p>
+                <p className="text-sm text-on-surface">
+                  Número: {sentOrder.orderNumber}
+                </p>
+                <p className="text-sm text-on-surface">
+                  Total: $ {formatPrice(sentOrder.total || 0)}
+                </p>
+                <p className="text-sm text-on-surface">
+                  Método: {sentOrder.payment_method || "No especificado"}
+                </p>
+              </div>
+              <div className="rounded-lg bg-surface-hover border border-outline p-4">
+                <p className="text-sm font-bold uppercase tracking-[0.15em] text-on-surface-variant mb-2">
+                  Cliente
+                </p>
+                <p className="text-sm text-on-surface">
+                  {sentOrder.customer_name || "Consumidor"}
+                </p>
+                <p className="text-sm text-on-surface">
+                  {sentOrder.customer_phone || "Sin teléfono"}
+                </p>
+                {sentOrder.metadata?.cliente?.direccion && (
+                  <p className="text-sm text-on-surface">
+                    {sentOrder.metadata.cliente.direccion}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="overflow-hidden rounded-xl border border-outline">
+              <table className="w-full border-collapse text-sm">
+                <thead className="bg-surface-hover">
+                  <tr>
+                    <th className="border-b border-outline px-3 py-2 text-left text-on-surface-variant">
+                      Producto
+                    </th>
+                    <th className="border-b border-outline px-3 py-2 text-right text-on-surface-variant">
+                      Cant.
+                    </th>
+                    <th className="border-b border-outline px-3 py-2 text-right text-on-surface-variant">
+                      Precio
+                    </th>
+                    <th className="border-b border-outline px-3 py-2 text-right text-on-surface-variant">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sentOrder.items.map((item, index) => (
+                    <tr
+                      key={index}
+                      className={
+                        index % 2 === 0 ? "bg-background" : "bg-surface"
+                      }
+                    >
+                      <td className="border-b border-outline px-3 py-2 text-on-surface">
+                        <div className="font-semibold">{item.nombre}</div>
+                        {item.notas && (
+                          <div className="text-[11px] text-on-surface-variant">
+                            {item.notas}
+                          </div>
+                        )}
+                      </td>
+                      <td className="border-b border-outline px-3 py-2 text-right text-on-surface">
+                        {item.cantidad}
+                      </td>
+                      <td className="border-b border-outline px-3 py-2 text-right text-on-surface">
+                        $ {formatPrice(item.precio)}
+                      </td>
+                      <td className="border-b border-outline px-3 py-2 text-right text-on-surface">
+                        $ {formatPrice(item.precio * item.cantidad)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-sm text-on-surface-variant">
+                  Observaciones:
+                </p>
+                <p className="text-sm text-on-surface">
+                  {sentOrder.notes || "Ninguna"}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-on-surface-variant">TOTAL</p>
+                <p className="text-xl font-black text-on-surface">
+                  $ {formatPrice(sentOrder.total || 0)}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                onClick={() => handlePrintSentOrder(sentOrder)}
+                className="flex-1 bg-primary-container hover:bg-primary text-on-primary font-bold py-3 rounded-2xl transition-colors"
+              >
+                Imprimir
+              </button>
+              <button
+                onClick={handleCloseSentOrderModal}
+                className="flex-1 bg-surface-hover hover:bg-surface text-on-surface font-bold py-3 rounded-2xl transition-colors"
+              >
+                Listo
+              </button>
+              <button
+                onClick={() => handleShareSentOrder(sentOrder)}
+                className="flex-1 bg-secondary-container hover:bg-secondary text-on-surface font-bold py-3 rounded-2xl transition-colors"
+              >
+                Compartir
+              </button>
+              <button
+                onClick={() => handleSavePdfSentOrder(sentOrder)}
+                className="flex-1 bg-surface border border-outline hover:bg-surface-hover text-on-surface font-bold py-3 rounded-2xl transition-colors"
+              >
+                Guardar PDF
               </button>
             </div>
           </div>
