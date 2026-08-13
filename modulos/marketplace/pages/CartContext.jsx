@@ -116,7 +116,15 @@ export const CartProvider = ({ children }) => {
   const vaciarTodo = () => {
     setCarrito({});
     setObservaciones("");
-    setMetodoPago([]); // <--- CORRECCIÓN AQUÍ
+    setMetodoPago([]);
+    setMetodoEntrega(null);
+    setDatosCliente({
+      nombre: "",
+      telefono: "",
+      mesa: "",
+      direccion: "",
+      puntoRetiro: "",
+    });
   };
 
   const abrirCarrito = () => setCartOpen(true);
@@ -284,16 +292,17 @@ export const CartProvider = ({ children }) => {
     const deliveryFee = Number(datosCliente.deliveryFee) || 0;
     const tipAmount = Number(datosCliente.propina) || 0;
     const paymentMethod = metodoPago
-      .map((item) => item.metodo || "Desconocido")
+      .map((item) => (item.metodo || "desconocido").toString().trim())
       .filter(Boolean)
+      .map((m) => m.toLowerCase())
       .join(", ");
     const paymentStatus = totalPagado === totalPrecio ? "paid" : "pending";
     const orderStatus = paymentStatus === "paid" ? "confirmed" : "pending";
     const orderTypeMap = {
       domicilio: "delivery",
       recoger: "pickup",
-      mesa: "dine_in",
-      punto: "delivery",
+      mesa: "table",
+      punto: "dine_in",
     };
     const orderType = orderTypeMap[metodoEntrega] || "pickup";
 
@@ -333,6 +342,14 @@ export const CartProvider = ({ children }) => {
       customer_name: datosCliente.nombre || null,
       customer_phone: datosCliente.telefono || null,
       currency: "COP",
+      mesa:
+        metodoEntrega === "mesa"
+          ? datosCliente.mesa
+            ? Number(datosCliente.mesa)
+            : null
+          : null,
+      punto:
+        metodoEntrega === "punto" ? datosCliente.puntoRetiro || null : null,
       notes: observaciones || null,
       metadata: {
         tiendaSlug,
@@ -348,12 +365,17 @@ export const CartProvider = ({ children }) => {
               Number(item.monto) > 0,
           )
           .map((item) => ({
-            metodo: item.metodo || "Desconocido",
+            metodo: (item.metodo || "desconocido")
+              .toString()
+              .trim()
+              .toLowerCase(),
             monto: Number(item.monto) || 0,
           })),
         cliente: {
           nombre: datosCliente.nombre || null,
-          telefono: datosCliente.telefono || null,
+          telefono: datosCliente.telefono
+            ? String(datosCliente.telefono).replace(/\D/g, "")
+            : null,
           direccion: datosCliente.direccion || null,
           referencia:
             datosCliente.referencia || datosCliente.puntoRetiro || null,

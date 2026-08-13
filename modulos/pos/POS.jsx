@@ -20,6 +20,7 @@ const TextField = ({
   type = "text",
   inputRef,
   onChange,
+  size = "sm",
 }) => (
   <div>
     <label className="block text-[10px] font-bold text-on-surface-variant uppercase tracking-widest mb-1">
@@ -45,7 +46,9 @@ const TextField = ({
           })
         }
         placeholder={placeholder}
-        className="w-full bg-surface  border-outline rounded-lg p-2 pr-10 text-on-surface text-xs focus:outline-none focus:border-primary"
+        className={`w-full bg-surface  border-outline rounded-lg p-2 pr-10 text-on-surface ${
+          size === "md" ? "text-base" : "text-xs"
+        } focus:outline-none focus:border-primary`}
       />
       <span
         role="button"
@@ -967,7 +970,10 @@ const POS = () => {
     if (deliveryMethod === "table" && !selectedTable.trim()) {
       errors.push("Seleccionar número de mesa");
     }
-    if (deliveryMethod === "point" && !locationText.trim()) {
+    if (
+      deliveryMethod === "point" &&
+      !(referencePoint?.trim() || locationText?.trim())
+    ) {
       errors.push("Ingresar ubicación de retiro");
     }
     if (!paymentMethod) {
@@ -1023,8 +1029,8 @@ const POS = () => {
     const orderTypeMap = {
       delivery: "delivery",
       pickup: "pickup",
-      table: "dine_in",
-      point: "delivery",
+      table: "table",
+      point: "dine_in",
     };
 
     const paymentMethodText =
@@ -1035,9 +1041,13 @@ const POS = () => {
                 (item.method && String(item.method).trim()) ||
                 Number(item.amount) > 0,
             )
-            .map((item) => item.method || "Desconocido")
+            .map((item) =>
+              (item.method || "desconocido").toString().trim().toLowerCase(),
+            )
             .join(", ")
-        : paymentMethod || null;
+        : paymentMethod
+          ? String(paymentMethod).toLowerCase()
+          : null;
 
     const paymentMethodsPayload =
       paymentMethod === "dividir"
@@ -1048,15 +1058,18 @@ const POS = () => {
                 Number(item.amount) > 0,
             )
             .map((item) => ({
-              metodo: item.method || "Desconocido",
+              metodo: (item.method || "desconocido")
+                .toString()
+                .trim()
+                .toLowerCase(),
               monto: Number(item.amount) || 0,
             }))
         : paymentMethod
           ? [
               {
-                metodo: paymentMethod,
+                metodo: String(paymentMethod).toLowerCase(),
                 monto:
-                  paymentMethod === "efectivo"
+                  String(paymentMethod).toLowerCase() === "efectivo"
                     ? Number(moneyPaid) || 0
                     : Number(total) || 0,
               },
@@ -1096,6 +1109,16 @@ const POS = () => {
       customer_name: customerName || null,
       customer_phone: customerNumber || null,
       currency: "COP",
+      mesa:
+        deliveryMethod === "table"
+          ? selectedTable
+            ? Number(selectedTable)
+            : null
+          : null,
+      punto:
+        deliveryMethod === "point"
+          ? referencePoint?.trim() || locationText?.trim() || null
+          : null,
       notes: (() => {
         const orderNotesList = cart
           .filter((item) => item.note)
@@ -1117,7 +1140,6 @@ const POS = () => {
           direccion: deliveryMethod === "delivery" ? address || null : null,
           referencia: referencePoint || null,
         },
-        mesa: deliveryMethod === "table" ? selectedTable || null : null,
         puntoRetiro: deliveryMethod === "point" ? referencePoint || null : null,
       },
     };
@@ -1135,6 +1157,14 @@ const POS = () => {
     }));
 
     try {
+      // DEBUG: confirmar que `mesa` y `punto` se están incluyendo en el payload
+      // Abre la consola del navegador y revisa este log al crear el pedido.
+      console.log(
+        "DEBUG createOrder - orderPayload.mesa / punto:",
+        orderPayload.mesa,
+        orderPayload.punto,
+        orderPayload,
+      );
       const { error } = await supabase.rpc("create_order", {
         p_order: orderPayload,
         p_items: orderItemsPayload,
@@ -1156,6 +1186,9 @@ const POS = () => {
 
       setSentOrder(sentOrderPayload);
       setShowOrderSentModal(true);
+
+      // Clear all input state immediately but preserve the sentOrder and modal
+      resetAllPOSState(true);
     } catch (error) {
       console.error("Error guardando orden desde POS:", error);
     }
@@ -1306,9 +1339,30 @@ const POS = () => {
   };
 
   const handleCloseSentOrderModal = () => {
-    setShowOrderSentModal(false);
-    setSentOrder(null);
+    // Reset all order-related state to ensure no data persists between orders
+    resetAllPOSState(false);
+  };
+
+  const resetAllPOSState = (preserveSentOrder = false) => {
+    if (!preserveSentOrder) {
+      setShowOrderSentModal(false);
+      setSentOrder(null);
+    }
     setCart([]);
+    setRemovingItems(new Set());
+    setShowConfirmModal(false);
+    setIsModalOpen(false);
+    setOptionModalOpen(false);
+    setActiveProduct(null);
+    setOptionSelections({});
+    setOptionNote("");
+    setOptionQuantity(1);
+    setOptionValidationError("");
+    setInstruction("");
+    setShowInfo(null);
+    setSearchQuery("");
+    setMobilePanel("products");
+    setToastItems([]);
     setDeliveryMethod("");
     setPaymentMethod("");
     setMoneyPaid("");
@@ -1317,8 +1371,10 @@ const POS = () => {
     setCustomerNumber("");
     setSelectedTable("");
     setReferencePoint("");
+    setLocationText("");
     setOrderNotes("");
     setSplitPayments([{ method: "efectivo", amount: "" }]);
+    setHighlightItem(null);
   };
 
   const activeProductSelectedOptions = getSelectedOptionItems(
@@ -1754,6 +1810,7 @@ const POS = () => {
                 value={customerName}
                 setValue={setCustomerName}
                 placeholder="Ingresa el nombre"
+                size="md"
               />
               <TextField
                 label="Número"
@@ -1761,6 +1818,7 @@ const POS = () => {
                 setValue={setCustomerNumber}
                 placeholder="Ingresa el número"
                 type="number"
+                size="md"
                 onChange={(e) =>
                   setCustomerNumber(normalizePhoneNumber(e.target.value))
                 }
@@ -1784,6 +1842,7 @@ const POS = () => {
                 value={customerName}
                 setValue={setCustomerName}
                 placeholder="Ingresa el nombre"
+                size="md"
               />
               <TextField
                 label="Número"
@@ -1791,6 +1850,7 @@ const POS = () => {
                 setValue={setCustomerNumber}
                 placeholder="Ingresa el número"
                 type="number"
+                size="md"
                 onChange={(e) =>
                   setCustomerNumber(normalizePhoneNumber(e.target.value))
                 }
@@ -1802,6 +1862,7 @@ const POS = () => {
                   setValue={setSelectedTable}
                   placeholder="Número de mesa"
                   type="number"
+                  size="md"
                   inputRef={tableInputRef}
                 />
                 <div className="grid grid-cols-5 gap-1 mt-2">
@@ -1848,6 +1909,7 @@ const POS = () => {
                 value={customerName}
                 setValue={setCustomerName}
                 placeholder="Ingresa el nombre"
+                size="md"
               />
               <TextField
                 label="Número"
@@ -1855,6 +1917,7 @@ const POS = () => {
                 setValue={setCustomerNumber}
                 placeholder="Ingresa el número"
                 type="number"
+                size="md"
                 onChange={(e) =>
                   setCustomerNumber(normalizePhoneNumber(e.target.value))
                 }
@@ -1864,12 +1927,14 @@ const POS = () => {
                 value={address}
                 setValue={setAddress}
                 placeholder="Ingresa la dirección"
+                size="md"
               />
               <TextField
                 label="Punto de Referencia"
                 value={referencePoint}
                 setValue={setReferencePoint}
                 placeholder="Ingresa el punto de referencia"
+                size="md"
               />
 
               {/* Mapa Ilustrativo */}
@@ -1945,6 +2010,7 @@ const POS = () => {
                 value={customerName}
                 setValue={setCustomerName}
                 placeholder="Ingresa el nombre"
+                size="md"
               />
               <TextField
                 label="Número"
@@ -1952,6 +2018,7 @@ const POS = () => {
                 setValue={setCustomerNumber}
                 placeholder="Ingresa el número"
                 type="number"
+                size="md"
                 onChange={(e) =>
                   setCustomerNumber(normalizePhoneNumber(e.target.value))
                 }
@@ -1961,6 +2028,7 @@ const POS = () => {
                 value={locationText}
                 setValue={setLocationText}
                 placeholder="Ingresa la ubicación"
+                size="md"
               />
             </div>
           )}
@@ -2814,138 +2882,52 @@ const POS = () => {
       )}
       {showOrderSentModal && sentOrder && (
         <div className="fixed inset-0 bg-background bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-surface border border-outline rounded-lg p-6 max-w-2xl w-full mx-4 overflow-y-auto max-h-[calc(100vh-4rem)]">
-            <h3 className="text-on-surface text-lg font-bold mb-4">
-              Pedido enviado
-            </h3>
-            <p className="text-on-surface-variant mb-4">
-              El pedido se envió correctamente. Puedes imprimir la orden desde
-              aquí.
-            </p>
-
-            <div className="mb-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg bg-surface-hover border border-outline p-4">
-                <p className="text-sm font-bold uppercase tracking-[0.15em] text-on-surface-variant mb-2">
-                  Resumen
-                </p>
-                <p className="text-sm text-on-surface">
-                  Número: {sentOrder.orderNumber}
-                </p>
-                <p className="text-sm text-on-surface">
-                  Total: $ {formatPrice(sentOrder.total || 0)}
-                </p>
-                <p className="text-sm text-on-surface">
-                  Método: {sentOrder.payment_method || "No especificado"}
-                </p>
+          <div className="bg-surface border border-outline rounded-lg p-8 max-w-md w-full mx-4 text-center">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-24 h-24 rounded-full bg-success/20 flex items-center justify-center">
+                <span className="material-symbols-outlined text-success text-5xl">
+                  check
+                </span>
               </div>
-              <div className="rounded-lg bg-surface-hover border border-outline p-4">
-                <p className="text-sm font-bold uppercase tracking-[0.15em] text-on-surface-variant mb-2">
-                  Cliente
-                </p>
-                <p className="text-sm text-on-surface">
-                  {sentOrder.customer_name || "Consumidor"}
-                </p>
-                <p className="text-sm text-on-surface">
-                  {sentOrder.customer_phone || "Sin teléfono"}
-                </p>
-                {sentOrder.metadata?.cliente?.direccion && (
-                  <p className="text-sm text-on-surface">
-                    {sentOrder.metadata.cliente.direccion}
-                  </p>
-                )}
-              </div>
+              <h3 className="text-on-surface text-2xl font-bold">Enviado</h3>
+              <p className="text-on-surface-variant">Se envió correctamente.</p>
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-outline">
-              <table className="w-full border-collapse text-sm">
-                <thead className="bg-surface-hover">
-                  <tr>
-                    <th className="border-b border-outline px-3 py-2 text-left text-on-surface-variant">
-                      Producto
-                    </th>
-                    <th className="border-b border-outline px-3 py-2 text-right text-on-surface-variant">
-                      Cant.
-                    </th>
-                    <th className="border-b border-outline px-3 py-2 text-right text-on-surface-variant">
-                      Precio
-                    </th>
-                    <th className="border-b border-outline px-3 py-2 text-right text-on-surface-variant">
-                      Total
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sentOrder.items.map((item, index) => (
-                    <tr
-                      key={index}
-                      className={
-                        index % 2 === 0 ? "bg-background" : "bg-surface"
-                      }
-                    >
-                      <td className="border-b border-outline px-3 py-2 text-on-surface">
-                        <div className="font-semibold">{item.nombre}</div>
-                        {item.notas && (
-                          <div className="text-[11px] text-on-surface-variant">
-                            {item.notas}
-                          </div>
-                        )}
-                      </td>
-                      <td className="border-b border-outline px-3 py-2 text-right text-on-surface">
-                        {item.cantidad}
-                      </td>
-                      <td className="border-b border-outline px-3 py-2 text-right text-on-surface">
-                        $ {formatPrice(item.precio)}
-                      </td>
-                      <td className="border-b border-outline px-3 py-2 text-right text-on-surface">
-                        $ {formatPrice(item.precio * item.cantidad)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <p className="text-sm text-on-surface-variant">
-                  Observaciones:
-                </p>
-                <p className="text-sm text-on-surface">
-                  {sentOrder.notes || "Ninguna"}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-on-surface-variant">TOTAL</p>
-                <p className="text-xl font-black text-on-surface">
-                  $ {formatPrice(sentOrder.total || 0)}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <button
-                onClick={() => handlePrintSentOrder(sentOrder)}
-                className="flex-1 bg-primary-container hover:bg-primary text-on-primary font-bold py-3 rounded-2xl transition-colors"
-              >
-                Imprimir
-              </button>
-              <button
-                onClick={handleCloseSentOrderModal}
-                className="flex-1 bg-surface-hover hover:bg-surface text-on-surface font-bold py-3 rounded-2xl transition-colors"
-              >
-                Listo
-              </button>
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 onClick={() => handleShareSentOrder(sentOrder)}
-                className="flex-1 bg-secondary-container hover:bg-secondary text-on-surface font-bold py-3 rounded-2xl transition-colors"
+                className="flex items-center justify-center gap-3 py-3 px-6 bg-surface border border-outline hover:bg-surface-hover text-on-surface font-bold rounded-2xl shadow-sm hover:shadow-md transition-all text-sm sm:text-base ring-1 ring-transparent focus:ring-offset-2 focus:ring-primary/20"
+                aria-label="Compartir pedido"
               >
-                Compartir
+                <span className="material-symbols-outlined">share</span>
+                <span>Compartir</span>
               </button>
+
               <button
                 onClick={() => handleSavePdfSentOrder(sentOrder)}
-                className="flex-1 bg-surface border border-outline hover:bg-surface-hover text-on-surface font-bold py-3 rounded-2xl transition-colors"
+                className="flex items-center justify-center gap-3 py-3 px-6 bg-surface border border-outline hover:bg-surface-hover text-on-surface font-bold rounded-2xl shadow-sm hover:shadow-md transition-all text-sm sm:text-base ring-1 ring-transparent focus:ring-offset-2 focus:ring-primary/20"
+                aria-label="Guardar PDF"
               >
-                Guardar PDF
+                <span className="material-symbols-outlined">save</span>
+                <span>Guardar PDF</span>
+              </button>
+
+              <button
+                onClick={() => handlePrintSentOrder(sentOrder)}
+                className="flex items-center justify-center gap-3 py-3 px-6 bg-primary-container/50 hover:bg-primary-container text-on-primary font-bold rounded-2xl shadow-lg hover:shadow-xl transform hover:transition-all text-sm sm:text-base ring-1 ring-transparent focus:ring-offset-2 focus:ring-primary/40"
+                aria-label="Imprimir pedido"
+              >
+                <span className="material-symbols-outlined">print</span>
+                <span>Imprimir</span>
+              </button>
+
+              <button
+                onClick={handleCloseSentOrderModal}
+                className="flex items-center justify-center gap-3 py-3 px-6 bg-primary/20 hover:bg-primary/50 text-on-surface font-bold rounded-2xl shadow-sm hover:shadow-md transition-all text-sm sm:text-base ring-1 ring-transparent focus:ring-offset-2 focus:ring-primary/20"
+                aria-label="Cerrar modal"
+              >
+                <span className="material-symbols-outlined">done</span>
+                <span>Listo</span>
               </button>
             </div>
           </div>
