@@ -30,7 +30,20 @@ const TextField = ({
         ref={inputRef}
         type={type}
         value={value}
-        onChange={onChange ?? ((e) => setValue(e.target.value))}
+        inputMode={type === "number" ? "numeric" : undefined}
+        pattern={type === "number" ? "\\d*" : undefined}
+        onChange={
+          onChange ??
+          ((e) => {
+            const v = e.target.value;
+            if (type === "number") {
+              const cleaned = v.replace(/\D/g, "");
+              setValue(cleaned);
+            } else {
+              setValue(v);
+            }
+          })
+        }
         placeholder={placeholder}
         className="w-full bg-surface  border-outline rounded-lg p-2 pr-10 text-on-surface text-xs focus:outline-none focus:border-primary"
       />
@@ -548,12 +561,9 @@ const POS = () => {
   const [orderNotes, setOrderNotes] = useState("");
 
   const normalizePhoneNumber = (value) => {
-    const cleaned = value.replace(/[^\d+]/g, "");
-    if (!cleaned) return "";
-    const withPlus = cleaned.startsWith("+")
-      ? "+" + cleaned.slice(1).replace(/\+/g, "")
-      : cleaned.replace(/\+/g, "");
-    return withPlus;
+    if (!value) return "";
+    const cleaned = String(value).replace(/\D/g, "");
+    return cleaned;
   };
 
   // Función para autorellenar campos de entrega
