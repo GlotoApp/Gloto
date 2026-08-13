@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Trash2, Pencil } from "lucide-react";
+import { Trash2, Pencil, X } from "lucide-react";
 import SplitPaymentModal from "./SplitPaymentModal";
 import { supabase } from "../../src/lib/supabaseClient";
 import { useAuth } from "../../src/components/AuthContext";
@@ -422,10 +422,11 @@ const POS = () => {
       const { data, error } = await supabase
         .from("products")
         .select(
-          "id,name,description,price,stock,image_url,is_active,category_id",
+          "id,name,description,price,stock,image_url,is_active,is_sold_out,category_id,order_index,created_at",
         )
         .eq("business_id", businessId)
         .eq("is_active", true)
+        .order("order_index", { ascending: true })
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -493,6 +494,9 @@ const POS = () => {
             image_url: item.image_url || item.image || item.imageUrl || "",
             optionGroups: groups,
             hasOptionGroups: groups.length > 0,
+            stock: Number(item.stock || 0),
+            soldOut: item.is_sold_out || item.is_soldout || false,
+            orderIndex: Number(item.order_index || 0),
           };
         }),
       );
@@ -1573,6 +1577,13 @@ const POS = () => {
                     onClick={() => addToCart(product)}
                     className="group relative bg-surface  rounded-[25px] hover:bg-surface-hover/50 hover:border-primary-container/40 transition-all duration-500 cursor-pointer flex flex-col active:scale-[0.97]"
                   >
+                    {(product.soldOut ||
+                      (typeof product.stock === "number" &&
+                        product.stock <= 0)) && (
+                      <div className="absolute top-2 left-2 z-20 px-2 py-1 rounded-full bg-red-600 text-white text-xs font-bold uppercase tracking-wider">
+                        Agotado
+                      </div>
+                    )}
                     {/* Botón Info - Elevado con Glassmorphism */}
                     <button
                       onClick={(e) => {
@@ -1656,8 +1667,9 @@ const POS = () => {
                   <button
                     onClick={() => setShowInfo(null)}
                     className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center text-on-surface-variant hover:text-on-surface bg-background/20 hover:bg-background/40 rounded-full transition-all"
+                    aria-label="Cerrar"
                   >
-                    <Trash2 className="h-5 w-5" />
+                    <X className="h-5 w-5" />
                   </button>
 
                   <p className="text-xs font-bold text-primary uppercase tracking-widest mb-2">
@@ -1738,6 +1750,7 @@ const POS = () => {
                 value={customerNumber}
                 setValue={setCustomerNumber}
                 placeholder="Ingresa el número"
+                type="number"
                 onChange={(e) =>
                   setCustomerNumber(normalizePhoneNumber(e.target.value))
                 }
@@ -1767,6 +1780,7 @@ const POS = () => {
                 value={customerNumber}
                 setValue={setCustomerNumber}
                 placeholder="Ingresa el número"
+                type="number"
                 onChange={(e) =>
                   setCustomerNumber(normalizePhoneNumber(e.target.value))
                 }
@@ -1777,6 +1791,7 @@ const POS = () => {
                   value={selectedTable}
                   setValue={setSelectedTable}
                   placeholder="Número de mesa"
+                  type="number"
                   inputRef={tableInputRef}
                 />
                 <div className="grid grid-cols-5 gap-1 mt-2">
@@ -1829,6 +1844,7 @@ const POS = () => {
                 value={customerNumber}
                 setValue={setCustomerNumber}
                 placeholder="Ingresa el número"
+                type="number"
                 onChange={(e) =>
                   setCustomerNumber(normalizePhoneNumber(e.target.value))
                 }
@@ -1925,6 +1941,7 @@ const POS = () => {
                 value={customerNumber}
                 setValue={setCustomerNumber}
                 placeholder="Ingresa el número"
+                type="number"
                 onChange={(e) =>
                   setCustomerNumber(normalizePhoneNumber(e.target.value))
                 }

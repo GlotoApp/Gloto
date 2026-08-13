@@ -291,7 +291,11 @@ const ProductoDetalle = ({
   const itemId = obtenerItemId(producto.id, variante, notas);
   const yaEnCarrito = carrito[itemId] || 0;
 
-  const agotado = stockDisponible <= 0;
+  const agotado =
+    stockDisponible <= 0 ||
+    producto.is_sold_out === true ||
+    producto.isSoldOut === true ||
+    producto.sold_out === true;
   const limiteAlcanzado = !agotado && yaEnCarrito >= stockDisponible;
   const restanteParaAgregar = Math.max(0, stockDisponible - yaEnCarrito);
   const alcanzoStock = cantidad >= restanteParaAgregar;

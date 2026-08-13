@@ -268,10 +268,11 @@ const Shop = () => {
           supabase
             .from("products")
             .select(
-              "id,name,description,price,stock,image_url,is_active,category_id",
+              "id,name,description,price,stock,image_url,is_active,is_sold_out,category_id,order_index,created_at",
             )
             .eq("business_id", data.id)
             .eq("is_active", true)
+            .order("order_index", { ascending: true })
             .order("created_at", { ascending: true }),
         ]);
 
@@ -448,6 +449,8 @@ const Shop = () => {
             desc: producto.description || "",
             precio: Number(producto.price) || 0,
             stock: producto.stock || 0,
+            isSoldOut: producto.is_sold_out || producto.is_soldout || false,
+            orderIndex: Number(producto.order_index || 0),
             cat: categoria?.nombre || "Otros",
             image: producto.image_url,
             isActive: producto.is_active,
@@ -1384,6 +1387,7 @@ const Shop = () => {
                           {p.tag}
                         </span>
                       )}
+                      {/* badge moved to image overlay to keep product in place */}
                       <h4
                         style={{
                           fontWeight: 700,
@@ -1436,6 +1440,7 @@ const Shop = () => {
                           alignItems: "center",
                           justifyContent: "center",
                           overflow: "hidden",
+                          position: "relative",
                         }}
                       >
                         {p.image ? (
@@ -1462,6 +1467,27 @@ const Shop = () => {
                           >
                             {p.nombre?.charAt(0).toUpperCase() || "?"}
                           </span>
+                        )}
+
+                        {(p.isSoldOut ||
+                          (typeof p.stock === "number" && p.stock <= 0)) && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "6px",
+                              left: "6px",
+                              padding: "4px 8px",
+                              borderRadius: "999px",
+                              background: "rgba(229,62,62,0.95)",
+                              color: "#fff",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                              letterSpacing: "0.04em",
+                            }}
+                          >
+                            Agotado
+                          </div>
                         )}
                       </div>
 
