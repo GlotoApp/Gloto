@@ -2254,7 +2254,7 @@ const POS = () => {
                 value={orderNotes}
                 onChange={(e) => setOrderNotes(e.target.value)}
                 placeholder="Observaciones generales..."
-                className="w-full min-h-[72px] resize-none rounded-2xl border border-outline bg-background px-3 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20"
+                className="w-full min-h-[72px] resize-none rounded-2xl border border-outline bg-background px-3 py-3 text-base text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20"
               />
             </div>
 
@@ -2503,7 +2503,7 @@ const POS = () => {
                 value={orderNotes}
                 onChange={(e) => setOrderNotes(e.target.value)}
                 placeholder="Observaciones generales..."
-                className="w-full min-h-[72px] resize-none rounded-2xl border border-outline bg-background px-3 py-3 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20"
+                className="w-full min-h-[72px] resize-none rounded-2xl border border-outline bg-background px-3 py-3 text-base text-on-surface placeholder:text-on-surface-variant/50 focus:border-primary focus:ring-1 focus:ring-primary/20"
               />
             </div>
 

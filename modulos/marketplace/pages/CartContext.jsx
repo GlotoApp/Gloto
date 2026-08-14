@@ -331,7 +331,9 @@ export const CartProvider = ({ children }) => {
       scheduled_at: null,
       delivery_address: datosCliente.direccion || null,
       delivery_instructions:
-        datosCliente.referencia || datosCliente.puntoRetiro || null,
+        metodoEntrega === "punto"
+          ? null
+          : datosCliente.referencia || datosCliente.puntoRetiro || null,
       delivery_fee: deliveryFee,
       tax_amount: 0,
       discount_amount: 0,
@@ -378,7 +380,9 @@ export const CartProvider = ({ children }) => {
             : null,
           direccion: datosCliente.direccion || null,
           referencia:
-            datosCliente.referencia || datosCliente.puntoRetiro || null,
+            metodoEntrega === "punto"
+              ? null
+              : datosCliente.referencia || datosCliente.puntoRetiro || null,
         },
       },
     };

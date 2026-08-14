@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useOutletContext } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../src/lib/supabaseClient";
 import {
   X,
   Receipt,
@@ -1243,6 +1244,58 @@ export default function MesasPOS() {
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState(null);
   const toastRef = useRef(null);
+
+  // Load active tables from database on mount
+  useEffect(() => {
+    const loadMesas = async () => {
+      try {
+        // Get all active dine_in orders
+        const { data: ordenes, error } = await supabase
+          .from("orders")
+          .select(
+            "id, order_number, status, mesa, total, created_at, customer_name, customer_phone, notes",
+          )
+          .eq("order_type", "dine_in")
+          .in("status", ["pending", "confirmed", "preparing"]);
+
+        if (error) {
+          console.error("Error cargando mesas:", error);
+          return;
+        }
+
+        // Transform orders into table format
+        const mesasActivas = (ordenes || []).map((orden) => ({
+          id: orden.mesa || orden.id,
+          numero: String(orden.mesa || orden.id),
+          estado: orden.status === "pending" ? "ocupada" : "ocupada",
+          personas: 0,
+          startTime: new Date(orden.created_at).getTime(),
+          total: parseFloat(orden.total) || 0,
+          comanda: [],
+          nota: orden.notes || "",
+          reserva: {
+            nombre: orden.customer_name || "",
+            telefono: orden.customer_phone || "",
+            email: "",
+            hora: "",
+            personas: 0,
+            activa: false,
+          },
+        }));
+
+        // Merge active tables with default free tables
+        const mesasLibresPorDefecto = INITIAL_MESAS.filter(
+          (m) => !mesasActivas.find((a) => a.numero === m.numero),
+        );
+
+        setMesas([...mesasActivas, ...mesasLibresPorDefecto]);
+      } catch (err) {
+        console.error("Error en loadMesas:", err);
+      }
+    };
+
+    loadMesas();
+  }, []);
 
   // Keep panel in sync with state changes
   useEffect(() => {
