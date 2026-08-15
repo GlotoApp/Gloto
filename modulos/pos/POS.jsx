@@ -401,6 +401,12 @@ const POS = () => {
   }, [isModalOpen]);
 
   const fetchCategoriesForBusiness = async (businessId) => {
+    if (!businessId) {
+      setCategories([{ id: "all", name: "Todo" }]);
+      setCategoryMap({});
+      return { categories: [{ id: "all", name: "Todo" }], categoryMap: {} };
+    }
+
     try {
       const { data, error } = await supabase
         .from("categories_shop")
@@ -433,7 +439,14 @@ const POS = () => {
   };
 
   const fetchProductsForBusiness = async (businessId, categoryMap = {}) => {
+    if (!businessId) {
+      setProducts([]);
+      setIsLoadingProducts(false);
+      return;
+    }
+
     setIsLoadingProducts(true);
+    setProducts([]);
     try {
       const { data, error } = await supabase
         .from("products")
@@ -526,25 +539,41 @@ const POS = () => {
 
   useEffect(() => {
     const loadProfile = async () => {
-      if (!user?.id) return;
+      if (!user?.id) {
+        setBusinessId(null);
+        setProducts([]);
+        setCategories([{ id: "all", name: "Todo" }]);
+        setCategoryMap({});
+        setIsLoadingProducts(false);
+        return;
+      }
 
       const { data: profile, error } = await supabase
         .from("profiles")
         .select("business_id")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         console.error("Error cargando perfil:", error);
+        setProducts([]);
+        setIsLoadingProducts(false);
         return;
       }
 
-      if (profile?.business_id) {
-        setBusinessId(profile.business_id);
-        const { categoryMap: fetchedCategoryMap } =
-          await fetchCategoriesForBusiness(profile.business_id);
-        await fetchProductsForBusiness(profile.business_id, fetchedCategoryMap);
+      if (!profile?.business_id) {
+        setBusinessId(null);
+        setProducts([]);
+        setCategories([{ id: "all", name: "Todo" }]);
+        setCategoryMap({});
+        setIsLoadingProducts(false);
+        return;
       }
+
+      setBusinessId(profile.business_id);
+      const { categoryMap: fetchedCategoryMap } =
+        await fetchCategoriesForBusiness(profile.business_id);
+      await fetchProductsForBusiness(profile.business_id, fetchedCategoryMap);
     };
 
     loadProfile();
@@ -1119,13 +1148,7 @@ const POS = () => {
         deliveryMethod === "point"
           ? referencePoint?.trim() || locationText?.trim() || null
           : null,
-      notes: (() => {
-        const orderNotesList = cart
-          .filter((item) => item.note)
-          .map((item) => `${item.name}: ${item.note}`);
-        const generalNotes = orderNotes ? [orderNotes] : [];
-        return [...generalNotes, ...orderNotesList].join(" | ") || null;
-      })(),
+      notes: orderNotes?.trim() || null,
       metadata: {
         tiendaSlug: null,
         canal: "pos",

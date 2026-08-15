@@ -1,4 +1,4 @@
-import React, { useState, useMemo, memo } from "react";
+import React, { useState, useMemo, memo, useEffect } from "react";
 import {
   Search,
   ChevronDown,
@@ -16,8 +16,11 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  RefreshCcw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../src/lib/supabaseClient";
+import { useAuth } from "../../src/components/AuthContext";
 
 // --- CONFIGURACIÓN DE CONSTANTES ---
 const ORIGEN_CONFIG = {
@@ -174,148 +177,277 @@ const ActionButton = ({ icon: Icon, label, color, onClick }) => (
 );
 
 // --- COMPONENTE DE TARJETA ---
-const OrderCard = memo(({ orden, onDelete, onPrint }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const config = ORIGEN_CONFIG[orden.origen];
-  const Icon = config.icon;
+const formatMoney = (value) =>
+  new Intl.NumberFormat("es-CO", {
+    style: "currency",
+    currency: "COP",
+    maximumFractionDigits: 0,
+  }).format(Number(value || 0));
 
-  return (
-    <motion.div
-      layout
-      className={`border rounded-2xl transition-all duration-300 ${
-        isOpen
-          ? "bg-neutral-900/80 border-violet-500/30 shadow-[0_0_30px_rgba(139,92,246,0.05)]"
-          : "bg-neutral-900/40 border-white/5 hover:border-white/10"
-      }`}
-    >
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full p-4 text-left hover:bg-white/5 rounded-2xl transition-colors"
+const formatDateTime = (value) => {
+  if (!value) return "Sin fecha";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("es-CO", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+};
+
+const OrderCard = memo(
+  ({ orden, onDelete, onPrint, onShare, onEdit, canDelete }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const config = ORIGEN_CONFIG[orden.origen || "pos"];
+    const Icon = config.icon;
+
+    return (
+      <motion.div
+        layout
+        className={`border rounded-2xl transition-all duration-300 ${
+          isOpen
+            ? "bg-neutral-900/80 border-violet-500/30 shadow-[0_0_30px_rgba(139,92,246,0.05)]"
+            : "bg-neutral-900/40 border-white/5 hover:border-white/10"
+        }`}
       >
-        {/* 📱 MOBILE */}
-        <div className="flex flex-col gap-1 lg:hidden">
-          <div className="flex justify-between items-start gap-3">
-            <div className="min-w-0">
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="w-full p-4 text-left hover:bg-white/5 rounded-2xl transition-colors"
+        >
+          {/* 📱 MOBILE */}
+          <div className="flex flex-col gap-1 lg:hidden">
+            <div className="flex justify-between items-start gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white truncate">
+                  {orden.cliente}
+                </p>
+                <p className="text-xs text-neutral-500 font-mono truncate">
+                  {orden.numeroFactura}
+                </p>
+              </div>
+              <p className="text-lg font-bold text-emerald-400 whitespace-nowrap">
+                {formatMoney(orden.total)}
+              </p>
+            </div>
+            <div className="flex justify-between items-center text-xs text-neutral-400 ">
+              <span className="truncate">
+                {displayOrderType(orden.metodoEntrega)}
+              </span>
+              <div className="flex items-center gap-2">
+                <motion.div
+                  animate={{ rotate: isOpen ? 180 : 0 }}
+                  className="p-1.5 bg-white/5 rounded-full"
+                >
+                  <ChevronDown size={14} />
+                </motion.div>
+              </div>
+            </div>
+          </div>
+
+          {/* 💻 DESKTOP */}
+          <div className="hidden lg:grid grid-cols-12 items-center gap-4">
+            <div className="col-span-4 min-w-0">
               <p className="text-sm font-semibold text-white truncate">
                 {orden.cliente}
               </p>
               <p className="text-xs text-neutral-500 font-mono truncate">
-                {orden.id}
+                {orden.numeroFactura}
               </p>
             </div>
-            <p className="text-lg font-bold text-emerald-400 whitespace-nowrap">
-              ${orden.total.toFixed(0)}
-            </p>
-          </div>
-          <div className="flex justify-between items-center text-xs text-neutral-400 ">
-            <span className="truncate uppercase">{orden.tipoEntrega}</span>
-            <div className="flex items-center gap-2">
+            <div className="col-span-2">
+              <p className="text-xs text-neutral-500">Entrega</p>
+              <p className="text-sm text-neutral-300 truncate">
+                {displayOrderType(orden.metodoEntrega)}
+              </p>
+            </div>
+            <div className="col-span-2">
+              <p className="text-xs text-neutral-500">Hora</p>
+              <p className="text-sm text-neutral-300 truncate">
+                {orden.horaIngreso}
+              </p>
+            </div>
+            <div className="col-span-2 text-right">
+              <p className="text-xs text-neutral-500">Total</p>
+              <p className="text-lg font-bold text-emerald-400">
+                {formatMoney(orden.total)}
+              </p>
+            </div>
+            <div className="col-span-2 flex justify-end items-center gap-2">
+              <span
+                className={`px-2 py-1 rounded-full text-xs font-semibold ${
+                  orden.status === "listo"
+                    ? "bg-emerald-500/20 text-emerald-400"
+                    : orden.status === "preparando"
+                      ? "bg-amber-500/20 text-amber-400"
+                      : "bg-neutral-500/20 text-neutral-400"
+                }`}
+              >
+                {orden.status}
+              </span>
               <motion.div
                 animate={{ rotate: isOpen ? 180 : 0 }}
-                className="p-1.5 bg-white/5 rounded-full"
+                className="p-2 bg-white/5 rounded-full"
               >
-                <ChevronDown size={14} />
+                <ChevronDown size={16} />
               </motion.div>
             </div>
           </div>
-        </div>
+        </button>
 
-        {/* 💻 DESKTOP */}
-        <div className="hidden lg:grid grid-cols-12 items-center gap-4">
-          <div className="col-span-4 min-w-0">
-            <p className="text-sm font-semibold text-white truncate">
-              {orden.cliente}
-            </p>
-            <p className="text-xs text-neutral-500 font-mono truncate">
-              {orden.id}
-            </p>
-          </div>
-          <div className="col-span-2">
-            <p className="text-xs text-neutral-500">Método</p>
-            <p className="text-sm text-neutral-300 truncate">
-              {orden.tipoEntrega}
-            </p>
-          </div>
-          <div className="col-span-2">
-            <p className="text-xs text-neutral-500">Origen</p>
-            <span
-              className={`px-2 py-0.5 rounded text-xs flex items-center gap-1 w-fit ${config.color}`}
-            >
-              <Icon size={12} /> {config.label}
-            </span>
-          </div>
-          <div className="col-span-2 text-right">
-            <p className="text-xs text-neutral-500">Total</p>
-            <p className="text-lg font-bold text-emerald-400">
-              ${orden.total.toFixed(0)}
-            </p>
-          </div>
-          <div className="col-span-2 flex justify-end items-center gap-2">
-            <span
-              className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                orden.status === "listo"
-                  ? "bg-emerald-500/20 text-emerald-400"
-                  : orden.status === "preparando"
-                    ? "bg-amber-500/20 text-amber-400"
-                    : "bg-neutral-500/20 text-neutral-400"
-              }`}
-            >
-              {orden.status}
-            </span>
+        {/* EXPAND */}
+        <AnimatePresence>
+          {isOpen && (
             <motion.div
-              animate={{ rotate: isOpen ? 180 : 0 }}
-              className="p-2 bg-white/5 rounded-full"
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden border-t border-white/5 bg-black/20"
             >
-              <ChevronDown size={16} />
+              <div className="p-4 sm:p-6 space-y-5">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <DetailBox label="Factura" value={orden.numeroFactura} />
+                  <DetailBox label="Hora" value={orden.horaIngreso} />
+                  <DetailBox label="Pago" value={orden.metodoPago} />
+                  <DetailBox
+                    label="Método de entrega"
+                    value={
+                      orden.metodoEntrega === "punto"
+                        ? "En punto"
+                        : orden.metodoEntrega === "recoger"
+                          ? "Recoger"
+                          : orden.metodoEntrega === "domicilio"
+                            ? "Domicilio"
+                            : orden.metodoEntrega === "mesa"
+                              ? "En mesa"
+                              : orden.metodoEntrega || "Sin información"
+                    }
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <DetailBox label="Cliente" value={orden.cliente} />
+                  <DetailBox label="Teléfono" value={orden.telefono} />
+                  {orden.deliveryDetails && orden.deliveryDetails.length > 0 ? (
+                    <>
+                      {orden.deliveryDetails.map((detail, index) => (
+                        <DetailBox
+                          key={`${detail.label}-${index}`}
+                          label={detail.label}
+                          value={detail.value}
+                        />
+                      ))}
+                    </>
+                  ) : null}
+                  <DetailBox label="Total" value={formatMoney(orden.total)} />
+                </div>
+
+                {orden.metodoEntrega === "domicilio" && (
+                  <div className="flex justify-end">
+                    <ActionButton
+                      icon={Globe}
+                      label="Ver en mapa"
+                      color="border-sky-500/20 bg-sky-500/5 text-sky-400 hover:bg-sky-500 hover:text-white"
+                      onClick={() => handleOpenMap(orden)}
+                    />
+                  </div>
+                )}
+
+                {orden.items?.length > 0 && (
+                  <div className="">
+                    <p className="text-[8px] font-black text-primary uppercase tracking-[0.2em] mb-3">
+                      Productos
+                    </p>
+                    <div className="space-y-3">
+                      {orden.items.map((item) => (
+                        <div
+                          key={
+                            item.id || `${item.product_name}-${item.quantity}`
+                          }
+                          className="border border-white/5 rounded-lg p-3 bg-white/3"
+                        >
+                          <div className="flex justify-between gap-3 mb-1">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <p className="text-sm font-semibold text-white truncate">
+                                {item.product_name}
+                              </p>
+                              <span className="text-sm text-neutral-400 font-medium">
+                                x{item.quantity}
+                              </span>
+                            </div>
+                            <p className="text-sm font-bold text-emerald-400">
+                              {formatMoney(
+                                item.subtotal ||
+                                  item.unit_price * item.quantity,
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] text-neutral-400">
+                            <span>
+                              Precio c/u: {formatMoney(item.unit_price)}
+                            </span>
+                          </div>
+                          {item.options?.length > 0 && (
+                            <div className=" text-[10px] text-neutral-400">
+                              Opciones: {item.options.join(", ")}
+                            </div>
+                          )}
+                          {item.notes && (
+                            <div className="text-[10px] text-neutral-400">
+                              Observaciones: {item.notes}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {orden.observaciones && (
+                  <div className="rounded-xl  bg-neutral-950/40 p-3">
+                    <p className="text-[8px] font-black text-neutral-600 uppercase tracking-[0.2em] mb-2">
+                      Observaciones
+                    </p>
+                    <p className="text-sm text-neutral-300">
+                      {orden.observaciones}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-2 flex-wrap">
+                  {canDelete && (
+                    <ActionButton
+                      icon={Trash2}
+                      label="Eliminar"
+                      color="border-red-500/20 bg-red-500/5 text-red-500 hover:bg-red-500 hover:text-white"
+                      onClick={() => onDelete(orden.id)}
+                    />
+                  )}
+                  <ActionButton
+                    icon={FileText}
+                    label="Factura"
+                    color="border-white/10 bg-white/5 text-neutral-400 hover:bg-white/10"
+                    onClick={() => onEdit(orden.id)}
+                  />
+                  <ActionButton
+                    icon={Printer}
+                    label="Imprimir"
+                    color="border-violet-500/20 bg-violet-600/10 text-violet-400 hover:bg-violet-600 hover:text-white"
+                    onClick={() => onPrint(orden.id)}
+                  />
+                  <ActionButton
+                    icon={Clipboard}
+                    label="Compartir"
+                    color="border-emerald-500/20 bg-emerald-500/5 text-emerald-400 hover:bg-emerald-500 hover:text-white"
+                    onClick={() => onShare(orden)}
+                  />
+                </div>
+              </div>
             </motion.div>
-          </div>
-        </div>
-      </button>
-
-      {/* EXPAND */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden border-t border-white/5 bg-black/20"
-          >
-            <div className="p-4 sm:p-6 space-y-5">
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <DetailBox label="Fecha" value={orden.fecha} />
-                <DetailBox label="Pago" value={orden.pago} />
-                <DetailBox label="Estado" value={orden.status} />
-                <DetailBox label="Detalle" value={orden.detalleEntrega} />
-              </div>
-
-              <div className="flex gap-2 flex-wrap">
-                <ActionButton
-                  icon={Trash2}
-                  label="Eliminar"
-                  color="border-red-500/20 bg-red-500/5 text-red-500 hover:bg-red-500 hover:text-white"
-                  onClick={() => onDelete(orden.id)}
-                />
-                <ActionButton
-                  icon={FileText}
-                  label="Factura"
-                  color="border-white/10 bg-white/5 text-neutral-400 hover:bg-white/10"
-                  onClick={() => {}}
-                />
-                <ActionButton
-                  icon={Printer}
-                  label="Imprimir"
-                  color="border-violet-500/20 bg-violet-600/10 text-violet-400 hover:bg-violet-600 hover:text-white"
-                  onClick={() => onPrint(orden.id)}
-                />
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-});
+          )}
+        </AnimatePresence>
+      </motion.div>
+    );
+  },
+);
 
 const DetailBox = ({ label, value, color = "text-neutral-300" }) => (
   <div className="space-y-1">
@@ -326,8 +458,210 @@ const DetailBox = ({ label, value, color = "text-neutral-300" }) => (
   </div>
 );
 
+const normalizeStatus = (status) => {
+  const key = String(status || "").toLowerCase();
+  if (["listo", "ready", "delivered", "completado"].includes(key)) {
+    return "listo";
+  }
+  if (["preparando", "preparing"].includes(key)) {
+    return "preparando";
+  }
+  if (["pending", "pendiente"].includes(key)) {
+    return "pendiente";
+  }
+  if (["confirmed", "confirmado"].includes(key)) {
+    return "confirmado";
+  }
+  if (["cancelled", "cancelado"].includes(key)) {
+    return "cancelado";
+  }
+  return key || "pendiente";
+};
+
+const normalizeOrderType = (orderType) => {
+  const key = String(orderType || "").toLowerCase();
+  if (["delivery", "domicilio"].includes(key)) return "domicilio";
+  if (["pickup", "recoger"].includes(key)) return "recoger";
+  if (["table", "mesa"].includes(key)) return "mesa";
+  if (["point", "punto", "dine_in", "en_punto", "in_point"].includes(key)) {
+    return "punto";
+  }
+  return key || "punto";
+};
+
+const displayOrderType = (orderType) => {
+  const normalized = normalizeOrderType(orderType);
+  const map = {
+    punto: "Punto",
+    domicilio: "Domicilio",
+    mesa: "Mesa",
+    recoger: "Recoger",
+  };
+
+  return (
+    map[normalized] || normalized.charAt(0).toUpperCase() + normalized.slice(1)
+  );
+};
+
+const getDeliveryDetails = (order = {}) => {
+  const method = normalizeOrderType(order.order_type);
+
+  if (method === "recoger") {
+    return [];
+  }
+
+  if (method === "punto") {
+    const puntoValue =
+      order.punto ||
+      order.point ||
+      order.location_name ||
+      order.pickup_point_name;
+    if (!puntoValue) return [];
+
+    return [{ label: "Punto", value: puntoValue }];
+  }
+
+  if (method === "domicilio") {
+    const details = [];
+
+    if (order.delivery_address) {
+      details.push({ label: "Dirección", value: order.delivery_address });
+    }
+
+    if (
+      order.delivery_instructions ||
+      order.delivery_reference ||
+      order.reference
+    ) {
+      details.push({
+        label: "Referencia",
+        value:
+          order.delivery_instructions ||
+          order.delivery_reference ||
+          order.reference,
+      });
+    }
+
+    if (
+      order.delivery_fee !== null &&
+      order.delivery_fee !== undefined &&
+      order.delivery_fee !== ""
+    ) {
+      details.push({
+        label: "Costo de domicilio",
+        value: formatMoney(order.delivery_fee),
+      });
+    } else {
+      details.push({
+        label: "Costo de domicilio",
+        value: "Sin definir",
+      });
+    }
+
+    details.push({
+      label: "Total",
+      value: formatMoney(Number(order.total || 0)),
+    });
+
+    return details;
+  }
+
+  if (method === "mesa") {
+    const details = [];
+
+    const mesaValue = order.table_number || order.mesa;
+    if (mesaValue) {
+      details.push({ label: "Mesa", value: `Mesa ${mesaValue}` });
+    }
+
+    const zonaValue = order.table_zone || order.zone || order.area;
+    if (zonaValue) {
+      details.push({ label: "Zona", value: zonaValue });
+    }
+
+    const instruccionesValue =
+      order.table_instructions || order.delivery_instructions;
+    if (instruccionesValue) {
+      details.push({ label: "Instrucciones", value: instruccionesValue });
+    }
+
+    return details;
+  }
+
+  return [];
+};
+
+const normalizePaymentMethod = (paymentMethod) => {
+  const key = String(paymentMethod || "").toLowerCase();
+  if (["cash", "efectivo"].includes(key)) return "Efectivo";
+  if (["card", "tarjeta"].includes(key)) return "Tarjeta";
+  if (["transfer", "transferencia"].includes(key)) return "Transferencia";
+  if (["split", "dividir", "dividido"].includes(key)) return "Dividido";
+  return paymentMethod || "Sin pago";
+};
+
+const getOptionLabel = (option) => {
+  if (typeof option === "string") return option;
+  if (!option || typeof option !== "object") return "Opción";
+  return (
+    option.name ||
+    option.nombre ||
+    option.label ||
+    option.option_name ||
+    option.title ||
+    option.text ||
+    option.value ||
+    "Opción"
+  );
+};
+
+const mapDatabaseOrderToUi = (order) => {
+  const createdAt = order.created_at ? new Date(order.created_at) : new Date();
+  const items = Array.isArray(order.order_items) ? order.order_items : [];
+  const metodoEntrega = normalizeOrderType(order.order_type);
+
+  return {
+    id: order.id,
+    numeroFactura:
+      order.order_number || `ORD-${String(order.id).slice(0, 8).toUpperCase()}`,
+    tipoEntrega: metodoEntrega,
+    metodoEntrega: metodoEntrega,
+    detalleEntrega:
+      order.delivery_address ||
+      order.delivery_instructions ||
+      (order.mesa ? `Mesa ${order.mesa}` : "Sin detalle"),
+    deliveryDetails: getDeliveryDetails(order),
+    total: Number(order.total || 0),
+    status: normalizeStatus(order.status),
+    origen: "pos",
+    cliente: order.customer_name || "Cliente",
+    telefono: order.customer_phone || "Sin teléfono",
+    pago: normalizePaymentMethod(order.payment_method),
+    metodoPago: normalizePaymentMethod(order.payment_method),
+    horaIngreso: formatDateTime(order.created_at),
+    fecha: createdAt.toISOString().slice(0, 10),
+    observaciones: order.notes || order.delivery_instructions || "",
+    items: items.map((item) => ({
+      id: item.id,
+      product_name: item.product_name || "Producto",
+      quantity: Number(item.quantity || 0),
+      unit_price: Number(item.unit_price || 0),
+      subtotal: Number(item.subtotal || 0),
+      options: Array.isArray(item.options)
+        ? item.options.map(getOptionLabel)
+        : [],
+      notes: item.notes || "",
+    })),
+  };
+};
+
 // --- COMPONENTE PRINCIPAL ---
 const Ordenes = () => {
+  const { user } = useAuth();
+  const [orders, setOrders] = useState([]);
+  const [loadingOrders, setLoadingOrders] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [deliveryFilter, setDeliveryFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
@@ -339,6 +673,67 @@ const Ordenes = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  const loadBusinessOrders = async () => {
+    if (!user?.id) {
+      setOrders([]);
+      setLoadingOrders(false);
+      return;
+    }
+
+    if (refreshing) return;
+
+    setRefreshing(true);
+    setLoadingOrders(true);
+
+    try {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("business_id, role")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profileError || !profile?.business_id) {
+        setOrders([]);
+        setCanDelete(false);
+        setLoadingOrders(false);
+        return;
+      }
+
+      const isAdminRole = [
+        "admin",
+        "owner",
+        "super_admin",
+        "dueño",
+        "dueno",
+      ].includes(String(profile.role || "").toLowerCase());
+      setCanDelete(isAdminRole);
+
+      const { data, error } = await supabase
+        .from("orders")
+        .select("*, order_items(*)")
+        .eq("business_id", profile.business_id)
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Error cargando órdenes por negocio:", error);
+        setOrders([]);
+        return;
+      }
+
+      setOrders((data || []).map(mapDatabaseOrderToUi));
+    } catch (error) {
+      console.error("Error al cargar órdenes:", error);
+      setOrders([]);
+    } finally {
+      setLoadingOrders(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBusinessOrders();
+  }, [user]);
+
   // Estado dinámico: se abre automáticamente el año-mes actual (ej: "2026-05")
   const [openMonths, setOpenMonths] = useState(() => {
     const d = new Date();
@@ -346,112 +741,25 @@ const Ordenes = () => {
     return { [currentMonthKey]: true };
   });
 
-  const allOrdenes = useMemo(
-    () => [
-      {
-        id: "ORD-7721",
-        tipoEntrega: "mesa",
-        detalleEntrega: "Zona A - Mesa 04",
-        total: 45.5,
-        status: "preparando",
-        origen: "ai",
-        cliente: "Juan Pérez",
-        pago: "Tarjeta",
-        fecha: "2026-05-05",
-      },
-      {
-        id: "ORD-7720",
-        tipoEntrega: "punto",
-        detalleEntrega: "Barra Principal",
-        total: 12.0,
-        status: "listo",
-        origen: "web",
-        cliente: "Ana López",
-        pago: "Efectivo",
-        fecha: "2026-05-05",
-      },
-      {
-        id: "ORD-7719",
-        tipoEntrega: "domicilio",
-        detalleEntrega: "Cra 5 #10-20",
-        total: 89.0,
-        status: "listo",
-        origen: "app",
-        cliente: "Mateo Díaz",
-        pago: "Tarjeta",
-        fecha: "2026-05-04",
-      },
-      {
-        id: "ORD-7718",
-        tipoEntrega: "recoger",
-        detalleEntrega: "Mostrador",
-        total: 34.2,
-        status: "listo",
-        origen: "pos",
-        cliente: "Carlos Ruiz",
-        pago: "Efectivo",
-        fecha: "2026-05-04",
-      },
-      {
-        id: "ORD-7717",
-        tipoEntrega: "mesa",
-        detalleEntrega: "Zona B - Mesa 07",
-        total: 156.8,
-        status: "preparando",
-        origen: "web",
-        cliente: "María González",
-        pago: "Tarjeta",
-        fecha: "2026-05-03",
-      },
-      {
-        id: "ORD-7716",
-        tipoEntrega: "domicilio",
-        detalleEntrega: "Cra 7 #5-15",
-        total: 76.5,
-        status: "listo",
-        origen: "app",
-        cliente: "Roberto Sánchez",
-        pago: "Tarjeta",
-        fecha: "2026-05-03",
-      },
-      {
-        id: "ORD-7715",
-        tipoEntrega: "punto",
-        detalleEntrega: "Barra Principal",
-        total: 23.0,
-        status: "listo",
-        origen: "ai",
-        cliente: "Laura Martínez",
-        pago: "Efectivo",
-        fecha: "2026-05-02",
-      },
-      {
-        id: "ORD-7714",
-        tipoEntrega: "mesa",
-        detalleEntrega: "Zona A - Mesa 02",
-        total: 98.3,
-        status: "completado",
-        origen: "pos",
-        cliente: "Fernando López",
-        pago: "Tarjeta",
-        fecha: "2026-04-28",
-      },
-    ],
-    [],
-  );
-
   // 1. Filtrado, búsqueda y ordenamiento de registros totales
   const filteredOrdenes = useMemo(() => {
-    let result = [...allOrdenes];
+    let result = [...orders];
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      result = result.filter(
-        (o) =>
-          o.id.toLowerCase().includes(term) ||
-          o.cliente.toLowerCase().includes(term) ||
-          o.detalleEntrega.toLowerCase().includes(term),
-      );
+      result = result.filter((o) => {
+        const numeroPedido = String(o.numeroFactura || "").toLowerCase();
+        const idOrden = String(o.id || "").toLowerCase();
+        const cliente = String(o.cliente || "").toLowerCase();
+        const detalle = String(o.detalleEntrega || "").toLowerCase();
+
+        return (
+          idOrden.includes(term) ||
+          numeroPedido.includes(term) ||
+          cliente.includes(term) ||
+          detalle.includes(term)
+        );
+      });
     }
 
     if (deliveryFilter) {
@@ -496,14 +804,7 @@ const Ordenes = () => {
     });
 
     return result;
-  }, [
-    allOrdenes,
-    searchTerm,
-    deliveryFilter,
-    dateFilter,
-    customDateRange,
-    sortBy,
-  ]);
+  }, [orders, searchTerm, deliveryFilter, dateFilter, customDateRange, sortBy]);
 
   const totalPages = Math.ceil(filteredOrdenes.length / itemsPerPage);
 
@@ -538,6 +839,11 @@ const Ordenes = () => {
   };
 
   const handleDelete = (id) => {
+    if (!canDelete) {
+      alert("Solo el administrador puede eliminar órdenes.");
+      return;
+    }
+
     if (window.confirm(`¿Eliminar orden ${id}?`)) {
       alert(`Orden ${id} eliminada`);
     }
@@ -547,13 +853,69 @@ const Ordenes = () => {
     alert(`Imprimiendo orden ${id}`);
   };
 
+  const handleShare = async (orden) => {
+    const text = `Factura ${orden.numeroFactura}\nCliente: ${orden.cliente}\nTotal: ${formatMoney(orden.total)}\nEntrega: ${orden.metodoEntrega}\nPago: ${orden.metodoPago}`;
+
+    try {
+      if (navigator?.share) {
+        await navigator.share({
+          title: `Factura ${orden.numeroFactura}`,
+          text,
+        });
+        return;
+      }
+
+      if (navigator?.clipboard) {
+        await navigator.clipboard.writeText(text);
+        alert("Datos compartidos copiados al portapapeles");
+      }
+    } catch (error) {
+      console.error("Error al compartir:", error);
+    }
+  };
+
+  const handleEdit = (id) => {
+    alert(`Editar orden ${id}`);
+  };
+
+  const handleOpenMap = (orden) => {
+    const lat = orden.latitude ?? orden.lat ?? orden.location_lat ?? null;
+    const lng = orden.longitude ?? orden.lng ?? orden.location_lng ?? null;
+
+    if (lat !== null && lng !== null) {
+      const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}&z=16`;
+      window.open(mapsUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    if (orden.delivery_address) {
+      const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(orden.delivery_address)}`;
+      window.open(mapsUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+
+    alert("Aún no hay coordenadas o dirección válida para este domicilio.");
+  };
+
   return (
     <div className="min-h-screen bg-background text-white p-4 font-sans">
       <header className="max-w-7xl mx-auto mb-10 space-y-10">
         {/* Título y Buscador Dinámico */}
         <div className="flex flex-col gap-3 justify-between mb-3">
-          <div>
+          <div className="flex items-center justify-between gap-3">
             <h1 className="text-2xl font-black tracking-tighter">Órdenes</h1>
+            <button
+              type="button"
+              onClick={loadBusinessOrders}
+              disabled={refreshing}
+              title={refreshing ? "Actualizando órdenes" : "Actualizar órdenes"}
+              className="inline-flex items-center justify-center rounded-xl  p-2 text-violet-300 transition hover:bg-violet-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <RefreshCcw
+                size={14}
+                className={refreshing ? "animate-spin" : ""}
+              />
+            </button>
           </div>
           <div className="relative w-full">
             <Search
@@ -562,7 +924,7 @@ const Ordenes = () => {
             />
             <input
               type="text"
-              placeholder="Buscar por ID, cliente..."
+              placeholder="Buscar por nombre o número de pedido..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -703,7 +1065,11 @@ const Ordenes = () => {
 
       {/* Listado de Órdenes Organizado por Acordeones Mensuales */}
       <main className="max-w-7xl mx-auto space-y-4 pb-20">
-        {filteredOrdenes.length === 0 ? (
+        {loadingOrders ? (
+          <div className="text-center py-20">
+            <p className="text-neutral-500 text-lg font-bold">Cargando…</p>
+          </div>
+        ) : filteredOrdenes.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-neutral-500 text-lg font-bold">
               {searchTerm || deliveryFilter
@@ -758,6 +1124,9 @@ const Ordenes = () => {
                             orden={orden}
                             onDelete={handleDelete}
                             onPrint={handlePrint}
+                            onShare={handleShare}
+                            onEdit={handleEdit}
+                            canDelete={canDelete}
                           />
                         ))}
                       </motion.div>
