@@ -460,8 +460,14 @@ const DetailBox = ({ label, value, color = "text-neutral-300" }) => (
 
 const normalizeStatus = (status) => {
   const key = String(status || "").toLowerCase();
-  if (["listo", "ready", "delivered", "completado"].includes(key)) {
+  if (["listo", "ready"].includes(key)) {
     return "listo";
+  }
+  if (["dispatched", "despachado"].includes(key)) {
+    return "despachado";
+  }
+  if (["delivered", "completado"].includes(key)) {
+    return "entregado";
   }
   if (["preparando", "preparing"].includes(key)) {
     return "preparando";

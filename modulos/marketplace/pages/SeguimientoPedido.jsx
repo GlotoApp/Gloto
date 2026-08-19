@@ -51,7 +51,7 @@ const DEFINICION_ETAPAS = {
   },
   listo_entregar: {
     label: "Listo para entregar",
-    desc: "Tu pedido está listo y será llevado a tu punto.",
+    desc: "Tu pedido está listo y será llevado a su lugar.",
     Icon: PackageCheck,
   },
   entregado: {
@@ -66,7 +66,7 @@ const ETAPAS_POR_ENTREGA = {
   recoger: ["recibido", "preparando", "listo_recoger"],
   mesa: ["recibido", "preparando", "listo_entregar"],
   domicilio: ["recibido", "preparando", "camino", "entregado"],
-  punto: ["recibido", "preparando", "listo_entregar", "entregado"],
+  punto: ["recibido", "preparando", "listo_entregar"],
 };
 
 const ENTREGA_LABEL = {
@@ -91,13 +91,23 @@ const normalizeMetodoEntrega = (orderType, metadataMetodoEntrega) => {
 const mapOrderStatusToTrackingStatus = (status, metodoEntrega) => {
   if (!status || status === "pending" || status === "confirmed")
     return "recibido";
-  if (status === "preparing") return "preparando";
+  if (status === "dispatched" && metodoEntrega === "recoger") {
+    return "listo_recoger";
+  }
+  if (status === "dispatched" && ["mesa", "punto"].includes(metodoEntrega)) {
+    return "listo_entregar";
+  }
+  if (["preparing", "complete", "completado", "dispatched"].includes(status)) {
+    return "preparando";
+  }
   if (status === "ready") {
     if (metodoEntrega === "domicilio") return "camino";
     if (metodoEntrega === "recoger") return "listo_recoger";
     return "listo_entregar";
   }
-  if (status === "delivered") return "entregado";
+  if (status === "delivered") {
+    return metodoEntrega === "punto" ? "listo_entregar" : "entregado";
+  }
   return "recibido";
 };
 
