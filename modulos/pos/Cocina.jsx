@@ -99,12 +99,13 @@ export default function KitchenPanel() {
   const audioContextRef = useRef(null);
   const knownOrderIdsRef = useRef(new Set());
   const initializedOrdersRef = useRef(false);
+  const recargaRealtimeRef = useRef(null);
 
   const deliveryLabels = {
     table: { label: "Mesa", icon: "table_bar", color: "emerald" },
     pickup: { label: "Recoger", icon: "takeout_dining", color: "amber" },
-    delivery: { label: "Domicilio", icon: "local_shipping", color: "red" },
-    point: { label: "En Punto", icon: "location_on", color: "violet" },
+    delivery: { label: "Domicilio", icon: "local_shipping", color: "fuchsia" },
+    point: { label: "En Punto", icon: "location_on", color: "blue" },
   };
 
   const colorMap = {
@@ -120,11 +121,17 @@ export default function KitchenPanel() {
       text: "text-amber-400",
       dot: "bg-amber-400",
     },
-    red: {
-      bg: "bg-red-500/10",
-      border: "border-red-500/25",
-      text: "text-red-400",
-      dot: "bg-red-400",
+    fuchsia: {
+      bg: "bg-fuchsia-500/10",
+      border: "border-fuchsia-500/25",
+      text: "text-fuchsia-400",
+      dot: "bg-fuchsia-400",
+    },
+    blue: {
+      bg: "bg-blue-500/10",
+      border: "border-blue-500/30",
+      text: "text-blue-400",
+      dot: "bg-blue-400",
     },
     violet: {
       bg: "bg-violet-500/10",
@@ -142,6 +149,7 @@ export default function KitchenPanel() {
   });
 
   const [ordenes, setOrdenes] = useState([]);
+  const [direccionesAnimacion, setDireccionesAnimacion] = useState({});
 
   const reproducirAlerta = () => {
     if (typeof window === "undefined") return;
@@ -162,7 +170,7 @@ export default function KitchenPanel() {
     oscillator.type = "sine";
     oscillator.frequency.value = 820;
     gain.gain.setValueAtTime(0.0001, ahora);
-    gain.gain.exponentialRampToValueAtTime(0.18, ahora + 0.02);
+    gain.gain.exponentialRampToValueAtTime(1, ahora + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, ahora + 0.2);
     oscillator.connect(gain);
     gain.connect(audioContext.destination);
@@ -271,8 +279,62 @@ export default function KitchenPanel() {
 
   useEffect(() => {
     cargarOrdenes();
-    const interval = setInterval(cargarOrdenes, 10000);
-    return () => clearInterval(interval);
+    return undefined;
+  }, [user]);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+
+    let canalPedidos;
+    let cancelado = false;
+
+    const suscribirPedidos = async () => {
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("business_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (error || !profile?.business_id || cancelado) return;
+
+      canalPedidos = supabase
+        .channel(`cocina-pedidos-${profile.business_id}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: "orders",
+            filter: `business_id=eq.${profile.business_id}`,
+          },
+          () => {
+            if (recargaRealtimeRef.current) {
+              clearTimeout(recargaRealtimeRef.current);
+            }
+
+            recargaRealtimeRef.current = setTimeout(() => {
+              recargaRealtimeRef.current = null;
+              cargarOrdenes();
+            }, 300);
+          },
+        )
+        .subscribe((status) => {
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            console.error("Realtime de cocina no disponible:", status);
+          }
+        });
+    };
+
+    suscribirPedidos();
+
+    return () => {
+      cancelado = true;
+      if (recargaRealtimeRef.current) {
+        clearTimeout(recargaRealtimeRef.current);
+        recargaRealtimeRef.current = null;
+      }
+      if (canalPedidos) supabase.removeChannel(canalPedidos);
+    };
   }, [user]);
 
   useEffect(() => {
@@ -299,6 +361,15 @@ export default function KitchenPanel() {
 
     if (!databaseStatus) return;
 
+    const estadoActual = order?.estado;
+    const ordenEstados = ["nuevos", "preparando", "listo"];
+    const avanza =
+      ordenEstados.indexOf(nuevoEstado) > ordenEstados.indexOf(estadoActual);
+    setDireccionesAnimacion((prev) => ({
+      ...prev,
+      [id]: avanza ? "derecha" : "izquierda",
+    }));
+
     setOrdenes((prev) =>
       prev.map((order) =>
         order.id === id ? { ...order, estado: nuevoEstado } : order,
@@ -323,6 +394,10 @@ export default function KitchenPanel() {
 
     despachandoIds.current.add(order.databaseId);
     setOrdenes((prev) => prev.filter((item) => item.id !== id));
+    setDireccionesAnimacion((prev) => ({
+      ...prev,
+      [id]: "derecha",
+    }));
 
     const { error } = await supabase
       .from("orders")
@@ -379,26 +454,27 @@ export default function KitchenPanel() {
         <div className="max-w-[1800px] mx-auto flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 ">
           {/* Branding Compacto & KPIs Tácticos */}
           <div className="flex flex-col lg:flex-row lg:items-center gap-4 lg:gap-8 flex-1">
-            <div className="flex items-center gap-3">
+            <div className="flex w-full items-center justify-between gap-3">
               <h1 className="text-2xl font-black tracking-tighter">Cocina</h1>
+              <button
+                type="button"
+                onClick={() => setSoundModalOpen(true)}
+                title="Configurar sonido"
+                aria-label="Configurar sonido"
+                className={`flex items-center justify-center gap-1.5 p-2.5 md:px-3 md:py-2 rounded-xl border font-black text-[10px] uppercase tracking-wide transition-all whitespace-nowrap ${
+                  soundEnabled
+                    ? "border-none text-success  hover:bg-success/10"
+                    : "border-none text-white/40 hover:text-white hover:bg-white/30 "
+                }`}
+              >
+                <Volume2 size={17} />
+                <span className="hidden md:inline">Sonido</span>
+              </button>
             </div>
           </div>
 
           {/* Filtros de Métodos de Entrega */}
           <div className="flex items-center justify-center gap-1.5 w-full md:w-auto overflow-x-auto no-scrollbar py-1 md:py-0">
-            <button
-              type="button"
-              onClick={() => setSoundModalOpen(true)}
-              title="Probar sonido de nuevos pedidos"
-              className={`flex items-center justify-center gap-1.5 p-2.5 md:px-4 md:py-2.5 rounded-xl border font-black text-[10px] uppercase tracking-wide transition-all whitespace-nowrap ${
-                soundEnabled
-                  ? "bg-sky-500/10 border-sky-500/30 text-sky-300"
-                  : "bg-white/[0.02] border-white/[0.08] text-slate-400 hover:text-white"
-              }`}
-            >
-              <Volume2 size={17} />
-              <span className="hidden md:inline">Sonido</span>
-            </button>
             {Object.entries(deliveryLabels).map(([key, data]) => {
               const c = colorMap[data.color];
               const active = filtros[key];
@@ -406,7 +482,7 @@ export default function KitchenPanel() {
                 <button
                   key={key}
                   onClick={() => toggleFiltro(key)}
-                  className={`flex items-center justify-center gap-0 md:gap-1.5 p-2.5 md:px-4 md:py-2.5 rounded-xl border font-black text-[10px] uppercase tracking-wide transition-all duration-200 whitespace-nowrap ${
+                  className={`flex items-center justify-center gap-0 md:gap-1.5 p-2.5 md:px-4 md:py-2.5 rounded-[25px] border font-black text-[10px] uppercase tracking-wide transition-all duration-200 whitespace-nowrap ${
                     active
                       ? `${c.bg} ${c.border} ${c.text}`
                       : "bg-white/[0.02] border-white/[0.06] text-white/20"
@@ -527,7 +603,7 @@ export default function KitchenPanel() {
               key={col.id}
               className={`flex flex-col bg-[#080808] ${col.bgBase} w-full min-w-full md:min-w-0 min-h-0 overflow-hidden`}
             >
-              <div className="p-4 border-b border-white/5 relative">
+              <div className="p-1 border-b border-white/5 relative">
                 <div
                   className={`absolute bottom-0 left-0 h-1 w-full bg-gradient-to-r ${col.color}`}
                 ></div>
@@ -536,16 +612,14 @@ export default function KitchenPanel() {
                     <col.icon size={18} />
                   </div>
                   <div>
-                    <h2 className="text-xs font-black uppercase tracking-widest text-slate-400">
-                      {col.label}
-                    </h2>
-                    <span className="text-2xl font-black tabular-nums leading-none">
+                    <h2 className="uppercase text-1xl font-black tabular-nums leading-none">
+                      {col.label} /{" "}
                       {
                         ordenesFiltradasPorTipo.filter(
                           (o) => o.estado === col.id,
                         ).length
                       }
-                    </span>
+                    </h2>
                   </div>
                 </div>
               </div>
@@ -559,6 +633,7 @@ export default function KitchenPanel() {
                       <TicketCard
                         key={o.id}
                         orden={o}
+                        direccionAnimacion={direccionesAnimacion[o.id]}
                         labelData={deliveryLabels[o.tipoEntrega]}
                         colorData={
                           colorMap[deliveryLabels[o.tipoEntrega]?.color]
@@ -616,19 +691,56 @@ export default function KitchenPanel() {
   );
 }
 
-const TicketCard = ({ orden, labelData, colorData, onNext, onPrev, type }) => {
+const TicketCard = ({
+  orden,
+  direccionAnimacion,
+  labelData,
+  colorData,
+  onNext,
+  onPrev,
+  type,
+}) => {
+  const distanciaAnimacion = direccionAnimacion === "izquierda" ? -120 : 120;
+  const entradaAnimacion = -distanciaAnimacion;
   const handlePrint = () => {
+    const escaparHtml = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    const formatoPrecio = (value) =>
+      new Intl.NumberFormat("es-CO", {
+        style: "currency",
+        currency: "COP",
+        maximumFractionDigits: 0,
+      }).format(Number(value) || 0);
+    const totalOrden = orden.items.reduce(
+      (total, item) =>
+        total + (Number(item.price) || 0) * (Number(item.qty) || 0),
+      0,
+    );
     const itemsHtml = orden.items
-      .map(
-        (item) =>
-          `<tr>
-        <td style="font-size: 30px; font-weight: bold; padding: 8px; border-bottom: 1px solid #ddd;">${item.qty}</td>
-        <td style="padding: 8px; border-bottom: 1px solid #ddd;">
-          <div><strong>${item.name}</strong></div>
-          ${item.nota ? `<div style="font-size: 10px; color: #555; margin-top: 2px;">${item.nota}</div>` : ""}
+      .map((item) => {
+        const opciones = (item.opciones || [])
+          .map((opcion) => `<div class="option">+ ${escaparHtml(opcion)}</div>`)
+          .join("");
+        const instrucciones = item.nota
+          ? `<div class="instruction">Instrucción: ${escaparHtml(item.nota)}</div>`
+          : "";
+        const subtotal = (Number(item.price) || 0) * (Number(item.qty) || 0);
+
+        return `<tr>
+        <td class="quantity">${escaparHtml(item.qty)}</td>
+        <td class="product">
+          <div class="product-name">${escaparHtml(item.name)}</div>
+          ${opciones}
+          ${instrucciones}
         </td>
-      </tr>`,
-      )
+        <td class="price">${formatoPrecio(subtotal)}</td>
+      </tr>`;
+      })
       .join("");
 
     const html = `
@@ -637,30 +749,45 @@ const TicketCard = ({ orden, labelData, colorData, onNext, onPrev, type }) => {
         <head>
           <title>Comanda ${orden.id}</title>
           <style>
-            body { font-family: 'Courier New', monospace; width: 80mm; margin: 0; padding: 10mm; background: white; }
-            .header { text-align: center; border-bottom: 2px solid black; padding-bottom: 10px; margin-bottom: 10px; }
-            .order-id { font-size: 24px; font-weight: bold; margin: 10px 0; }
-            .order-info { font-size: 25px; margin: 5px 0; }
-            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-            th { text-align: left; padding: 8px; border-bottom: 2px solid black; font-weight: bold; font-size: 12px; }
-            td { padding: 8px; border-bottom: 1px solid #ddd; font-size: 12px; }
+            body { font-family: 'Courier New', monospace; width: 80mm; margin: 0; padding: 8mm; background: white; color: black; }
+            .logo-space { height: 24mm; border: 1px dashed #999; display: flex; align-items: center; justify-content: center; color: #999; font-size: 10px; margin-bottom: 8px; }
+            .header { text-align: center; border-bottom: 2px solid black; padding-bottom: 8px; margin-bottom: 10px; }
+            .order-id { font-size: 24px; font-weight: bold; margin: 6px 0; }
+            .order-info { font-size: 13px; margin: 3px 0; }
+            .customer { font-size: 16px; font-weight: bold; margin: 5px 0; }
             .notes-block { border: 1px dashed black; padding: 6px; margin: 10px 0; font-size: 11px; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            th { text-align: left; padding: 5px 3px; border-bottom: 2px solid black; font-weight: bold; font-size: 10px; }
+            td { padding: 7px 3px; border-bottom: 1px solid #ddd; vertical-align: top; font-size: 11px; }
+            .quantity { width: 12%; font-size: 22px; font-weight: bold; }
+            .product { width: 58%; }
+            .product-name { font-weight: bold; }
+            .option, .instruction { font-size: 10px; margin-top: 3px; }
+            .option { color: #245b75; }
+            .instruction { color: #795500; font-weight: bold; }
+            .price { width: 30%; text-align: right; font-weight: bold; white-space: nowrap; }
+            .total { text-align: right; font-size: 15px; font-weight: bold; border-top: 2px solid black; padding-top: 8px; }
             .footer { text-align: center; margin-top: 15px; font-size: 11px; border-top: 2px solid black; padding-top: 10px; }
-            .print-time { font-size: 10px; color: #666; margin-top: 10px; }
           </style>
         </head>
         <body>
+          <div class="logo-space">LOGO DEL NEGOCIO</div>
           <div class="header">
-            <div class="order-id">${orden.id}</div>
-            <div class="order-info"><strong>${labelData?.label || "Mesa"}</strong></div>
+            <div class="order-id">PEDIDO #${escaparHtml(orden.id)}</div>
+            <div class="customer">${escaparHtml(orden.cliente)}</div>
+            <div class="order-info"><strong>${escaparHtml(labelData?.label || "Mesa")}</strong></div>
+            ${orden.tipoEntrega === "table" && orden.mesa !== "-" ? `<div class="order-info"><strong>${escaparHtml(orden.mesa)}</strong></div>` : ""}
           </div>
-          ${orden.notasGenerales ? `<div class="notes-block"><strong>NOTA:</strong> ${orden.notasGenerales}</div>` : ""}
+          ${orden.notasGenerales ? `<div class="notes-block"><strong>OBSERVACIONES GENERALES:</strong><br>${escaparHtml(orden.notasGenerales)}</div>` : ""}
           <table>
+            <thead><tr><th>CANT.</th><th>PRODUCTO</th><th>PRECIO</th></tr></thead>
             <tbody>
               ${itemsHtml}
             </tbody>
           </table>
+          <div class="total">TOTAL: ${formatoPrecio(totalOrden)}</div>
           <div class="footer">
+            <p>------- HECHO CON SISTEMA GLOTO -------</p>
             <p>------- FIN DE LA COMANDA -------</p>
           </div>
         </body>
@@ -685,7 +812,13 @@ const TicketCard = ({ orden, labelData, colorData, onNext, onPrev, type }) => {
 
   return (
     <motion.div
-      layout
+      initial={{ x: entradaAnimacion, opacity: 0 }}
+      animate={{ x: 0, opacity: 1 }}
+      exit={{ x: distanciaAnimacion, opacity: 0 }}
+      transition={{
+        x: { duration: 0.3, ease: [0.22, 1, 0.36, 1] },
+        opacity: { duration: 0.2 },
+      }}
       className={`bg-[#0F0F0F] rounded-2xl overflow-hidden shadow-2xl transition-all duration-300 border border-white/10`}
     >
       <div className="p-4">
@@ -694,19 +827,22 @@ const TicketCard = ({ orden, labelData, colorData, onNext, onPrev, type }) => {
           <div className="min-w-0 space-y-1">
             <div className="flex items-center gap-2 min-w-0">
               <span
-                className={`inline-flex max-w-full text-[9px] font-black uppercase px-2 py-0.5 rounded border ${
+                className={`inline-flex max-w-full text-[14px] font-black uppercase px-2 py-0.5 rounded-xl border ${
                   colorData?.bg || "bg-white/5"
                 } ${colorData?.border || "border-white/10"} ${
                   colorData?.text || "text-slate-500"
                 }`}
               >
                 {labelData?.label || "Mesa"}
+                {orden.tipoEntrega === "table" && orden.mesa !== "-" && (
+                  <span className="ml-1"> {orden.mesa}</span>
+                )}
               </span>
               <p className="text-xs font-mono font-semibold text-white/50 truncate">
                 #{orden.id}
               </p>
             </div>
-            <h3 className="text-2xl font-black tracking-tight leading-tight truncate text-white">
+            <h3 className="text-1xl font-black tracking-tight leading-tight truncate text-white pl-1">
               {orden.cliente}
             </h3>
           </div>

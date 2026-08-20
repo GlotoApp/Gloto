@@ -49,6 +49,13 @@ const METODOS_ENTREGA = [
   { id: "punto", label: "En Punto" },
 ];
 
+const METODO_ENTREGA_ESTILOS = {
+  mesa: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
+  recoger: "bg-amber-500/10 text-amber-400 border-amber-500/25",
+  domicilio: "bg-fuchsia-500/10 text-fuchsia-400 border-fuchsia-500/25",
+  punto: "bg-blue-500/10 text-blue-400 border-blue-500/30",
+};
+
 const PERIODOS_FECHA = [
   { id: "hoy", label: "Hoy" },
   { id: "ayer", label: "Ayer" },
@@ -229,7 +236,9 @@ const OrderCard = memo(
               </p>
             </div>
             <div className="flex justify-between items-center text-xs text-neutral-400 ">
-              <span className="truncate">
+              <span
+                className={`inline-flex max-w-full items-center rounded-full border px-2 py-1 text-[10px] font-black uppercase ${getDeliveryBadgeClass(orden.metodoEntrega)}`}
+              >
                 {displayOrderType(orden.metodoEntrega)}
               </span>
               <div className="flex items-center gap-2">
@@ -255,7 +264,9 @@ const OrderCard = memo(
             </div>
             <div className="col-span-2">
               <p className="text-xs text-neutral-500">Entrega</p>
-              <p className="text-sm text-neutral-300 truncate">
+              <p
+                className={`inline-flex max-w-full truncate rounded-full border px-2 py-1 text-xs font-bold ${getDeliveryBadgeClass(orden.metodoEntrega)}`}
+              >
                 {displayOrderType(orden.metodoEntrega)}
               </p>
             </div>
@@ -508,6 +519,10 @@ const displayOrderType = (orderType) => {
     map[normalized] || normalized.charAt(0).toUpperCase() + normalized.slice(1)
   );
 };
+
+const getDeliveryBadgeClass = (orderType) =>
+  METODO_ENTREGA_ESTILOS[normalizeOrderType(orderType)] ||
+  "bg-neutral-500/10 text-neutral-400 border-neutral-500/20";
 
 const getDeliveryDetails = (order = {}) => {
   const method = normalizeOrderType(order.order_type);
