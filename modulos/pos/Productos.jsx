@@ -17,11 +17,45 @@ import {
   Tag,
   AlertTriangle,
   Archive,
+  ChevronRight,
+  LoaderCircle,
 } from "lucide-react";
 import Categorias from "./Categorias";
 import defaultImg from "../../public/default.png";
 import { supabase } from "../../src/lib/supabaseClient";
 import { useAuth } from "../../src/components/AuthContext";
+
+const formatSentenceText = (value) => {
+  const text = String(value ?? "").toLowerCase();
+  return text.replace(
+    /(^\s*|[.!?]\s+)(\S)/g,
+    (_, prefix, letter) => `${prefix}${letter.toUpperCase()}`,
+  );
+};
+
+const formatStoredText = (value) =>
+  formatSentenceText(String(value ?? "").trim());
+
+const formatProductName = (value) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(
+      /(^|\s)(\S)/g,
+      (_, separator, letter) => `${separator}${letter.toUpperCase()}`,
+    );
+
+const formatProductNameForStorage = (value) =>
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(
+      /(^|\s)(\S)/g,
+      (_, separator, letter) => `${separator}${letter.toUpperCase()}`,
+    );
+
+const formatSentenceInput = (value) => {
+  return formatSentenceText(value);
+};
 
 const handleImageError = (e) => {
   e.target.onerror = null; // Previene bucles infinitos si la imagen por defecto también falla
@@ -70,6 +104,7 @@ const Productos = ({ section = "productos" }) => {
   const [sortBy, setSortBy] = useState("order");
   const [selectedProducts, setSelectedProducts] = useState(new Set());
   const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
 
   // Estado del formulario
   const [formData, setFormData] = useState({
@@ -81,6 +116,9 @@ const Productos = ({ section = "productos" }) => {
     stock: 0,
     image: "",
   });
+  const [optionGroups, setOptionGroups] = useState([]);
+  const [optionsLoading, setOptionsLoading] = useState(false);
+  const [expandedOptionGroups, setExpandedOptionGroups] = useState(new Set());
 
   // Estado inicial del catálogo
   const [products, setProducts] = useState([]);
@@ -204,6 +242,22 @@ const Productos = ({ section = "productos" }) => {
     return result;
   }, [products, searchQuery, filterCategory, filterStatus, sortBy]);
 
+  const selectedProductRecords = products.filter((product) =>
+    selectedProducts.has(product.id),
+  );
+  const canActivateSelected = selectedProductRecords.some(
+    (product) => product.isActive && product.isSoldOut,
+  );
+  const canExhaustSelected = selectedProductRecords.some(
+    (product) => product.isActive && !product.isSoldOut,
+  );
+  const canArchiveSelected = selectedProductRecords.some(
+    (product) => product.isActive,
+  );
+  const canUnarchiveSelected = selectedProductRecords.some(
+    (product) => !product.isActive,
+  );
+
   // Abrir modal para crear nuevo
   const handleNewProduct = () => {
     setEditingId(null);
@@ -216,22 +270,234 @@ const Productos = ({ section = "productos" }) => {
       stock: 0,
       image: "",
     });
+    setOptionGroups([]);
+    setOptionsLoading(false);
     setIsModalOpen(true);
+  };
+
+  const loadProductOptions = async (productId) => {
+    setOptionsLoading(true);
+    const [groupsResponse, itemsResponse] = await Promise.all([
+      supabase
+        .from("product_option_groups")
+        .select("*")
+        .eq("product_id", productId)
+        .order("order_index", { ascending: true }),
+      supabase
+        .from("products_items")
+        .select("*")
+        .eq("product_id", productId)
+        .order("order_index", { ascending: true }),
+    ]);
+
+    if (groupsResponse.error || itemsResponse.error) {
+      console.error("Error cargando opciones del producto:", {
+        groupsError: groupsResponse.error,
+        itemsError: itemsResponse.error,
+      });
+      setOptionGroups([]);
+    } else {
+      const itemsByGroup = (itemsResponse.data || []).reduce(
+        (grouped, item) => {
+          const groupId = item.option_group_id;
+          if (!groupId) return grouped;
+          grouped[groupId] = grouped[groupId] || [];
+          grouped[groupId].push({
+            id: item.id,
+            nombre: formatSentenceInput(item.nombre || ""),
+            precio_extra: Number(item.precio_extra || 0),
+            order_index: Number(item.order_index || 0),
+          });
+          return grouped;
+        },
+        {},
+      );
+
+      const loadedGroups = (groupsResponse.data || []).map((group) => ({
+        id: group.id,
+        name: formatSentenceInput(group.name || ""),
+        description: formatSentenceInput(group.description || ""),
+        is_required: Boolean(group.is_required),
+        selection_type: group.selection_type || "single",
+        order_index: Number(group.order_index || 0),
+        items: itemsByGroup[group.id] || [],
+      }));
+      setOptionGroups(loadedGroups);
+      setExpandedOptionGroups(new Set());
+    }
+    setOptionsLoading(false);
   };
 
   // Abrir modal para editar
   const handleEditProduct = (product) => {
     setEditingId(product.id);
     setFormData({
-      name: product.name,
+      name: formatProductName(product.name),
       categoryId: product.categoryId,
       category: product.category,
       price: product.price,
-      description: product.description,
+      description: formatSentenceInput(product.description),
       stock: product.stock,
       image: product.image,
     });
+    setOptionGroups([]);
+    setExpandedOptionGroups(new Set());
+    loadProductOptions(product.id);
     setIsModalOpen(true);
+  };
+
+  const createOptionId = () =>
+    `option-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+  const addOptionGroup = () => {
+    const newGroup = {
+      id: createOptionId(),
+      name: "",
+      description: "",
+      is_required: false,
+      selection_type: "single",
+      order_index: 0,
+      items: [],
+    };
+    setOptionGroups((groups) => [
+      ...groups,
+      { ...newGroup, order_index: groups.length + 1 },
+    ]);
+    setExpandedOptionGroups((groups) => new Set([...groups, newGroup.id]));
+  };
+
+  const toggleOptionGroup = (groupId) => {
+    setExpandedOptionGroups((groups) => {
+      const nextGroups = new Set(groups);
+      if (nextGroups.has(groupId)) nextGroups.delete(groupId);
+      else nextGroups.add(groupId);
+      return nextGroups;
+    });
+  };
+
+  const updateOptionGroup = (groupId, changes) => {
+    setOptionGroups((groups) =>
+      groups.map((group) =>
+        group.id === groupId ? { ...group, ...changes } : group,
+      ),
+    );
+  };
+
+  const removeOptionGroup = (groupId) => {
+    setOptionGroups((groups) =>
+      groups
+        .filter((group) => group.id !== groupId)
+        .map((group, index) => ({ ...group, order_index: index + 1 })),
+    );
+  };
+
+  const confirmRemoveOptionGroup = (groupId, groupName) => {
+    const confirmed = window.confirm(
+      `¿Seguro que deseas quitar el grupo "${groupName || "sin nombre"}"?`,
+    );
+    if (confirmed) removeOptionGroup(groupId);
+  };
+
+  const addOptionItem = (groupId) => {
+    setOptionGroups((groups) =>
+      groups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              items: [
+                ...group.items,
+                {
+                  id: createOptionId(),
+                  nombre: "",
+                  precio_extra: 0,
+                  order_index: group.items.length + 1,
+                },
+              ],
+            }
+          : group,
+      ),
+    );
+  };
+
+  const updateOptionItem = (groupId, itemId, changes) => {
+    setOptionGroups((groups) =>
+      groups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              items: group.items.map((item) =>
+                item.id === itemId ? { ...item, ...changes } : item,
+              ),
+            }
+          : group,
+      ),
+    );
+  };
+
+  const removeOptionItem = (groupId, itemId) => {
+    setOptionGroups((groups) =>
+      groups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              items: group.items
+                .filter((item) => item.id !== itemId)
+                .map((item, index) => ({ ...item, order_index: index + 1 })),
+            }
+          : group,
+      ),
+    );
+  };
+
+  const saveProductOptions = async (productId) => {
+    const { error: deleteItemsError } = await supabase
+      .from("products_items")
+      .delete()
+      .eq("product_id", productId);
+    if (deleteItemsError) throw deleteItemsError;
+
+    const { error: deleteGroupsError } = await supabase
+      .from("product_option_groups")
+      .delete()
+      .eq("product_id", productId);
+    if (deleteGroupsError) throw deleteGroupsError;
+
+    const groupsToSave = optionGroups.filter((group) => group.name.trim());
+    if (groupsToSave.length === 0) return;
+
+    const { data: savedGroups, error: groupsError } = await supabase
+      .from("product_option_groups")
+      .insert(
+        groupsToSave.map((group, index) => ({
+          product_id: productId,
+          name: formatStoredText(group.name),
+          description: formatStoredText(group.description),
+          is_required: Boolean(group.is_required),
+          selection_type: group.selection_type,
+          order_index: index + 1,
+        })),
+      )
+      .select("id, order_index");
+    if (groupsError) throw groupsError;
+
+    const itemsToSave = groupsToSave.flatMap((group, groupIndex) =>
+      group.items
+        .filter((item) => item.nombre.trim())
+        .map((item, itemIndex) => ({
+          product_id: productId,
+          option_group_id: savedGroups[groupIndex].id,
+          nombre: formatStoredText(item.nombre),
+          precio_extra: Number(item.precio_extra) || 0,
+          order_index: itemIndex + 1,
+        })),
+    );
+
+    if (itemsToSave.length > 0) {
+      const { error: itemsError } = await supabase
+        .from("products_items")
+        .insert(itemsToSave);
+      if (itemsError) throw itemsError;
+    }
   };
 
   // Guardar producto
@@ -248,10 +514,10 @@ const Productos = ({ section = "productos" }) => {
 
     setSavingProduct(true);
     const payload = {
-      name: formData.name.trim(),
+      name: formatProductNameForStorage(formData.name),
       category_id: formData.categoryId,
       price: Number(formData.price),
-      description: formData.description || "",
+      description: formatStoredText(formData.description),
       stock: Number(formData.stock) || 0,
       image_url: formData.image || null,
     };
@@ -291,6 +557,16 @@ const Productos = ({ section = "productos" }) => {
       console.error("Error guardando producto:", error);
       alert("No se pudo guardar el producto");
     } else {
+      try {
+        await saveProductOptions(data.id);
+      } catch (optionsError) {
+        console.error("Error guardando opciones del producto:", optionsError);
+        alert(
+          "El producto se guardó, pero no se pudieron guardar sus opciones.",
+        );
+        setSavingProduct(false);
+        return;
+      }
       const categoryMap = Object.fromEntries(
         categoryRecords.map((category) => [category.id, category.name]),
       );
@@ -421,6 +697,7 @@ const Productos = ({ section = "productos" }) => {
       ),
     );
     setSelectedProducts(new Set());
+    setBulkActionsOpen(false);
   };
 
   // Archivar productos en lote sin romper el historial de pedidos
@@ -443,6 +720,7 @@ const Productos = ({ section = "productos" }) => {
     );
     setSelectedProducts(new Set());
     setBulkDeleteConfirm(false);
+    setBulkActionsOpen(false);
   };
 
   const handleBulkUnarchive = async () => {
@@ -464,6 +742,7 @@ const Productos = ({ section = "productos" }) => {
       ),
     );
     setSelectedProducts(new Set());
+    setBulkActionsOpen(false);
   };
 
   const handleBulkPermanentDelete = async () => {
@@ -485,6 +764,7 @@ const Productos = ({ section = "productos" }) => {
     );
     setSelectedProducts(new Set());
     setBulkPermanentDeleteConfirm(false);
+    setBulkActionsOpen(false);
   };
 
   const categoriesList = ["todos", ...new Set(products.map((p) => p.category))];
@@ -588,10 +868,10 @@ const Productos = ({ section = "productos" }) => {
               </>
             )}
 
-            {/* Vista Selección: Acciones a la izquierda, Contador y Terminado a la derecha */}
+            {/* En selección, los controles viven en barras flotantes inferiores. */}
             {isSelectionMode && (
               <>
-                <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="fixed bottom-4 left-4 right-4 md:left-24 md:right-8 z-50 flex items-center gap-2 rounded-2xl border border-white/10 bg-neutral-950/95 p-3 shadow-2xl shadow-black/50 backdrop-blur-xl">
                   <button
                     onClick={handleToggleSelectAllFiltered}
                     aria-pressed={
@@ -600,7 +880,7 @@ const Productos = ({ section = "productos" }) => {
                         selectedProducts.has(product.id),
                       )
                     }
-                    className="px-3 py-1.5 rounded-lg border border-violet-500/25 bg-violet-500/10 text-violet-300 text-[8px] font-black uppercase tracking-wide active:scale-95 transition-all"
+                    className="min-w-0 flex-1 rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2.5 text-center text-[9px] font-black uppercase tracking-wide text-sky-300 active:scale-95 transition-all"
                   >
                     {filteredProducts.length > 0 &&
                     filteredProducts.every((product) =>
@@ -609,115 +889,116 @@ const Productos = ({ section = "productos" }) => {
                       ? "Quitar selección"
                       : "Seleccionar todo"}
                   </button>
-
-                  {/* Acciones Masivas a la izquierda */}
                   {selectedProducts.size > 0 && (
-                    <>
-                      {/* Activar Masivo */}
-                      <button
-                        onClick={() => handleBulkToggleStatus(true)}
-                        className="px-3 py-1.5 rounded-lg border text-[8px] font-black uppercase tracking-wide active:scale-95 transition-all flex items-center gap-1.5"
-                        style={{
-                          background: "rgba(34,197,94,0.1)",
-                          borderColor: "rgba(34,197,94,0.3)",
-                          color: "#4ade80",
-                        }}
-                      >
-                        Activar
-                      </button>
-
-                      {/* Agotar Masivo */}
-                      <button
-                        onClick={() => handleBulkToggleStatus(false)}
-                        className="px-3 py-1.5 rounded-lg border text-[8px] font-black uppercase tracking-wide active:scale-95 transition-all flex items-center gap-1.5"
-                        style={{
-                          background: "rgba(244,63,94,0.1)",
-                          borderColor: "rgba(244,63,94,0.3)",
-                          color: "#fb7185",
-                        }}
-                      >
-                        Agotar
-                      </button>
-
-                      {/* Archivar Masivo */}
-                      <button
-                        onClick={() => setBulkDeleteConfirm(true)}
-                        className="px-3 py-1.5 rounded-lg border text-[8px] font-black uppercase tracking-wide active:scale-95 transition-all flex items-center gap-1.5"
-                        style={{
-                          background: "rgba(139,92,246,0.1)",
-                          borderColor: "rgba(139,92,246,0.35)",
-                          color: "#c084fc",
-                        }}
-                      >
-                        <Archive size={11} />
-                        Archivar
-                      </button>
-
-                      {/* Desarchivar Masivo */}
-                      <button
-                        onClick={handleBulkUnarchive}
-                        className="px-3 py-1.5 rounded-lg border text-[8px] font-black uppercase tracking-wide active:scale-95 transition-all flex items-center gap-1.5"
-                        style={{
-                          background: "rgba(16,185,129,0.1)",
-                          borderColor: "rgba(16,185,129,0.3)",
-                          color: "#6ee7b7",
-                        }}
-                      >
-                        <Archive size={11} />
-                        Desarchivar
-                      </button>
-
-                      {/* Eliminar permanentemente, última acción destructiva */}
-                      <button
-                        onClick={() => setBulkPermanentDeleteConfirm(true)}
-                        className="px-3.5 py-2 rounded-xl border text-[9px] font-black uppercase tracking-wider active:scale-95 transition-all flex items-center gap-2"
-                        style={{
-                          background: "rgba(239,68,68,0.1)",
-                          borderColor: "rgba(239,68,68,0.4)",
-                          color: "#f87171",
-                        }}
-                      >
-                        <Trash2 size={11} />
-                        Eliminar
-                      </button>
-                    </>
+                    <button
+                      onClick={() => setBulkActionsOpen((open) => !open)}
+                      aria-label={`${selectedProducts.size} ${selectedProducts.size === 1 ? "ítem seleccionado" : "ítems seleccionados"}`}
+                      className="min-w-0 flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-center text-[9px] font-black uppercase tracking-wide text-amber-300 active:scale-95 transition-all"
+                    >
+                      Acciones
+                      <span className="rounded-md bg-amber-400/15 px-1.5 py-0.5 text-[9px] font-mono normal-case text-amber-200">
+                        {selectedProducts.size}
+                      </span>
+                    </button>
                   )}
+                  <button
+                    onClick={() => {
+                      setIsSelectionMode(false);
+                      setSelectedProducts(new Set());
+                      setBulkActionsOpen(false);
+                    }}
+                    className="min-w-0 flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2.5 text-center text-[9px] font-black uppercase tracking-wide text-emerald-300 active:scale-95 transition-all"
+                  >
+                    <CheckCircle2 size={12} />
+                    Terminado
+                  </button>
                 </div>
 
-                {selectedProducts.size > 0 && (
-                  <button
-                    onClick={() => setSelectedProducts(new Set())}
-                    className="px-3 py-1.5 bg-neutral-900 border border-white/5 text-neutral-400 rounded-lg hover:bg-neutral-800 hover:text-neutral-200 active:scale-95 transition-all text-[8px] font-black uppercase tracking-wide"
-                  >
-                    Limpiar
-                  </button>
+                {bulkActionsOpen && selectedProducts.size > 0 && (
+                  <>
+                    <button
+                      aria-label="Cerrar acciones masivas"
+                      onClick={() => setBulkActionsOpen(false)}
+                      className="fixed inset-0 z-40 bg-black/30"
+                    />
+                    <div
+                      role="dialog"
+                      aria-label="Acciones para productos seleccionados"
+                      className="fixed bottom-24 left-4 right-4 md:left-24 md:right-8 z-50 rounded-2xl border border-white/10 bg-neutral-950/95 p-4 shadow-2xl shadow-black/60 backdrop-blur-xl"
+                    >
+                      <div className="mb-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-neutral-400">
+                            Acciones masivas
+                          </p>
+                          <p className="mt-1 text-[11px] text-neutral-600">
+                            Aplicar a {selectedProducts.size} seleccionado
+                            {selectedProducts.size === 1 ? "" : "s"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => setBulkActionsOpen(false)}
+                          className="rounded-lg p-1.5 text-neutral-500 hover:bg-white/5 hover:text-white"
+                          aria-label="Cerrar acciones"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                        {canActivateSelected && (
+                          <button
+                            onClick={() => handleBulkToggleStatus(true)}
+                            className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-[9px] font-black uppercase tracking-wide text-emerald-300 active:scale-95"
+                          >
+                            Activar
+                          </button>
+                        )}
+                        {canExhaustSelected && (
+                          <button
+                            onClick={() => handleBulkToggleStatus(false)}
+                            className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-3 text-[9px] font-black uppercase tracking-wide text-rose-300 active:scale-95"
+                          >
+                            Agotar
+                          </button>
+                        )}
+                        {canArchiveSelected && (
+                          <button
+                            onClick={() => setBulkDeleteConfirm(true)}
+                            className="flex items-center justify-center gap-1.5 rounded-xl border border-violet-500/30 bg-violet-500/10 px-3 py-3 text-[9px] font-black uppercase tracking-wide text-violet-300 active:scale-95"
+                          >
+                            <Archive size={12} />
+                            Archivar
+                          </button>
+                        )}
+                        {canUnarchiveSelected && (
+                          <button
+                            onClick={handleBulkUnarchive}
+                            className="flex items-center justify-center gap-1.5 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-[9px] font-black uppercase tracking-wide text-emerald-200 active:scale-95"
+                          >
+                            <Archive size={12} />
+                            Desarchivar
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setBulkPermanentDeleteConfirm(true)}
+                          className="flex items-center justify-center gap-1.5 rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-3 text-[9px] font-black uppercase tracking-wide text-red-300 active:scale-95"
+                        >
+                          <Trash2 size={12} />
+                          Eliminar
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setSelectedProducts(new Set());
+                          setBulkActionsOpen(false);
+                        }}
+                        className="mt-3 w-full rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[9px] font-black uppercase tracking-wide text-neutral-400 hover:bg-white/[0.06] hover:text-white"
+                      >
+                        Limpiar selección
+                      </button>
+                    </div>
+                  </>
                 )}
-
-                {/* Separador para empujar a la derecha */}
-                <div className="ml-auto" />
-
-                {/* Contador y Terminado a la derecha */}
-                <span className="text-[10px] font-mono text-violet-300/70 bg-violet-500/[0.06] border border-violet-500/20 px-2.5 py-1 rounded-lg select-none tracking-wide">
-                  {selectedProducts.size}{" "}
-                  {selectedProducts.size === 1 ? "Ítem" : "Ítems"}
-                </span>
-
-                <button
-                  onClick={() => {
-                    setIsSelectionMode(!isSelectionMode);
-                    setSelectedProducts(new Set());
-                  }}
-                  className="px-3.5 py-2 rounded-xl border text-[9px] font-black uppercase tracking-wider active:scale-95 transition-all flex items-center gap-2"
-                  style={{
-                    background:
-                      "linear-gradient(to bottom, rgba(139,92,246,0.15), rgba(139,92,246,0.05))",
-                    borderColor: "rgba(139,92,246,0.4)",
-                    color: "#c084fc",
-                  }}
-                >
-                  <CheckCircle2 size={11} />
-                  Terminado
-                </button>
               </>
             )}
           </div>
@@ -1007,7 +1288,6 @@ const Productos = ({ section = "productos" }) => {
                   {/* Imagen - Premium */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-1 h-1 rounded-full bg-violet-400"></div>
                       <label className="text-[9px] sm:text-[10px] font-black uppercase text-violet-400 tracking-widest">
                         Imagen
                       </label>
@@ -1105,7 +1385,6 @@ const Productos = ({ section = "productos" }) => {
                   {editingId && (
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
-                        <div className="w-1 h-1 rounded-full bg-violet-400"></div>
                         <label className="text-[9px] sm:text-[10px] font-black uppercase text-violet-400 tracking-widest">
                           Estado
                         </label>
@@ -1113,7 +1392,7 @@ const Productos = ({ section = "productos" }) => {
                       <div className="">
                         <div className="grid grid-cols-2 gap-1.5 sm:gap-3">
                           {/* Disponibilidad */}
-                          <div className="flex flex-col justify-center items-center">
+                          <div className="flex flex-col justify-center items-center gap-1.5">
                             <span className="text-[7px] sm:text-[7px] font-bold text-neutral-500 uppercase tracking-widest ">
                               Disponibilidad
                             </span>
@@ -1153,7 +1432,7 @@ const Productos = ({ section = "productos" }) => {
                           </div>
 
                           {/* Archivado */}
-                          <div className="flex flex-col justify-center items-center">
+                          <div className="flex flex-col justify-center items-center gap-1.5">
                             <span className="text-[7px] sm:text-[7px] font-bold text-neutral-500 uppercase tracking-widest">
                               Archivado
                             </span>
@@ -1203,7 +1482,6 @@ const Productos = ({ section = "productos" }) => {
                   {/* Nombre - Premium */}
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <div className="w-1 h-1 rounded-full bg-violet-400"></div>
                       <label className="text-[9px] sm:text-[10px] font-black uppercase text-violet-400 tracking-widest">
                         Nombre
                       </label>
@@ -1213,9 +1491,12 @@ const Productos = ({ section = "productos" }) => {
                         type="text"
                         value={formData.name}
                         onChange={(e) =>
-                          setFormData({ ...formData, name: e.target.value })
+                          setFormData({
+                            ...formData,
+                            name: formatProductName(e.target.value),
+                          })
                         }
-                        className="w-full bg-gradient-to-r from-neutral-700/30 to-neutral-800/30 border border-neutral-600/50 group-focus-within:border-violet-500/50 rounded-lg sm:rounded-2xl py-3 sm:py-4 px-4 sm:px-5 text-xs sm:text-sm font-bold uppercase tracking-widest focus:outline-none transition-all placeholder:text-neutral-600"
+                        className="w-full bg-gradient-to-r from-neutral-700/30 to-neutral-800/30 border border-neutral-600/50 group-focus-within:border-violet-500/50 rounded-lg sm:rounded-2xl py-3 sm:py-4 px-4 sm:px-5 text-xs sm:text-sm font-bold tracking-wide focus:outline-none transition-all placeholder:text-neutral-600"
                         placeholder="EJ: BUÑUELO QUESO"
                       />
                     </div>
@@ -1225,7 +1506,6 @@ const Productos = ({ section = "productos" }) => {
                   <div className="grid grid-cols-2 gap-3 sm:gap-4">
                     <div className="space-y-2 min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="w-1 h-1 rounded-full bg-violet-400"></div>
                         <label className="text-[9px] sm:text-[10px] font-black uppercase text-violet-400 tracking-widest truncate">
                           Precio (COP)
                         </label>
@@ -1252,7 +1532,6 @@ const Productos = ({ section = "productos" }) => {
                     </div>
                     <div className="space-y-2 min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="w-1 h-1 rounded-full bg-violet-400"></div>
                         <label className="text-[9px] sm:text-[10px] font-black uppercase text-violet-400 tracking-widest truncate">
                           Categoría
                         </label>
@@ -1282,7 +1561,6 @@ const Productos = ({ section = "productos" }) => {
 
                   <div className="space-y-2 min-w-0">
                     <div className="flex items-center gap-2">
-                      <div className="w-1 h-1 rounded-full bg-violet-400"></div>
                       <label className="text-[9px] sm:text-[10px] font-black uppercase text-violet-400 tracking-widest">
                         Stock
                       </label>
@@ -1301,7 +1579,6 @@ const Productos = ({ section = "productos" }) => {
                   {/* Descripción */}
                   <div className="space-y-2 flex-1 flex flex-col min-w-0">
                     <div className="flex items-center gap-2">
-                      <div className="w-1 h-1 rounded-full bg-violet-400"></div>
                       <label className="text-[9px] sm:text-[10px] font-black uppercase text-violet-400 tracking-widest">
                         Descripción
                       </label>
@@ -1312,39 +1589,323 @@ const Productos = ({ section = "productos" }) => {
                         onChange={(e) =>
                           setFormData({
                             ...formData,
-                            description: e.target.value,
+                            description: formatSentenceInput(e.target.value),
                           })
                         }
-                        className="flex-1 min-h-24 sm:min-h-32 bg-gradient-to-r from-neutral-700/30 to-neutral-800/30 border border-neutral-600/50 group-focus-within:border-violet-500/50 rounded-lg sm:rounded-2xl py-3 sm:py-4 px-4 sm:px-5 text-xs sm:text-sm font-bold uppercase tracking-widest focus:outline-none transition-all placeholder:text-neutral-600 resize-vertical"
-                        placeholder="DESCRIBE EL SABOR..."
+                        className="flex-1 min-h-24 sm:min-h-32 bg-gradient-to-r from-neutral-700/30 to-neutral-800/30 border border-neutral-600/50 group-focus-within:border-violet-500/50 rounded-lg sm:rounded-2xl py-3 sm:py-4 px-4 sm:px-5 text-xs sm:text-sm font-bold tracking-wide focus:outline-none transition-all placeholder:text-neutral-600 resize-vertical"
+                        placeholder="Descripcíon del producto..."
                       />
                     </div>
+                  </div>
+
+                  {/* Opciones y variaciones del producto */}
+                  <div className="space-y-4 rounded-2xl border border-violet-500/15 bg-violet-500/[0.03] p-4 sm:p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-violet-400 sm:text-[10px]">
+                            Opciones y variaciones
+                          </label>
+                        </div>
+                        <p className="mt-1 text-[10px] text-neutral-500">
+                          Personaliza las opciones
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={addOptionGroup}
+                        className="flex items-center gap-1.5 rounded-lg border border-violet-500/30 bg-violet-500/10 px-3 py-2 text-[9px] font-black uppercase tracking-wide text-violet-300 transition-all hover:bg-violet-500/20 active:scale-95"
+                      >
+                        <Plus size={13} />
+                        Agregar grupo
+                      </button>
+                    </div>
+
+                    {optionsLoading ? (
+                      <p className="rounded-xl border border-white/5 bg-black/10 px-3 py-5 text-center text-[10px] font-bold uppercase tracking-widest text-neutral-500">
+                        Cargando opciones...
+                      </p>
+                    ) : optionGroups.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-white/10 px-4 py-5 text-center">
+                        <p className="text-[11px] font-bold text-neutral-400">
+                          Este producto no tiene opciones todavía.
+                        </p>
+                        <p className="mt-1 text-[10px] text-neutral-600">
+                          Agrega un grupo para crear variaciones seleccionables.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {optionGroups.map((group, groupIndex) => (
+                          <div
+                            key={group.id}
+                            className="overflow-hidden rounded-xl border border-white/10 bg-neutral-950/50"
+                          >
+                            <div className="flex items-center gap-2 px-3 sm:px-4 hover:bg-white/[0.03]">
+                              <button
+                                type="button"
+                                onClick={() => toggleOptionGroup(group.id)}
+                                className="flex min-w-0 flex-1 items-center justify-between gap-3 py-3 text-left transition-colors"
+                                aria-expanded={expandedOptionGroups.has(
+                                  group.id,
+                                )}
+                              >
+                                <span className="flex min-w-0 items-start gap-2">
+                                  <ChevronRight
+                                    size={15}
+                                    className={`mt-0.5 shrink-0 text-violet-300 transition-transform ${
+                                      expandedOptionGroups.has(group.id)
+                                        ? "rotate-90"
+                                        : ""
+                                    }`}
+                                    aria-hidden="true"
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block truncate text-xs font-black text-white">
+                                      {group.name || `Grupo ${groupIndex + 1}`}
+                                    </span>
+                                    <span className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-neutral-500">
+                                      <span>
+                                        {group.items.length}{" "}
+                                        {group.items.length === 1
+                                          ? "opción"
+                                          : "opciones"}
+                                      </span>
+                                      <span aria-hidden="true">·</span>
+                                      <span>
+                                        {group.is_required
+                                          ? "Obligatorio"
+                                          : "Opcional"}
+                                      </span>
+                                      <span aria-hidden="true">·</span>
+                                      <span>
+                                        {group.selection_type === "multiple"
+                                          ? "Varias opciones"
+                                          : "Una opción"}
+                                      </span>
+                                    </span>
+                                  </span>
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  confirmRemoveOptionGroup(group.id, group.name)
+                                }
+                                className="shrink-0 rounded-lg p-2 text-neutral-500 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                                aria-label={`Eliminar grupo ${group.name || groupIndex + 1}`}
+                                title="Quitar grupo"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+
+                            {expandedOptionGroups.has(group.id) && (
+                              <div className="border-t border-white/5 p-3 sm:p-4">
+                                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px] sm:items-center">
+                                  <div className="space-y-1.5">
+                                    <label className="mb-1.5 block text-[9px] font-black uppercase tracking-widest text-neutral-500 ">
+                                      Grupo {groupIndex + 1}
+                                    </label>
+                                    <input
+                                      value={group.name}
+                                      onChange={(event) =>
+                                        updateOptionGroup(group.id, {
+                                          name: formatSentenceInput(
+                                            event.target.value,
+                                          ),
+                                        })
+                                      }
+                                      placeholder="Ej: Tipo de leche"
+                                      className="w-full rounded-lg border border-white/10 bg-neutral-900 px-3 py-2.5 text-xs font-bold text-white outline-none transition-all focus:border-violet-500/50"
+                                    />
+                                    <p className="text-[9px] leading-4 text-neutral-600">
+                                      Ejemplo: Color, Talla, Material o Tipo.
+                                    </p>
+                                  </div>
+                                  <label className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg text-[10px] font-bold uppercase tracking-wide text-neutral-400 transition-colors justify-self-end">
+                                    <input
+                                      type="checkbox"
+                                      checked={group.is_required}
+                                      onChange={(event) =>
+                                        updateOptionGroup(group.id, {
+                                          is_required: event.target.checked,
+                                        })
+                                      }
+                                      aria-label="Grupo obligatorio"
+                                      className="peer sr-only"
+                                    />
+                                    Obligatorio
+                                    <span className="relative inline-flex h-6 w-10 items-center rounded-full bg-neutral-700  transition-all peer-focus-visible:ring-2 peer-focus-visible:ring-violet-400/50 peer-checked:bg-violet-500 peer-checked:shadow-violet-500/50 sm:h-7 sm:w-12 after:inline-block after:h-4 after:w-4 after:translate-x-0.5 after:transform after:rounded-full after:bg-white after:shadow-md after:transition-all peer-checked:after:translate-x-5 sm:after:h-5 sm:after:w-5 sm:after:translate-x-1 sm:peer-checked:after:translate-x-5.5" />
+                                  </label>
+                                </div>
+
+                                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_200px] sm:items-start">
+                                  <div>
+                                    <label className="mb-1.5 block text-[9px] font-black uppercase tracking-widest text-neutral-500">
+                                      Descripción
+                                    </label>
+                                    <input
+                                      value={group.description}
+                                      onChange={(event) =>
+                                        updateOptionGroup(group.id, {
+                                          description: formatSentenceInput(
+                                            event.target.value,
+                                          ),
+                                        })
+                                      }
+                                      placeholder="Descripción del grupo (opcional)"
+                                      className="h-9 w-full rounded-lg border border-white/10 bg-neutral-900 px-3 py-2 text-[11px] font-semibold text-white outline-none focus:border-violet-500/50"
+                                    />
+                                    <p className="mt-1 text-[9px] leading-4 text-neutral-600">
+                                      Texto breve que verá el cliente. Ej: Elige
+                                      una opción.
+                                    </p>
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <label className="mb-1.5 block text-[9px] font-black uppercase tracking-widest text-neutral-500">
+                                      Selección
+                                    </label>
+                                    <select
+                                      value={group.selection_type}
+                                      onChange={(event) =>
+                                        updateOptionGroup(group.id, {
+                                          selection_type: event.target.value,
+                                        })
+                                      }
+                                      className="h-9 w-full rounded-lg border border-white/10 bg-neutral-900 px-3 py-2 text-[11px] font-semibold text-white outline-none focus:border-violet-500/50"
+                                    >
+                                      <option value="single">Una opción</option>
+                                      <option value="multiple">
+                                        Varias opciones
+                                      </option>
+                                    </select>
+                                    <p className="text-[9px] leading-4 text-neutral-600">
+                                      Una opción para elegir una; varias para
+                                      combinar.
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div className="mt-4 space-y-2 border-t border-white/5 pt-3">
+                                  {group.items.map((item, itemIndex) => (
+                                    <div
+                                      key={item.id}
+                                      className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_162px_32px] sm:items-start"
+                                    >
+                                      <div className="min-w-0">
+                                        <label className="mb-1.5 block text-[9px] font-black uppercase tracking-widest text-neutral-600 sm:hidden">
+                                          Opción
+                                        </label>
+                                        <input
+                                          value={item.nombre}
+                                          onChange={(event) =>
+                                            updateOptionItem(
+                                              group.id,
+                                              item.id,
+                                              {
+                                                nombre: formatSentenceInput(
+                                                  event.target.value,
+                                                ),
+                                              },
+                                            )
+                                          }
+                                          placeholder={`Opción ${itemIndex + 1}`}
+                                          className="w-full rounded-lg border border-white/10 bg-neutral-900 px-3 py-2 text-[11px] font-semibold text-white outline-none focus:border-violet-500/50"
+                                        />
+                                        <p className="mt-1 text-[9px] leading-4 text-neutral-600">
+                                          Ej: Rojo, Mediano, Algodón o Premium.
+                                        </p>
+                                      </div>
+                                      <div>
+                                        <label className="mb-1.5 block text-[9px] font-black uppercase tracking-widest text-neutral-600 sm:hidden">
+                                          Precio extra
+                                        </label>
+                                        <div className="relative">
+                                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-neutral-500">
+                                            $
+                                          </span>
+                                          <input
+                                            type="text"
+                                            inputMode="numeric"
+                                            value={
+                                              item.precio_extra === ""
+                                                ? ""
+                                                : Number(
+                                                    item.precio_extra || 0,
+                                                  ).toLocaleString("es-CO")
+                                            }
+                                            onChange={(event) =>
+                                              updateOptionItem(
+                                                group.id,
+                                                item.id,
+                                                {
+                                                  precio_extra:
+                                                    event.target.value.replace(
+                                                      /\D/g,
+                                                      "",
+                                                    ),
+                                                },
+                                              )
+                                            }
+                                            placeholder="0"
+                                            className="w-full rounded-lg border border-white/10 bg-neutral-900 py-2 pl-7 pr-3 text-[11px] font-semibold text-white outline-none focus:border-violet-500/50"
+                                          />
+                                        </div>
+                                        <p className="mt-1 text-[9px] leading-4 text-neutral-600">
+                                          Ej: 0 si no cambia el precio, o un
+                                          valor adicional.
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          removeOptionItem(group.id, item.id)
+                                        }
+                                        className="justify-self-end rounded-lg p-2 text-neutral-500 hover:bg-red-500/10 hover:text-red-300"
+                                        aria-label={`Eliminar opción ${item.nombre || itemIndex + 1}`}
+                                      >
+                                        <X size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    onClick={() => addOptionItem(group.id)}
+                                    className="flex items-center gap-1.5 rounded-lg px-1 py-2 text-[9px] font-black uppercase tracking-wide text-violet-300 hover:text-violet-200"
+                                  >
+                                    <Plus size={13} />
+                                    Agregar opción
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
 
               {/* Footer Premium - Responsive */}
               <div className="border-t border-violet-500/10 bg-gradient-to-t from-neutral-900/80 to-transparent px-4 sm:px-6 md:px-8 py-4 sm:py-5 md:py-6 flex gap-2 sm:gap-3 justify-end flex-wrap flex-shrink-0">
-                {editingId && (
-                  <button
-                    onClick={() => {
-                      setDeleteConfirm(editingId);
-                      setIsModalOpen(false);
-                    }}
-                    className="px-4 sm:px-6 py-2.5 sm:py-3 bg-gradient-to-r from-red-500/20 to-red-600/20 border border-red-500/50 text-red-400 hover:border-red-500 rounded-lg sm:rounded-xl font-black uppercase text-[9px] sm:text-[10px] tracking-[0.15em] sm:tracking-[0.2em] hover:bg-gradient-to-r hover:from-red-500/30 hover:to-red-600/30 transition-all flex items-center gap-1.5 sm:gap-2 mr-auto shadow-lg shadow-red-500/10"
-                  >
-                    <Trash2 size={16} className="sm:w-4 sm:h-4" />
-                    <span className="hidden sm:inline">Archivar</span>
-                    <span className="sm:hidden">Archivar</span>
-                  </button>
-                )}
-
                 <button
                   onClick={handleSaveProduct}
-                  className="px-4 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg sm:rounded-xl font-black uppercase text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em] flex items-center gap-1.5 sm:gap-2 hover:from-violet-600 hover:to-purple-700 transition-all shadow-xl shadow-violet-500/30 active:scale-95"
+                  disabled={savingProduct}
+                  aria-busy={savingProduct}
+                  className="px-4 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg sm:rounded-xl font-black uppercase text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em] flex items-center gap-1.5 sm:gap-2 hover:from-violet-600 hover:to-purple-700 transition-all shadow-xl shadow-violet-500/30 active:scale-95 disabled:cursor-wait disabled:opacity-75"
                 >
-                  <Save size={16} className="sm:w-4 sm:h-4" />
-                  <span>Guardar</span>
+                  {savingProduct ? (
+                    <LoaderCircle
+                      size={16}
+                      className="animate-spin sm:h-4 sm:w-4"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <Save size={16} className="sm:w-4 sm:h-4" />
+                  )}
+                  <span>{savingProduct ? "Guardando..." : "Guardar"}</span>
                 </button>
                 <button
                   onClick={() => setIsModalOpen(false)}

@@ -1333,25 +1333,52 @@ const Shop = () => {
             <div
               style={{
                 textAlign: "center",
-                padding: "56px 24px",
-                color: "rgba(255,255,255,0.3)",
-                fontSize: "13px",
+                padding: "72px 24px",
+                color: "rgba(255,255,255,0.5)",
               }}
             >
               <div
                 style={{
-                  marginBottom: "12px",
+                  width: "72px",
+                  height: "72px",
+                  margin: "0 auto 18px",
+                  borderRadius: "50%",
+                  background: "rgba(124,58,237,0.12)",
+                  border: "1px solid rgba(124,58,237,0.22)",
                   display: "flex",
                   justifyContent: "center",
+                  alignItems: "center",
                 }}
               >
-                <ShoppingBag
-                  size={48}
-                  strokeWidth={1}
-                  color="rgba(255,255,255,0.2)"
-                />
+                <ShoppingBag size={30} strokeWidth={1.6} color="#a78bfa" />
               </div>
-              No hay productos para mostrar.
+              <h3
+                style={{
+                  marginBottom: "8px",
+                  color: "#fff",
+                  fontSize: "17px",
+                  fontWeight: 800,
+                }}
+              >
+                {searchQuery.trim()
+                  ? "No encontramos ese producto"
+                  : catActiva !== "Todos"
+                    ? `No hay productos en ${catActiva}`
+                    : "El menú está en preparación"}
+              </h3>
+              <p
+                style={{
+                  maxWidth: "280px",
+                  margin: "0 auto",
+                  color: "rgba(255,255,255,0.45)",
+                  fontSize: "12.5px",
+                  lineHeight: 1.55,
+                }}
+              >
+                {searchQuery.trim()
+                  ? "Prueba con otro nombre o revisa las categorías disponibles."
+                  : "Esta tienda todavía no ha publicado productos. Vuelve pronto para descubrir su menú."}
+              </p>
             </div>
           ) : (
             displayedProducts.map((p, idx) => {

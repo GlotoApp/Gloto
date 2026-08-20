@@ -673,16 +673,34 @@ const Home = () => {
       {!verTodasPromos && (
         <section className="px-5">
           {tiendasOrdenadas.length === 0 ? (
-            <div className="flex flex-col items-center justify-center text-center py-12 text-on-surface-variant/60">
-              <Search size={28} className="mb-2 opacity-50" />
-              <p className="text-base font-bold">
+            <div className="flex flex-col items-center justify-center text-center py-16 text-on-surface-variant/60">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-surface border border-outline/20">
+                <Search
+                  size={28}
+                  className="text-primary-container opacity-80"
+                />
+              </div>
+              <p className="text-lg font-black text-on-surface">
                 {buscando
-                  ? `No encontramos resultados para "${busqueda}"`
-                  : `No hay tiendas en "${categoriaActiva}" por ahora`}
+                  ? "No encontramos esa tienda"
+                  : categoriaActiva
+                    ? `Aún no hay tiendas de ${categoriaActiva}`
+                    : "Aún no hay tiendas disponibles"}
               </p>
-              <p className="text-xs mt-1">
-                Intenta con otro nombre o categoría
+              <p className="mt-2 max-w-xs text-sm leading-6">
+                {buscando
+                  ? `Prueba con otro nombre o explora todas las categorías.`
+                  : "Estamos sumando nuevos lugares. Vuelve pronto o explora otra categoría."}
               </p>
+              {buscando && (
+                <button
+                  type="button"
+                  onClick={() => setBusqueda("")}
+                  className="mt-5 rounded-full bg-primary-container px-5 py-2.5 text-xs font-bold text-white transition-opacity hover:opacity-90"
+                >
+                  Ver todas las tiendas
+                </button>
+              )}
             </div>
           ) : buscando ? (
             // ── MODO BÚSQUEDA: tarjetas horizontales, compitiendo por la mirada del usuario ──
