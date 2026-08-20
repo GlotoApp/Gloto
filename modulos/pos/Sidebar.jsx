@@ -74,8 +74,8 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
   ];
 
   const catalogoSubMenu = [
-    { name: "Productos", path: "/pos/productos" },
     { name: "Categorías", path: "/pos/categorias" },
+    { name: "Productos", path: "/pos/productos" },
   ];
 
   const isCajaActive = location.pathname.startsWith("/pos/caja");
