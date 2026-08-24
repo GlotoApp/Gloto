@@ -260,11 +260,9 @@ const Shop = () => {
 
         const [categoriasRes, productosRes] = await Promise.all([
           supabase
-            .from("categories_shop")
-            .select("id,name,icon_url,order_index")
-            .eq("business_id", data.id)
-            .eq("is_active", true)
-            .order("order_index", { ascending: true }),
+            .from("categories")
+            .select("id,name")
+            .eq("business_id", data.id),
           supabase
             .from("products")
             .select(

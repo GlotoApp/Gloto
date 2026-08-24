@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import {
   Plus,
   Search,
@@ -64,30 +65,84 @@ const handleImageError = (e) => {
 
 const Productos = ({ section = "productos" }) => {
   const { user } = useAuth();
+  const location = useLocation();
   // ========== ESTADO COMPARTIDO ==========
-  const [categories, setCategories] = useState([
-    "Frituras",
-    "Barra Café",
-    "Panadería",
-  ]);
+  const [categories, setCategories] = useState([]);
   const [categoryRecords, setCategoryRecords] = useState([]);
   const [businessId, setBusinessId] = useState(null);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [savingProduct, setSavingProduct] = useState(false);
 
-  const handleUpdateCategories = (newCategories) => {
-    setCategories(newCategories);
+  const handleUpdateCategories = async (newCategories) => {
+    const records = newCategories.map((category) => ({
+      id: category.id,
+      business_id: category.business_id || businessId,
+      name: category.name,
+    }));
+    setCategoryRecords(records);
+    setCategories(records.map((category) => category.name));
+    const { error } = await supabase.from("categories").upsert(records);
+    if (error) console.error("Error guardando categorías:", error);
   };
 
   // ======= NUEVA FUNCIÓN AGREGADA PARA LA ELIMINACIÓN EN CASCADA =======
-  const handleDeleteCategoryCascade = (categoryName) => {
-    // Filtramos el estado global de productos eliminando aquellos vinculados a la categoría
-    setProducts((prevProducts) =>
-      prevProducts.filter(
-        (product) =>
-          product.category.toLowerCase() !== categoryName.toLowerCase(),
-      ),
+  const handleDeleteCategoryCascade = async (categoryId) => {
+    const category = categoryRecords.find((item) => item.id === categoryId);
+    const { data: categoryProducts, error: productsError } = await supabase
+      .from("products")
+      .select("id")
+      .eq("category_id", categoryId)
+      .eq("business_id", businessId);
+
+    if (productsError) {
+      console.error(
+        "Error consultando productos de la categoría:",
+        productsError,
+      );
+      alert("No se pudieron consultar los productos de la categoría");
+      return;
+    }
+
+    const productIds = (categoryProducts || []).map((product) => product.id);
+    if (productIds.length > 0) {
+      const { error: deleteProductsError } = await supabase
+        .from("products")
+        .delete()
+        .in("id", productIds)
+        .eq("business_id", businessId);
+
+      if (deleteProductsError) {
+        console.error(
+          "Error eliminando productos de la categoría:",
+          deleteProductsError,
+        );
+        alert("No se pudieron eliminar los productos de la categoría");
+        return;
+      }
+    }
+
+    const { error: categoryError } = await supabase
+      .from("categories")
+      .delete()
+      .eq("id", categoryId)
+      .eq("business_id", businessId);
+
+    if (categoryError) {
+      console.error("Error eliminando categoría:", categoryError);
+      alert("No se pudo eliminar la categoría");
+      return;
+    }
+
+    setProducts((current) =>
+      current.filter((product) => product.categoryId !== categoryId),
     );
+    setCategoryRecords((current) =>
+      current.filter((item) => item.id !== categoryId),
+    );
+    setCategories((current) =>
+      current.filter((categoryName) => categoryName !== category?.name),
+    );
+    return true;
   };
 
   // ========== ESTADO PARA PRODUCTOS ==========arepasim
@@ -160,10 +215,9 @@ const Productos = ({ section = "productos" }) => {
       const [{ data: categoriesData }, { data: productsData, error }] =
         await Promise.all([
           supabase
-            .from("categories_shop")
-            .select("id, name")
-            .eq("business_id", profile.business_id)
-            .order("name"),
+            .from("categories")
+            .select("id, business_id, name")
+            .eq("business_id", profile.business_id),
           supabase
             .from("products")
             .select("*")
@@ -345,6 +399,15 @@ const Productos = ({ section = "productos" }) => {
     loadProductOptions(product.id);
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    const productId = location.state?.productId;
+    if (!productId || loadingProducts) return;
+    const product = products.find((item) => item.id === productId);
+    if (!product) return;
+    handleEditProduct(product);
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, [location.state, loadingProducts, products]);
 
   const createOptionId = () =>
     `option-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -775,6 +838,8 @@ const Productos = ({ section = "productos" }) => {
     return (
       <Categorias
         categories={categories}
+        categoryRecords={categoryRecords}
+        businessId={businessId}
         products={products} // Envía el array de productos original
         onUpdateCategories={handleUpdateCategories}
         onDeleteCategoryCascade={handleDeleteCategoryCascade} // <--- NUEVO CALLBACK VINCULADO
@@ -1201,42 +1266,48 @@ const Productos = ({ section = "productos" }) => {
                   </div>
                 </div>
 
-                {/* SECCIÓN INFERIOR: Botón de Editar y Switch */}
+                {/* SECCIÓN INFERIOR: Acciones de estado */}
                 <div className="pb-2">
-                  <div className="pt-2.5 border-t border-white/5 flex justify-between items-center gap-1 px-2 md:px-3">
+                  <div className="grid grid-cols-1 gap-2 pt-2.5 border-t border-white/5 px-2 sm:grid-cols-2 md:px-3">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleToggleArchived(item.id);
                       }}
-                      className={`p-1.5 md:p-2 rounded-lg active:scale-95 transition-all ${
+                      aria-label={
                         item.isActive
-                          ? "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
-                          : "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                          ? "Archivar producto"
+                          : "Desarchivar producto"
+                      }
+                      className={`flex min-h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[9px] font-bold uppercase tracking-normal leading-none whitespace-nowrap active:scale-95 transition-all ${
+                        item.isActive
+                          ? "bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                          : "bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-white"
                       }`}
                       title={item.isActive ? "Archivar" : "Desarchivar"}
                     >
                       <Archive size={16} />
+                      <span>{item.isActive ? "Archivar" : "Desarchivar"}</span>
                     </button>
 
-                    {/* Switch de Estado */}
+                    {/* Cambiar disponibilidad */}
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleToggleSoldOut(item.id);
                       }}
-                      className={`relative inline-flex h-6 w-10 md:h-7 md:w-12 items-center rounded-full transition-colors ${
+                      aria-label={
+                        item.isSoldOut
+                          ? "Marcar como disponible"
+                          : "Marcar como agotado"
+                      }
+                      className={`flex min-h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg px-3 py-2 text-[9px] font-bold uppercase tracking-normal leading-none whitespace-nowrap transition-colors ${
                         item.isSoldOut ? "bg-red-500" : "bg-emerald-500"
                       }`}
                       title={item.isSoldOut ? "Agotado" : "Disponible"}
                     >
-                      <span
-                        className={`inline-block h-4 w-4 md:h-5 md:w-5 transform rounded-full bg-white transition-transform ${
-                          !item.isSoldOut
-                            ? "translate-x-5 md:translate-x-6"
-                            : "translate-x-1"
-                        }`}
-                      />
+                      <span className="h-2 w-2 rounded-full bg-white" />
+                      <span>{item.isSoldOut ? "Agotado" : "Disponible"}</span>
                     </button>
                   </div>
                 </div>

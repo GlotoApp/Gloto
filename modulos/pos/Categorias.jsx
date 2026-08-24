@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Plus,
   Edit3,
   Trash2,
   X,
   Save,
+  ArrowRight,
   AlertTriangle,
-  GripVertical,
   Layers,
   Check,
   ChevronDown,
@@ -15,19 +16,35 @@ import {
   Info,
 } from "lucide-react";
 
+const formatCategoryName = (value) => {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase();
+  return normalized
+    ? normalized.charAt(0).toUpperCase() + normalized.slice(1)
+    : "";
+};
+
 const CategoriasAdmin = ({
   categories,
+  categoryRecords = [],
   products = [],
+  businessId,
   onUpdateCategories,
   onDeleteCategoryCascade,
 }) => {
+  const navigate = useNavigate();
   const [categoriesList, setCategoriesList] = useState([]);
 
   useEffect(() => {
+    const records = categoryRecords.length
+      ? categoryRecords
+      : categories.map((name, index) => ({ id: index + 1, name }));
+
     setCategoriesList(
-      categories.map((cat, index) => ({
-        id: index + 1,
-        name: cat,
+      records.map((cat, index) => ({
+        ...cat,
+        name: cat.name,
         color:
           index % 8 === 0
             ? "violet"
@@ -36,29 +53,20 @@ const CategoriasAdmin = ({
               : index % 8 === 2
                 ? "emerald"
                 : "amber",
-        available: true,
       })),
     );
-  }, [categories]);
+  }, [categories, categoryRecords]);
 
   const [expandedCategories, setExpandedCategories] = useState(new Set());
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-
-  // Estados de control de Drag & Drop (Escritorio)
-  const [draggedIndex, setDraggedIndex] = useState(null);
-  const [dragOverIndex, setDragOverIndex] = useState(null);
-
-  // 📱 Estados de control Touch (Móviles)
-  const [touchStartIndex, setTouchStartIndex] = useState(null);
-  const [touchCurrentIndex, setTouchCurrentIndex] = useState(null);
-  const containerRef = useRef(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("created");
 
   const [formData, setFormData] = useState({
     name: "",
     color: "violet",
-    available: true,
   });
 
   const colors = [
@@ -120,7 +128,7 @@ const CategoriasAdmin = ({
 
   const handleNewCategory = () => {
     setEditingIndex(null);
-    setFormData({ name: "", color: "violet", available: true });
+    setFormData({ name: "", color: "violet" });
     setIsModalOpen(true);
   };
 
@@ -131,26 +139,31 @@ const CategoriasAdmin = ({
   };
 
   const handleSaveCategory = () => {
-    if (!formData.name.trim()) {
+    const categoryName = formatCategoryName(formData.name);
+    if (!categoryName) {
       alert("Completa el nombre de la categoría");
       return;
     }
 
     let updated = [...categoriesList];
     if (editingIndex !== null) {
-      updated[editingIndex] = { ...updated[editingIndex], ...formData };
+      updated[editingIndex] = {
+        ...updated[editingIndex],
+        ...formData,
+        name: categoryName,
+      };
     } else {
       updated.push({
-        id: Math.max(...categoriesList.map((c) => c.id), 0) + 1,
-        name: formData.name,
+        id: crypto.randomUUID(),
+        business_id: businessId,
+        name: categoryName,
         color: formData.color,
-        available: formData.available,
       });
     }
 
     setCategoriesList(updated);
     setIsModalOpen(false);
-    onUpdateCategories(updated.map((c) => c.name));
+    onUpdateCategories(updated);
   };
 
   const handleDeleteCategoryFinal = (index) => {
@@ -159,172 +172,36 @@ const CategoriasAdmin = ({
 
     setCategoriesList(updated);
     setDeleteConfirm(null);
-    onUpdateCategories(updated.map((c) => c.name));
 
     if (onDeleteCategoryCascade) {
-      onDeleteCategoryCascade(categoryToDelete.name);
+      onDeleteCategoryCascade(categoryToDelete.id);
     }
   };
 
-  const handleToggleAvailable = (index) => {
-    const updated = [...categoriesList];
-    updated[index].available = !updated[index].available;
-    setCategoriesList(updated);
-  };
+  const visibleCategories = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    return [...categoriesList]
+      .filter((category) =>
+        category.name.toLowerCase().includes(normalizedSearch),
+      )
+      .sort((first, second) => {
+        const firstCount = products.filter(
+          (product) =>
+            product.category?.toLowerCase() === first.name?.toLowerCase(),
+        ).length;
+        const secondCount = products.filter(
+          (product) =>
+            product.category?.toLowerCase() === second.name?.toLowerCase(),
+        ).length;
 
-  // Función unificada para reordenar la lista (más inteligente)
-  const reorderList = (fromIndex, toIndex) => {
-    if (fromIndex === null || toIndex === null || fromIndex === toIndex) return;
-
-    const updatedList = [...categoriesList];
-    const [draggedItem] = updatedList.splice(fromIndex, 1);
-
-    // Ajustar índice si movemos hacia adelante (los índices se desplazan)
-    let finalIndex = toIndex;
-    if (fromIndex < toIndex) {
-      finalIndex = toIndex - 1;
-    }
-
-    // Asegurar que no estamos fuera de límites
-    finalIndex = Math.min(finalIndex, updatedList.length);
-
-    updatedList.splice(finalIndex, 0, draggedItem);
-
-    setCategoriesList(updatedList);
-    onUpdateCategories(updatedList.map((c) => c.name));
-  };
-
-  // Sin lógica compleja de reorden visual - todo simple y directo
-  const getVisualOrder = () => {
-    const isDragging = draggedIndex !== null || touchStartIndex !== null;
-
-    if (!isDragging) {
-      return categoriesList.map((cat, idx) => ({
-        type: "cat",
-        idx,
-        data: cat,
-      }));
-    }
-
-    const dragIdx = draggedIndex ?? touchStartIndex;
-    const dropIdx = draggedIndex !== null ? dragOverIndex : touchCurrentIndex;
-
-    const result = [];
-
-    for (let i = 0; i < categoriesList.length; i++) {
-      // Insertar espacio ANTES de esta posición si es donde va a caer
-      if (dropIdx === i && i !== dragIdx) {
-        result.push({ type: "spacer", idx: i });
-      }
-
-      // Agregar la categoría siempre (incluso la que se arrastra)
-      result.push({
-        type: "cat",
-        idx: i,
-        data: categoriesList[i],
+        if (sortBy === "products-desc") return secondCount - firstCount;
+        if (sortBy === "products-asc") return firstCount - secondCount;
+        if (sortBy === "name-asc") return first.name.localeCompare(second.name);
+        if (sortBy === "name-desc")
+          return second.name.localeCompare(first.name);
+        return 0;
       });
-    }
-
-    // Espacio al final si va al final
-    if (dropIdx === categoriesList.length) {
-      result.push({ type: "spacer", idx: categoriesList.length });
-    }
-
-    return result;
-  };
-
-  // =========================================================================
-  // 🧠 DETECCIÓN INTELIGENTE DE ÍNDICE DE DROP
-  // =========================================================================
-  const calculateDropIndex = (rect, clientY) => {
-    // Dividir en 3 zonas: arriba (30%), medio (40%), abajo (30%)
-    const thirdHeight = rect.height / 3;
-    const distFromTop = clientY - rect.top;
-
-    if (distFromTop < thirdHeight) {
-      // Zona superior - insertar ANTES
-      return { index: null }; // No cambiar si está en zona media
-    } else if (distFromTop < thirdHeight * 2) {
-      // Zona media - mantener posición actual (zona ambigua)
-      return { index: null };
-    } else {
-      // Zona inferior - insertar DESPUÉS
-      return { index: 1 };
-    }
-  };
-
-  // =========================================================================
-  // 📱 MANEJADORES DE EVENTOS TOUCH (MÓVILES)
-  // =========================================================================
-  const handleTouchStart = (index) => {
-    setTouchStartIndex(index);
-    setTouchCurrentIndex(index);
-  };
-
-  const handleTouchMove = (e) => {
-    if (touchStartIndex === null) return;
-
-    const touch = e.touches[0];
-    const targetElement = document.elementFromPoint(
-      touch.clientX,
-      touch.clientY,
-    );
-
-    if (!targetElement) return;
-
-    const closestCard = targetElement.closest("[data-category-index]");
-    if (closestCard) {
-      const overIdx = parseInt(
-        closestCard.getAttribute("data-category-index"),
-        10,
-      );
-      if (overIdx === touchStartIndex) return; // No cambiar si es el mismo elemento
-
-      const rect = closestCard.getBoundingClientRect();
-      const { index: offset } = calculateDropIndex(rect, touch.clientY);
-
-      // Si estamos en zona ambigua, no actualizar
-      if (offset === null) {
-        return;
-      }
-
-      const targetIdx = overIdx + offset;
-      if (touchCurrentIndex !== targetIdx) {
-        setTouchCurrentIndex(targetIdx);
-      }
-    } else {
-      // Zona inteligente al final
-      const container = containerRef.current;
-      if (container) {
-        const rect = container.getBoundingClientRect();
-        if (
-          touch.clientY > rect.bottom - 120 &&
-          touchCurrentIndex !== categoriesList.length
-        ) {
-          setTouchCurrentIndex(categoriesList.length);
-        }
-      }
-    }
-  };
-
-  const handleTouchEnd = () => {
-    if (
-      touchStartIndex !== null &&
-      touchCurrentIndex !== null &&
-      touchStartIndex !== touchCurrentIndex
-    ) {
-      // Si tocamos después del último elemento, colocar al final
-      const finalIndex =
-        touchCurrentIndex > categoriesList.length - 1
-          ? categoriesList.length
-          : touchCurrentIndex;
-
-      reorderList(touchStartIndex, finalIndex);
-    }
-    // Resetear estados touch
-    setTouchStartIndex(null);
-    setTouchCurrentIndex(null);
-  };
+  }, [categoriesList, products, searchTerm, sortBy]);
 
   return (
     <div className="min-h-screen bg-background text-neutral-200 p-4 font-sans">
@@ -342,24 +219,6 @@ const CategoriasAdmin = ({
                     {categoriesList.length} Total
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                  <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-400">
-                    <span className="text-emerald-400 font-black">
-                      {categoriesList.filter((c) => c.available).length}
-                    </span>{" "}
-                    Activas
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                  <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-neutral-400">
-                    <span className="text-rose-400 font-black">
-                      {categoriesList.filter((c) => !c.available).length}
-                    </span>{" "}
-                    Desactivadas
-                  </span>
-                </div>
               </div>
             </div>
 
@@ -373,91 +232,42 @@ const CategoriasAdmin = ({
         </div>
 
         {/* LISTADO DE CATEGORÍAS */}
-        <div ref={containerRef} className="grid grid-cols-1 gap-3 select-none">
-          {getVisualOrder().map((item) => {
-            // ===== RENDERIZAR ESPACIO/SEPARADOR =====
-            if (item.type === "spacer") {
-              return (
-                <div
-                  key={`spacer-${item.idx}`}
-                  className="h-20 rounded-2xl border-2 border-dashed border-violet-500/40 bg-gradient-to-r from-violet-500/5 via-transparent to-violet-500/5 flex items-center justify-center"
-                ></div>
-              );
-            }
+        <div className="mb-4 flex flex-col gap-3 rounded-2xl border border-white/5 bg-neutral-900/30 p-4 sm:flex-row">
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Buscar categoría..."
+            className="min-w-0 flex-1 rounded-xl border border-white/5 bg-neutral-950/50 px-3 py-2 text-xs text-white outline-none focus:border-violet-500/50"
+          />
+          <select
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value)}
+            className="rounded-xl border border-white/5 bg-neutral-950/50 px-3 py-2 text-xs text-neutral-300 outline-none focus:border-violet-500/50"
+          >
+            <option value="created">Orden de creación</option>
+            <option value="name-asc">Nombre: A-Z</option>
+            <option value="name-desc">Nombre: Z-A</option>
+            <option value="products-desc">Más productos</option>
+            <option value="products-asc">Menos productos</option>
+          </select>
+        </div>
 
-            // ===== RENDERIZAR CATEGORÍA =====
-            const category = item.data;
-            const index = item.idx;
-
+        <div className="grid grid-cols-1 gap-3 select-none">
+          {visibleCategories.map((category) => {
             const associatedProducts = products.filter(
-              (p) => p.category?.toLowerCase() === category.name?.toLowerCase(),
+              (p) => p.categoryId === category.id,
             );
             const isExpanded = expandedCategories.has(category.id);
-            const isCurrentlyDragged =
-              draggedIndex === index || touchStartIndex === index;
-
             return (
               <div
                 key={category.id}
-                data-category-index={index} // Atributo clave para ubicar el índice mediante touch
-                draggable
-                onDragStart={() => setDraggedIndex(index)}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  if (draggedIndex === null || draggedIndex === index) return;
-
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const { index: offset } = calculateDropIndex(rect, e.clientY);
-
-                  // Si estamos en zona ambigua, no actualizar
-                  if (offset === null) return;
-
-                  // Calcular índice de drop inteligente
-                  const targetIdx = index + offset;
-                  if (dragOverIndex !== targetIdx) {
-                    setDragOverIndex(targetIdx);
-                  }
-                }}
-                onDragLeave={() => {
-                  setDragOverIndex(null);
-                }}
-                onDrop={() => {
-                  if (draggedIndex !== null && dragOverIndex !== null) {
-                    reorderList(draggedIndex, dragOverIndex);
-                  }
-                  setDraggedIndex(null);
-                  setDragOverIndex(null);
-                }}
-                onDragEnd={() => {
-                  setDraggedIndex(null);
-                  setDragOverIndex(null);
-                }}
-                className={`flex flex-col rounded-2xl border overflow-hidden transition-all duration-150 ${
-                  isCurrentlyDragged
-                    ? "opacity-35 border-dashed border-violet-500/60 bg-black/50 scale-95 shadow-lg shadow-violet-500/5"
-                    : category.available
-                      ? "bg-neutral-900/40 border-white/5"
-                      : "bg-red-500/5 border-red-500/20"
-                }`}
+                className={`flex flex-col rounded-2xl border overflow-hidden transition-all duration-150 ${"bg-neutral-900/40 border-white/5"}`}
               >
                 <div className="flex flex-col w-full">
                   {/* FILA PRINCIPAL */}
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between p-4 gap-4">
                     <div className="flex items-center gap-3.5 min-w-0">
-                      {/* 📱 El botón de GRIP ahora maneja los gestos táctiles en móviles de forma segura */}
-                      <div
-                        onTouchStart={() => handleTouchStart(index)}
-                        onTouchMove={handleTouchMove}
-                        onTouchEnd={handleTouchEnd}
-                        className="cursor-grab active:cursor-grabbing text-neutral-500 hover:text-violet-400 p-1.5 transition-all flex-shrink-0 touch-none duration-200"
-                      >
-                        <GripVertical size={24} />
-                      </div>
-
-                      <span className="font-mono text-[10px] text-neutral-400 font-bold bg-black/30 px-2 py-0.5 rounded border border-white/5">
-                        #{index + 1}
-                      </span>
-
                       <div
                         className={`w-3.5 h-3.5 rounded-full border border-white/20 flex-shrink-0 ${
                           colorClasses[category.color].split(" ")[0]
@@ -465,10 +275,10 @@ const CategoriasAdmin = ({
                       />
 
                       <div className="min-w-0">
-                        <h3 className="font-black text-sm uppercase tracking-wide text-neutral-100 truncate">
+                        <h3 className="font-black text-sm tracking-wide text-neutral-100 truncate">
                           {category.name}
                         </h3>
-                        <span className="text-[9px] font-bold uppercase tracking-widest text-neutral-500 block mt-0.5">
+                        <span className="text-[9px] font-bold  tracking-widest text-neutral-500 block mt-0.5">
                           {associatedProducts.length}{" "}
                           {associatedProducts.length === 1
                             ? "Producto"
@@ -480,9 +290,9 @@ const CategoriasAdmin = ({
                     <div className="flex w-full sm:w-auto justify-center sm:justify-end items-center gap-2.5 border-t sm:border-t-0 border-white/5 pt-3 sm:pt-0 flex-shrink-0">
                       <button
                         onClick={() => toggleExpand(category.id)}
-                        className="px-3 py-1.5 rounded-lg border border-white/5 bg-neutral-950/40 text-[9px] font-black uppercase tracking-wider text-neutral-400 hover:text-white transition-all flex items-center gap-1.5"
+                        className="px-3 py-1.5 rounded-lg border border-white/5 bg-neutral-950/40 text-[9px] font-black  tracking-wider text-neutral-400 hover:text-white transition-all flex items-center gap-1.5"
                       >
-                        <span>{isExpanded ? "Ocultar" : "Ver Productos"}</span>
+                        <span>{isExpanded ? "Ocultar" : "Ver productos"}</span>
                         {isExpanded ? (
                           <ChevronUp size={12} />
                         ) : (
@@ -491,27 +301,13 @@ const CategoriasAdmin = ({
                       </button>
 
                       <button
-                        onClick={() => handleEditCategory(index)}
+                        onClick={() =>
+                          handleEditCategory(categoriesList.indexOf(category))
+                        }
                         className="p-2 bg-neutral-800 text-neutral-400 rounded-lg hover:bg-neutral-700 hover:text-violet-400 active:scale-95 transition-all border border-white/5"
                         title="Editar Configuración"
                       >
                         <Edit3 size={14} />
-                      </button>
-
-                      <button
-                        onClick={() => handleToggleAvailable(index)}
-                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
-                          category.available ? "bg-emerald-500" : "bg-red-500"
-                        }`}
-                        title={category.available ? "Activa" : "Desactivada"}
-                      >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                            category.available
-                              ? "translate-x-6"
-                              : "translate-x-1"
-                          }`}
-                        />
                       </button>
                     </div>
                   </div>
@@ -526,33 +322,60 @@ const CategoriasAdmin = ({
                       ) : (
                         <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1 mt-2">
                           {associatedProducts.map((prod) => (
-                            <div
+                            <button
                               key={prod.id}
-                              className="flex justify-between items-center py-2 px-3 bg-neutral-900/50 rounded-xl border border-white/[0.03]"
+                              type="button"
+                              onClick={() =>
+                                navigate("/pos/productos", {
+                                  state: { productId: prod.id },
+                                })
+                              }
+                              aria-label={`Editar ${prod.name} en productos`}
+                              className="group flex w-full items-center justify-between gap-4 rounded-xl border border-white/[0.05] bg-neutral-900/50 px-4 py-3 text-left transition-all hover:border-violet-500/30 hover:bg-neutral-800/70"
                             >
-                              <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="flex min-w-0 flex-1 items-center gap-3">
                                 <div
-                                  className={`w-1.5 h-1.5 rounded-full ${
-                                    prod.available
+                                  className={`h-2 w-2 shrink-0 rounded-full ${
+                                    prod.isActive && !prod.isSoldOut
                                       ? "bg-emerald-400 shadow-[0_0_8px_#10b981]"
                                       : "bg-neutral-600"
                                   }`}
                                 />
-                                <span className="text-[10px] font-black text-neutral-300 uppercase tracking-wide truncate">
+                                <span className="truncate text-[10px] font-black  tracking-wide text-neutral-300 group-hover:text-white">
                                   {prod.name}
                                 </span>
                               </div>
-                              <div className="flex items-center gap-2">
-                                {!prod.available && (
-                                  <span className="text-[8px] font-black bg-red-500/10 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded uppercase">
-                                    Agotado
+                              <div className="flex shrink-0 items-center gap-3">
+                                <div className="flex items-center gap-1.5">
+                                  <span
+                                    className={`rounded border px-1.5 py-0.5 text-[8px] font-black uppercase ${
+                                      prod.isActive
+                                        ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                                        : "border-slate-500/20 bg-slate-500/10 text-slate-400"
+                                    }`}
+                                  >
+                                    {prod.isActive ? "Activo" : "Archivado"}
                                   </span>
-                                )}
+                                  <span
+                                    className={`rounded border px-1.5 py-0.5 text-[8px] font-black uppercase ${
+                                      prod.isSoldOut
+                                        ? "border-red-500/20 bg-red-500/10 text-red-400"
+                                        : "border-sky-500/20 bg-sky-500/10 text-sky-400"
+                                    }`}
+                                  >
+                                    {prod.isSoldOut ? "Agotado" : "Disponible"}
+                                  </span>
+                                </div>
                                 <span className="text-[10px] font-mono font-black text-white bg-black/40 px-2.5 py-0.5 rounded border border-white/5">
                                   ${prod.price?.toLocaleString("es-CO")}
                                 </span>
+                                <ArrowRight
+                                  size={14}
+                                  className="text-neutral-600 transition-transform group-hover:translate-x-0.5 group-hover:text-violet-400"
+                                  aria-hidden="true"
+                                />
                               </div>
-                            </div>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -619,50 +442,6 @@ const CategoriasAdmin = ({
                       <span className="text-[8px] font-bold uppercase tracking-widest text-neutral-500 mt-1">
                         Color Técnico: {formData.color}
                       </span>
-                    </div>
-                  </div>
-
-                  {/* Switch */}
-                  <div className="space-y-3 bg-black/20 p-4 rounded-2xl border border-white/5">
-                    <div className="flex justify-between items-center">
-                      <div className="flex flex-col">
-                        <span className="text-[9px] font-black text-neutral-400 uppercase tracking-widest">
-                          Disponibilidad
-                        </span>
-                        <span
-                          className={`text-xs font-black uppercase mt-1 ${
-                            formData.available
-                              ? "text-emerald-400"
-                              : "text-red-400"
-                          }`}
-                        >
-                          {formData.available
-                            ? "Activa / Visible"
-                            : "Oculta / Desactivada"}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFormData({
-                            ...formData,
-                            available: !formData.available,
-                          })
-                        }
-                        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all cursor-pointer shadow-lg ${
-                          formData.available
-                            ? "bg-emerald-500 shadow-emerald-500/20"
-                            : "bg-red-500 shadow-red-500/20"
-                        }`}
-                      >
-                        <span
-                          className={`inline-block h-5 w-5 transform rounded-full bg-white transition-all shadow-md ${
-                            formData.available
-                              ? "translate-x-6"
-                              : "translate-x-1"
-                          }`}
-                        />
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -757,7 +536,7 @@ const CategoriasAdmin = ({
           (() => {
             const catObj = categoriesList[deleteConfirm];
             const associatedProds = products.filter(
-              (p) => p.category?.toLowerCase() === catObj?.name?.toLowerCase(),
+              (p) => p.categoryId === catObj?.id,
             );
 
             return (

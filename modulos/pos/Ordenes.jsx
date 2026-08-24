@@ -1,4 +1,4 @@
-import React, { useState, useMemo, memo, useEffect } from "react";
+import React, { useState, useMemo, memo, useEffect, useRef } from "react";
 import {
   Search,
   ChevronDown,
@@ -14,9 +14,8 @@ import {
   X,
   Clipboard,
   ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
   RefreshCcw,
+  LoaderCircle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../../src/lib/supabaseClient";
@@ -691,8 +690,11 @@ const Ordenes = () => {
     end: "",
   });
   const [sortBy, setSortBy] = useState("");
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  const [ordersPage, setOrdersPage] = useState(0);
+  const [hasMoreOrders, setHasMoreOrders] = useState(true);
+  const [loadingMoreOrders, setLoadingMoreOrders] = useState(false);
+  const ordersEndRef = useRef(null);
+  const businessIdRef = useRef(null);
 
   const loadBusinessOrders = async () => {
     if (!user?.id) {
@@ -733,7 +735,8 @@ const Ordenes = () => {
         .from("orders")
         .select("*, order_items(*)")
         .eq("business_id", profile.business_id)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(0, 29);
 
       if (error) {
         console.error("Error cargando órdenes por negocio:", error);
@@ -741,7 +744,10 @@ const Ordenes = () => {
         return;
       }
 
+      businessIdRef.current = profile.business_id;
       setOrders((data || []).map(mapDatabaseOrderToUi));
+      setOrdersPage(0);
+      setHasMoreOrders((data || []).length === 30);
     } catch (error) {
       console.error("Error al cargar órdenes:", error);
       setOrders([]);
@@ -754,6 +760,52 @@ const Ordenes = () => {
   useEffect(() => {
     loadBusinessOrders();
   }, [user]);
+
+  const loadMoreOrders = async () => {
+    if (
+      !businessIdRef.current ||
+      !hasMoreOrders ||
+      loadingMoreOrders ||
+      refreshing
+    ) {
+      return;
+    }
+
+    setLoadingMoreOrders(true);
+    const nextPage = ordersPage + 1;
+    const from = nextPage * 30;
+    const { data, error } = await supabase
+      .from("orders")
+      .select("*, order_items(*)")
+      .eq("business_id", businessIdRef.current)
+      .order("created_at", { ascending: false })
+      .range(from, from + 29);
+
+    if (error) {
+      console.error("Error cargando más órdenes:", error);
+    } else {
+      setOrders((current) => [
+        ...current,
+        ...(data || []).map(mapDatabaseOrderToUi),
+      ]);
+      setOrdersPage(nextPage);
+      setHasMoreOrders((data || []).length === 30);
+    }
+    setLoadingMoreOrders(false);
+  };
+
+  useEffect(() => {
+    const target = ordersEndRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) loadMoreOrders();
+      },
+      { rootMargin: "240px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [ordersPage, hasMoreOrders, loadingMoreOrders, refreshing]);
 
   // Estado dinámico: se abre automáticamente el año-mes actual (ej: "2026-05")
   const [openMonths, setOpenMonths] = useState(() => {
@@ -827,24 +879,20 @@ const Ordenes = () => {
     return result;
   }, [orders, searchTerm, deliveryFilter, dateFilter, customDateRange, sortBy]);
 
-  const totalPages = Math.ceil(filteredOrdenes.length / itemsPerPage);
-
-  // 2. Segmentación por páginas y agrupación limpia por meses para la UI
-  const groupedOrdersByMonth = useMemo(() => {
-    const startIdx = (currentPage - 1) * itemsPerPage;
-    const paginated = filteredOrdenes.slice(startIdx, startIdx + itemsPerPage);
-
+  // Agrupación jerárquica: año > mes, con lo más reciente primero.
+  const groupedOrdersByYear = useMemo(() => {
     const groups = {};
-    paginated.forEach((orden) => {
+    filteredOrdenes.forEach((orden) => {
       if (!orden.fecha) return;
       const [year, month] = orden.fecha.split("-");
-      const key = `${year}-${month}`; // Formato "2026-05"
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(orden);
+      const yearKey = year;
+      const monthKey = `${year}-${month}`;
+      if (!groups[yearKey]) groups[yearKey] = {};
+      if (!groups[yearKey][monthKey]) groups[yearKey][monthKey] = [];
+      groups[yearKey][monthKey].push(orden);
     });
-
     return groups;
-  }, [filteredOrdenes, currentPage]);
+  }, [filteredOrdenes]);
 
   const toggleMonthAccordion = (monthKey) => {
     setOpenMonths((prev) => ({
@@ -949,7 +997,6 @@ const Ordenes = () => {
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
-                setCurrentPage(1);
               }}
               className="w-full bg-neutral-900/50 border border-white/5 rounded-xl py-3 pl-10 pr-10 text-[10px] font-mono outline-none focus:border-violet-500/40 transition-all uppercase placeholder:text-neutral-700"
             />
@@ -964,7 +1011,6 @@ const Ordenes = () => {
                     transition={{ duration: 0.12 }}
                     onClick={() => {
                       setSearchTerm("");
-                      setCurrentPage(1);
                     }}
                     className="text-neutral-500 hover:text-red-400 transition-colors p-1"
                     title="Borrar búsqueda"
@@ -982,7 +1028,6 @@ const Ordenes = () => {
                       try {
                         const text = await navigator.clipboard.readText();
                         setSearchTerm(text);
-                        setCurrentPage(1);
                       } catch (err) {
                         console.error(
                           "Error al acceder al portapapeles: ",
@@ -1023,7 +1068,6 @@ const Ordenes = () => {
             options={METODOS_ENTREGA}
             onChange={(v) => {
               setDeliveryFilter(v);
-              setCurrentPage(1);
             }}
             onClear={() => setDeliveryFilter("")}
             icon={Filter}
@@ -1034,7 +1078,6 @@ const Ordenes = () => {
             options={PERIODOS_FECHA}
             onChange={(v) => {
               setDateFilter(v);
-              setCurrentPage(1);
             }}
             onClear={() => setDateFilter("")}
             icon={CalendarIcon}
@@ -1084,7 +1127,7 @@ const Ordenes = () => {
         </div>
       </header>
 
-      {/* Listado de Órdenes Organizado por Acordeones Mensuales */}
+      {/* Listado de Órdenes organizado por año y mes */}
       <main className="max-w-7xl mx-auto space-y-4 pb-20">
         {loadingOrders ? (
           <div className="text-center py-20">
@@ -1100,104 +1143,97 @@ const Ordenes = () => {
           </div>
         ) : (
           <>
-            {Object.keys(groupedOrdersByMonth).map((monthKey) => {
-              const isOpen = !!openMonths[monthKey];
-              const orders = groupedOrdersByMonth[monthKey];
+            {Object.keys(groupedOrdersByYear)
+              .sort((a, b) => Number(b) - Number(a))
+              .map((yearKey, yearIndex) => {
+                const months = groupedOrdersByYear[yearKey];
+                const monthKeys = Object.keys(months).sort().reverse();
 
-              return (
-                <div key={monthKey} className="space-y-3">
-                  {/* Header del Acordeón del Mes */}
-                  <div
-                    onClick={() => toggleMonthAccordion(monthKey)}
-                    className="w-full flex items-center justify-between bg-neutral-900/40 hover:bg-neutral-900/80 border border-white/5 px-4 py-3 rounded-xl cursor-pointer transition-all select-none"
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Span indicador de mes pedido */}
-                      <span className="text-[9px] font-black font-mono tracking-widest bg-violet-500/10 text-violet-400 border border-violet-500/20 px-2.5 py-1 rounded-md">
-                        {formatMonthSpan(monthKey)}
-                      </span>
-                      <span className="text-[9px] text-neutral-500 font-mono">
-                        {orders.length}{" "}
-                        {orders.length === 1 ? "REGISTRO" : "REGISTROS"}
-                      </span>
-                    </div>
-                    <motion.div
-                      animate={{ rotate: isOpen ? 180 : 0 }}
-                      className="text-neutral-500"
-                    >
-                      <ChevronDown size={14} />
-                    </motion.div>
-                  </div>
+                return (
+                  <section key={yearKey} className="space-y-3">
+                    {monthKeys.map((monthKey, monthIndex) => {
+                      const isDefaultOpen = yearIndex === 0 && monthIndex === 0;
+                      const isOpen = openMonths[monthKey] ?? isDefaultOpen;
+                      const monthOrders = months[monthKey];
 
-                  {/* Lista de Órdenes colapsable dentro del mes */}
-                  <AnimatePresence initial={false}>
-                    {isOpen && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.25, ease: "easeInOut" }}
-                        className="overflow-hidden space-y-3 pl-1"
-                      >
-                        {orders.map((orden) => (
-                          <OrderCard
-                            key={orden.id}
-                            orden={orden}
-                            onDelete={handleDelete}
-                            onPrint={handlePrint}
-                            onShare={handleShare}
-                            onEdit={handleEdit}
-                            canDelete={canDelete}
-                          />
-                        ))}
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            })}
+                      return (
+                        <div key={monthKey} className="space-y-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleMonthAccordion(monthKey)}
+                            className="flex w-full items-center justify-between rounded-xl border border-white/5 bg-neutral-900/40 px-4 py-3 text-left transition-all hover:bg-neutral-900/80"
+                          >
+                            <span className="flex items-center gap-3">
+                              <span className="rounded-md border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[9px] font-black tracking-widest text-violet-400">
+                                {formatMonthSpan(monthKey)}
+                              </span>
+                              <span className="text-[9px] font-mono text-neutral-500">
+                                {monthOrders.length}{" "}
+                                {monthOrders.length === 1
+                                  ? "REGISTRO"
+                                  : "REGISTROS"}
+                              </span>
+                            </span>
+                            <motion.span
+                              animate={{ rotate: isOpen ? 180 : 0 }}
+                              className="text-neutral-500"
+                            >
+                              <ChevronDown size={14} />
+                            </motion.span>
+                          </button>
 
-            {/* Paginación Completa */}
-            {totalPages > 1 && (
-              <div className="flex justify-center items-center gap-4 mt-10 pt-6 border-t border-white/5 flex-wrap">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-white/10 text-neutral-400 disabled:opacity-50 hover:bg-white/5 transition-all"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-                <div className="flex gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                    (page) => (
-                      <button
-                        key={page}
-                        onClick={() => setCurrentPage(page)}
-                        className={`w-8 h-8 rounded-lg font-bold text-[9px] transition-all ${
-                          currentPage === page
-                            ? "bg-violet-600 text-white"
-                            : "border border-white/10 text-neutral-400 hover:bg-white/5"
-                        }`}
-                      >
-                        {page}
-                      </button>
-                    ),
-                  )}
-                </div>
-                <button
-                  onClick={() =>
-                    setCurrentPage((p) => Math.min(totalPages, p + 1))
-                  }
-                  disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg border border-white/10 text-neutral-400 disabled:opacity-50 hover:bg-white/5 transition-all"
-                >
-                  <ChevronRight size={18} />
-                </button>
-                <span className="text-[9px] text-neutral-600 font-mono">
-                  PÁGINA {currentPage} DE {totalPages}
+                          <AnimatePresence initial={false}>
+                            {isOpen && (
+                              <motion.div
+                                initial={{ height: 0, opacity: 0 }}
+                                animate={{ height: "auto", opacity: 1 }}
+                                exit={{ height: 0, opacity: 0 }}
+                                transition={{
+                                  duration: 0.25,
+                                  ease: "easeInOut",
+                                }}
+                                className="space-y-3 overflow-hidden pl-1"
+                              >
+                                {monthOrders.map((orden) => (
+                                  <OrderCard
+                                    key={orden.id}
+                                    orden={orden}
+                                    onDelete={handleDelete}
+                                    onPrint={handlePrint}
+                                    onShare={handleShare}
+                                    onEdit={handleEdit}
+                                    canDelete={canDelete}
+                                  />
+                                ))}
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      );
+                    })}
+                  </section>
+                );
+              })}
+
+            <div
+              ref={ordersEndRef}
+              className="flex min-h-16 items-center justify-center border-t border-white/5 pt-4"
+            >
+              {loadingMoreOrders ? (
+                <span className="flex items-center gap-2 text-[9px] font-black uppercase tracking-widest text-neutral-500">
+                  <LoaderCircle size={14} className="animate-spin" /> Cargando
+                  más órdenes
                 </span>
-              </div>
-            )}
+              ) : hasMoreOrders ? (
+                <span className="text-[9px] font-mono uppercase tracking-widest text-neutral-700">
+                  Desplázate para ver más
+                </span>
+              ) : (
+                <span className="text-[9px] font-mono uppercase tracking-widest text-neutral-700">
+                  No hay más órdenes
+                </span>
+              )}
+            </div>
           </>
         )}
       </main>

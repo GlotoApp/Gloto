@@ -344,6 +344,11 @@ const normalizeWhatsappNumber = (value) => {
   return `57${digits.replace(/^0+/, "")}`;
 };
 
+const hasUsableProductImage = (value) => {
+  const imageUrl = String(value ?? "").trim();
+  return imageUrl !== "" && !imageUrl.includes("placehold.co");
+};
+
 const POS = () => {
   const { user } = useAuth();
   const [cart, setCart] = useState([]);
@@ -409,11 +414,9 @@ const POS = () => {
 
     try {
       const { data, error } = await supabase
-        .from("categories_shop")
+        .from("categories")
         .select("id,name")
-        .eq("business_id", businessId)
-        .eq("is_active", true)
-        .order("order_index", { ascending: true });
+        .eq("business_id", businessId);
 
       if (error) {
         console.error("Error cargando categorías:", error);
@@ -684,11 +687,6 @@ const POS = () => {
   };
 
   const addToCart = (product) => {
-    // 1. DISPARAR EL TOAST UNA SOLA VEZ AL INICIO
-    if (typeof window !== "undefined" && window.innerWidth < 1024) {
-      addProductToast(product.name);
-    }
-
     if (product?.hasOptionGroups) {
       setActiveProduct(product);
       setOptionSelections(initializeOptionSelections(product));
@@ -697,6 +695,10 @@ const POS = () => {
       setOptionValidationError("");
       setOptionModalOpen(true);
       return;
+    }
+
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      addProductToast(product.name);
     }
 
     setCart((prevCart) => {
@@ -814,6 +816,10 @@ const POS = () => {
       optionNote,
       optionQuantity,
     );
+
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      addProductToast(newItem.name);
+    }
 
     setCart((prevCart) => {
       const existingItem = prevCart.find(
@@ -1690,17 +1696,24 @@ const POS = () => {
 
                     {/* Contenedor del icono image */}
                     <div className="bg-surface-hover/50 rounded-t-[1.8rem] h-32  flex items-center justify-center border border-outline/[0.03] overflow-hidden relative">
-                      <div className="absolute inset-0 bg-gradient-to-br from-primary-container/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                      {product.image_url ? (
-                        <img
-                          src={product.image_url}
-                          alt={product.name}
-                          className="h-full w-full object-cover"
-                        />
+                      {hasUsableProductImage(product.image_url) ? (
+                        <>
+                          <div className="absolute inset-0 bg-gradient-to-br from-primary-container/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                          <img
+                            src={product.image_url}
+                            alt={product.name}
+                            className="h-full w-full object-cover"
+                          />
+                        </>
                       ) : (
-                        <span className="material-symbols-outlined text-5xl text-on-surface-variant group-hover:text-primary group-hover:scale-110 transition-all duration-500">
-                          image
-                        </span>
+                        <div
+                          className="flex h-full w-full items-center justify-center bg-neutral-200 px-3"
+                          aria-label={product.name}
+                        >
+                          <span className="truncate text-center text-3xl font-black text-neutral-500">
+                            {product.name}
+                          </span>
+                        </div>
                       )}
                     </div>
 
@@ -2105,7 +2118,7 @@ const POS = () => {
                         : "bg-neutral-800 border-white/5"
                     }`}
                   >
-                    {item.image_url || item.image || item.imageUrl ? (
+                    {(item.image_url || item.image || item.imageUrl)?.trim() ? (
                       <img
                         src={item.image_url || item.image || item.imageUrl}
                         alt={item.name}
@@ -2113,9 +2126,14 @@ const POS = () => {
                         loading="lazy"
                       />
                     ) : (
-                      <span className="material-symbols-outlined text-lg opacity-50">
-                        image
-                      </span>
+                      <div
+                        className="flex h-full w-full items-center justify-center bg-neutral-700/70 px-1"
+                        aria-label={item.name}
+                      >
+                        <span className="truncate text-center text-[8px] font-black text-neutral-400/80">
+                          {item.name}
+                        </span>
+                      </div>
                     )}
                   </div>
 
@@ -2351,7 +2369,11 @@ const POS = () => {
                           : "bg-neutral-800 border-white/5"
                       }`}
                     >
-                      {item.image_url || item.image || item.imageUrl ? (
+                      {(
+                        item.image_url ||
+                        item.image ||
+                        item.imageUrl
+                      )?.trim() ? (
                         <img
                           src={item.image_url || item.image || item.imageUrl}
                           alt={item.name}
@@ -2359,9 +2381,14 @@ const POS = () => {
                           loading="lazy"
                         />
                       ) : (
-                        <span className="material-symbols-outlined text-lg opacity-50">
-                          image
-                        </span>
+                        <div
+                          className="flex h-full w-full items-center justify-center bg-neutral-700/70 px-1"
+                          aria-label={item.name}
+                        >
+                          <span className="truncate text-center text-[8px] font-black text-neutral-400/80">
+                            {item.name}
+                          </span>
+                        </div>
                       )}
                     </div>
 
@@ -2657,16 +2684,21 @@ const POS = () => {
               <div className="flex items-start justify-between gap-4 px-4 py-4 lg:px-6 lg:py-5">
                 <div className="flex items-center gap-4">
                   <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-white/5 overflow-hidden">
-                    {activeProduct?.image_url ? (
+                    {activeProduct?.image_url?.trim() ? (
                       <img
                         src={activeProduct.image_url}
                         alt={activeProduct.name}
                         className="h-full w-full object-cover"
                       />
                     ) : (
-                      <span className="material-symbols-outlined text-3xl text-on-surface-variant">
-                        image
-                      </span>
+                      <div
+                        className="flex h-full w-full items-center justify-center bg-neutral-700/70 px-2"
+                        aria-label={activeProduct?.name}
+                      >
+                        <span className="truncate text-center text-2xl font-black text-neutral-400/80">
+                          {activeProduct?.name}
+                        </span>
+                      </div>
                     )}
                   </div>
                   <div className="min-w-0">
