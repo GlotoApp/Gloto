@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../../src/lib/supabaseClient";
+import { useAuth } from "../../src/components/AuthContext";
 import {
   X,
   Receipt,
@@ -21,32 +22,14 @@ import {
   Phone,
   Mail,
   Clock,
+  Loader,
 } from "lucide-react";
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
-const MENU_ITEMS = [
-  { nombre: "Pizza Pepperoni", precio: 45000, categoria: "Platos" },
-  { nombre: "Pizza Margarita", precio: 38000, categoria: "Platos" },
-  { nombre: "Pasta Carbonara", precio: 38000, categoria: "Platos" },
-  { nombre: "Hamburguesa Master", precio: 35000, categoria: "Platos" },
-  { nombre: "Parrillada Familiar", precio: 150000, categoria: "Platos" },
-  { nombre: "Ensalada César", precio: 22000, categoria: "Platos" },
-  { nombre: "Cerveza Club", precio: 12000, categoria: "Bebidas" },
-  { nombre: "Jarra de Jugo", precio: 25000, categoria: "Bebidas" },
-  { nombre: "Agua Mineral", precio: 6000, categoria: "Bebidas" },
-  { nombre: "Gaseosa", precio: 8000, categoria: "Bebidas" },
-  { nombre: "Tiramisú", precio: 18000, categoria: "Postres" },
-  { nombre: "Brownie", precio: 15000, categoria: "Postres" },
-];
+// Los productos se cargan desde Supabase (ver loadProductsFromDB())
+// Las mesas se cargan SOLO si tienen órdenes activas
 
 const ESTADO = {
-  libre: {
-    color: "#6b7280",
-    glow: "#6b728030",
-    border: "#6b728060",
-    label: "Libre",
-    pulse: false,
-  },
   ocupada: {
     color: "#f97316",
     glow: "#f9731622",
@@ -54,237 +37,101 @@ const ESTADO = {
     label: "Ocupada",
     pulse: false,
   },
-  reservada: {
+  reserva: {
     color: "#3b82f6",
     glow: "#3b82f622",
     border: "#3b82f665",
-    label: "Reservada",
+    label: "Reserva",
     pulse: true,
   },
   sucio: {
     color: "#ef4444",
     glow: "#ef444422",
     border: "#ef444455",
-    label: "Limpiar",
+    label: "Por Limpiar",
     pulse: true,
   },
+  "": {
+    color: "#6b7280",
+    glow: "#6b728010",
+    border: "#6b728030",
+    label: "Limpia",
+    pulse: false,
+  },
 };
-
-let NEXT_ID = 11;
-const newMesa = () => {
-  const id = NEXT_ID++;
-  return {
-    id,
-    numero: String(id),
-    estado: "libre",
-    personas: 0,
-    startTime: null,
-    total: 0,
-    comanda: [],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  };
-};
-
-const INITIAL_MESAS = [
-  {
-    id: 1,
-    numero: "1",
-    estado: "ocupada",
-    personas: 4,
-    startTime: Date.now() - 2700000,
-    total: 125000,
-    comanda: [
-      { id: 1, item: "Pizza Pepperoni", precio: 45000, qty: 2 },
-      { id: 2, item: "Cerveza Club", precio: 12000, qty: 3 },
-    ],
-    nota: "",
-    reserva: {
-      nombre: "Juan",
-      telefono: "3001234567",
-      email: "juan@example.com",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 2,
-    numero: "2",
-    estado: "libre",
-    personas: 0,
-    startTime: null,
-    total: 0,
-    comanda: [],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 3,
-    numero: "3",
-    estado: "sucio",
-    personas: 0,
-    startTime: null,
-    total: 0,
-    comanda: [],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 4,
-    numero: "4",
-    estado: "ocupada",
-    personas: 2,
-    startTime: Date.now() - 4200000,
-    total: 85000,
-    comanda: [{ id: 1, item: "Pasta Carbonara", precio: 38000, qty: 1 }],
-    nota: "Sin sal",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 5,
-    numero: "5",
-    estado: "libre",
-    personas: 0,
-    startTime: null,
-    total: 0,
-    comanda: [],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 6,
-    numero: "6",
-    estado: "ocupada",
-    personas: 6,
-    startTime: Date.now() - 1500000,
-    total: 210000,
-    comanda: [
-      { id: 1, item: "Parrillada Familiar", precio: 150000, qty: 1 },
-      { id: 2, item: "Jarra de Jugo", precio: 25000, qty: 2 },
-    ],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 7,
-    numero: "7",
-    estado: "sucio",
-    personas: 0,
-    startTime: null,
-    total: 0,
-    comanda: [],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 8,
-    numero: "8",
-    estado: "libre",
-    personas: 0,
-    startTime: null,
-    total: 0,
-    comanda: [],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 9,
-    numero: "9",
-    estado: "ocupada",
-    personas: 3,
-    startTime: Date.now() - 1800000,
-    total: 95000,
-    comanda: [{ id: 1, item: "Hamburguesa Master", precio: 35000, qty: 2 }],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-  {
-    id: 10,
-    numero: "10",
-    estado: "libre",
-    personas: 0,
-    startTime: null,
-    total: 0,
-    comanda: [],
-    nota: "",
-    reserva: {
-      nombre: "",
-      telefono: "",
-      email: "",
-      hora: "",
-      personas: 0,
-      activa: false,
-    },
-  },
-];
 
 // ─── Utils ────────────────────────────────────────────────────────────────────
 const fmt = (n) => `$${Number(n).toLocaleString("es-CO")}`;
 const calc = (c) => c.reduce((s, i) => s + i.precio * i.qty, 0);
+
+// Mapear estado de orden a estado de mesa
+const mapOrderStatusToTableState = (orderStatus, tableStatus) => {
+  // Si hay table_status (incluso si es ""), usarlo (no usar falsy check)
+  if (tableStatus !== undefined && tableStatus !== null) return tableStatus;
+  const status = String(orderStatus || "").toLowerCase();
+  if (["pending", "confirmed"].includes(status)) return "ocupada";
+  if (["preparing"].includes(status)) return "ocupada";
+  if (["ready", "listo"].includes(status)) return "ocupada";
+  return ""; // Por defecto vacío (mesa cerrada)
+};
+
+// Mapear estado de mesa a estado de orden
+const mapTableStateToOrderStatus = (tableState) => {
+  const state = String(tableState || "").toLowerCase();
+  if (["ocupada", "reserva"].includes(state)) return "preparing";
+  if (state === "sucio") return "ready";
+  return "pending";
+};
+
+// Normalizar grupos de opciones (igual que en POS.jsx)
+const normalizeOptionGroup = (group, items = []) => {
+  const isRequired =
+    group.is_required ?? group.es_requerido ?? group.required ?? false;
+  const selectionType =
+    group.selection_type ?? group.selectionType ?? group.type ?? "single";
+
+  const opciones = (items || [])
+    .map((item) => ({
+      id: item.id,
+      nombre:
+        item.nombre ||
+        item.name ||
+        item.title ||
+        item.label ||
+        item.option_name ||
+        item.option ||
+        item.text ||
+        item.value ||
+        `Opción ${item.id}`,
+      precio_extra:
+        Number(
+          item.precio_extra ??
+            item.price ??
+            item.price_extra ??
+            item.extra_price ??
+            0,
+        ) || 0,
+      obligatorio:
+        item.es_opcion_obligatoria ??
+        item.mandatory ??
+        item.is_mandatory ??
+        item.required ??
+        item.is_required ??
+        false,
+      order: Number(item.order_index ?? item.order ?? 0),
+    }))
+    .sort((a, b) => a.order - b.order);
+
+  return {
+    id: group.id,
+    nombre: group.name || group.nombre || group.title || `Grupo ${group.id}`,
+    descripcion: group.description || group.descripcion || group.hint || "",
+    obligatorio: Boolean(isRequired),
+    selectionType,
+    order: Number(group.order_index ?? group.orderIndex ?? group.order ?? 0),
+    opciones,
+  };
+};
 
 function useTimer(startTime) {
   const [t, setT] = useState(0);
@@ -304,38 +151,6 @@ function useTimer(startTime) {
   if (h > 0) return `${h}h ${m}m`;
   if (m > 0) return `${m}m ${s}s`;
   return `${s}s`;
-}
-
-// ─── Add Mesa Tile ────────────────────────────────────────────────────────────
-function AddMesaTile({ onAdd }) {
-  return (
-    <motion.button
-      onClick={onAdd}
-      whileHover={{ scale: 1.05 }}
-      whileTap={{ scale: 0.95 }}
-      className="relative flex flex-col items-center justify-center rounded-2xl overflow-hidden transition-all duration-100 focus:outline-none"
-      style={{
-        background: "linear-gradient(145deg, #22c55e15, #0c0c0c)",
-        border: "1.5px dashed #22c55e50",
-        minHeight: 130,
-      }}
-    >
-      <div className="flex flex-col items-center gap-2">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center"
-          style={{
-            background: "#22c55e20",
-            border: "2px solid #22c55e60",
-          }}
-        >
-          <Plus size={24} className="text-emerald-400" />
-        </div>
-        <span className="text-xs font-black text-emerald-600/80 uppercase tracking-widest">
-          Nueva Mesa
-        </span>
-      </div>
-    </motion.button>
-  );
 }
 
 // ─── Mesa Tile ────────────────────────────────────────────────────────────────
@@ -363,7 +178,7 @@ function MesaTile({ mesa, onOpen }) {
       />
 
       {/* Pulse dot */}
-      {(isSuc || mesa.estado === "reservada") && (
+      {(isSuc || mesa.estado === "reserva") && (
         <span className="absolute top-3 right-3 flex h-2 w-2">
           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
           <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
@@ -399,16 +214,6 @@ function MesaTile({ mesa, onOpen }) {
               </div>
             </>
           )}
-          {mesa.estado === "reservada" && mesa.reserva?.activa && (
-            <>
-              <span className="text-[9px] font-bold text-blue-400 truncate">
-                {mesa.reserva.nombre}
-              </span>
-              <span className="text-[8px] text-slate-500 flex items-center gap-1">
-                <Clock size={7} /> {mesa.reserva.hora}
-              </span>
-            </>
-          )}
           {isSuc && (
             <span className="text-[9px] font-black text-red-500 uppercase tracking-wide">
               Limpiar
@@ -431,7 +236,15 @@ function MesaTile({ mesa, onOpen }) {
 }
 
 // ─── Panel Body ───────────────────────────────────────────────────────────────
-function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
+function PanelBody({
+  mesa,
+  onUpdate,
+  onDelete,
+  onClose,
+  onToast,
+  products = [],
+}) {
+  const navigate = useNavigate();
   const [tab, setTab] = useState("comanda");
   const [busqueda, setBusqueda] = useState("");
   const [editNota, setEditNota] = useState(false);
@@ -452,28 +265,36 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
   const timer = useTimer(mesa.startTime);
   const cfg = ESTADO[mesa.estado];
   const total = calc(mesa.comanda);
-  const menuFiltrado = MENU_ITEMS.filter((i) =>
-    i.nombre.toLowerCase().includes(busqueda.toLowerCase()),
+  const menuFiltrado = products.filter(
+    (i) =>
+      i.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+      i.name.toLowerCase().includes(busqueda.toLowerCase()),
   );
-  const categorias = [...new Set(menuFiltrado.map((i) => i.categoria))];
+  const categorias = [
+    ...new Set(menuFiltrado.map((i) => i.category || "otros")),
+  ];
 
   const addItem = (menuItem) => {
-    const existing = mesa.comanda.find((c) => c.item === menuItem.nombre);
+    const existing = mesa.comanda.find(
+      (c) => c.item === (menuItem.nombre || menuItem.name),
+    );
     const newComanda = existing
       ? mesa.comanda.map((c) =>
-          c.item === menuItem.nombre ? { ...c, qty: c.qty + 1 } : c,
+          c.item === (menuItem.nombre || menuItem.name)
+            ? { ...c, qty: c.qty + 1 }
+            : c,
         )
       : [
           ...mesa.comanda,
           {
             id: Date.now(),
-            item: menuItem.nombre,
-            precio: menuItem.precio,
+            item: menuItem.nombre || menuItem.name,
+            precio: menuItem.precio || menuItem.price,
             qty: 1,
           },
         ];
     onUpdate({ ...mesa, comanda: newComanda, total: calc(newComanda) });
-    onToast(`✓ ${menuItem.nombre}`);
+    onToast(`✓ ${menuItem.nombre || menuItem.name}`);
   };
 
   const changeQty = (id, delta) => {
@@ -489,14 +310,17 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
   };
 
   const handleEstado = (s) => {
-    if (s === "ocupada")
+    if (s === "ocupada") {
+      // Sentar: pasar de reserva o vacío a ocupada
       onUpdate({
         ...mesa,
         estado: s,
         startTime: Date.now(),
-        personas: Math.max(personas, 1),
+        personas: mesa.reserva?.personas || Math.max(personas, 1),
       });
-    else if (s === "libre") {
+      onToast(`✓ Clientes sentados en mesa ${mesa.numero}`);
+    } else if (s === "sucio") {
+      // Desocupar: mesa termina de comer, ahora está sucia
       onUpdate({
         ...mesa,
         estado: s,
@@ -506,33 +330,45 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
         total: 0,
         nota: "",
       });
-      onToast("Mesa liberada");
+      onToast(`Mesa ${mesa.numero} lista para limpiar`);
       onClose();
-    } else onUpdate({ ...mesa, estado: s, startTime: null, personas: 0 });
+    } else if (s === "") {
+      // Limpia: mesa está limpia y cerrada, lista para próxima orden
+      onUpdate({
+        ...mesa,
+        estado: "",
+        startTime: null,
+        personas: 0,
+        comanda: [],
+        total: 0,
+        nota: "",
+        reserva: {
+          nombre: "",
+          telefono: "",
+          email: "",
+          hora: "",
+          personas: 0,
+          activa: false,
+        },
+      });
+      onToast(`✓ Mesa ${mesa.numero} limpia y lista`);
+      onClose();
+    }
   };
 
   const handleCobrar = () => {
     onToast(`💳 ${fmt(total)} cobrado — Mesa ${mesa.numero}`);
-    onUpdate({
-      ...mesa,
-      estado: "sucio",
-      startTime: null,
-      personas: 0,
-      comanda: [],
-      total: 0,
-      nota: "",
-    });
-    onClose();
+    handleEstado("sucio");
   };
 
   const handleCrearReserva = () => {
     if (!reservaNombre || !reservaTelefono || !reservaHora) {
-      onToast("⚠️ Completa los campos requeridos");
+      onToast("⚠️ Completa: nombre, teléfono, hora");
       return;
     }
     onUpdate({
       ...mesa,
-      estado: "reservada",
+      estado: "reserva",
       reserva: {
         nombre: reservaNombre,
         telefono: reservaTelefono,
@@ -543,13 +379,13 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
       },
     });
     setShowReservaForm(false);
-    onToast(`✓ Reserva creada para ${reservaNombre}`);
+    onToast(`✓ Reserva para ${reservaNombre} a las ${reservaHora}`);
   };
 
   const handleCancelarReserva = () => {
     onUpdate({
       ...mesa,
-      estado: "libre",
+      estado: "",
       reserva: {
         nombre: "",
         telefono: "",
@@ -565,15 +401,46 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
 
   const handleConvertirReservaEnClientes = () => {
     if (mesa.reserva?.activa) {
-      onUpdate({
-        ...mesa,
-        estado: "ocupada",
-        personas: mesa.reserva.personas,
-        startTime: Date.now(),
-        reserva: { ...mesa.reserva, activa: false },
-      });
-      onToast(`✓ ${mesa.reserva.nombre} sentado`);
+      handleEstado("ocupada");
     }
+  };
+
+  const handleEditarEnPOS = () => {
+    const payload = {
+      mesa: String(mesa.numero),
+      numero: String(mesa.numero),
+      estado: mesa.estado,
+      orderId: mesa.orderId,
+      customerName: mesa.reserva?.nombre || "",
+      customerPhone: mesa.reserva?.telefono || "",
+      customerPhoneRaw: mesa.reserva?.telefono || "",
+      notes: mesa.nota || mesa.reserva?.notas || "",
+      nota: mesa.nota || mesa.reserva?.notas || "",
+      personas: mesa.personas || mesa.reserva?.personas || 1,
+      fechaReserva: mesa.reserva?.fecha || "",
+      horaReserva: mesa.reserva?.hora || "",
+      comanda: (mesa.comanda || []).map((item) => ({
+        id: item.id,
+        cartId: item.id,
+        productId: item.id,
+        qty: Number(item.qty || 1),
+        name: item.item,
+        price: Number(item.precio || 0),
+        note: item.notes || "",
+        notes: item.notes || "",
+        optionNames: Array.isArray(item.options) ? item.options : [],
+        options: Array.isArray(item.options) ? item.options : [],
+        selectedOptions: Array.isArray(item.options)
+          ? item.options.map((opt, index) => ({
+              id: `${item.id}-${index}`,
+              nombre: String(opt),
+              precio_extra: 0,
+            }))
+          : [],
+      })),
+    };
+
+    navigate("/pos", { state: { mesaEdit: payload } });
   };
 
   return (
@@ -612,7 +479,8 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
         </div>
 
         <div className="flex gap-1.5 mt-3 flex-wrap">
-          {mesa.estado !== "ocupada" && (
+          {/* BOTÓN 1: Sentar (de reserva o vacío → ocupada) */}
+          {(mesa.estado === "reserva" || mesa.estado === "") && (
             <button
               onClick={() => handleEstado("ocupada")}
               className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
@@ -625,19 +493,7 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
               <Users size={9} /> Sentar
             </button>
           )}
-          {mesa.estado === "sucio" && (
-            <button
-              onClick={() => handleEstado("libre")}
-              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-              style={{
-                background: "#22c55e15",
-                borderColor: "#22c55e40",
-                color: "#22c55e",
-              }}
-            >
-              <CheckCircle2 size={9} /> Limpia
-            </button>
-          )}
+          {/* BOTÓN 2: Desocupar (ocupada → sucio) */}
           {mesa.estado === "ocupada" && (
             <button
               onClick={() => handleEstado("sucio")}
@@ -651,7 +507,36 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
               <RotateCcw size={9} /> Desocupar
             </button>
           )}
-          {mesa.estado === "libre" && (
+          {/* BOTÓN 3: Limpia (sucio → vacío) */}
+          {mesa.estado === "sucio" && (
+            <button
+              onClick={() => handleEstado("")}
+              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+              style={{
+                background: "#22c55e15",
+                borderColor: "#22c55e40",
+                color: "#22c55e",
+              }}
+            >
+              <CheckCircle2 size={9} /> Limpia
+            </button>
+          )}
+          {/* RESERVA: Botones para reserva */}
+          {mesa.estado === "reserva" && (
+            <button
+              onClick={handleCancelarReserva}
+              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+              style={{
+                background: "#ef444415",
+                borderColor: "#ef444440",
+                color: "#ef4444",
+              }}
+            >
+              <X size={9} /> Cancelar Reserva
+            </button>
+          )}
+          {/* BOTÓN: Crear/Editar Reserva (solo si está vacío) */}
+          {mesa.estado === "" && (
             <button
               onClick={() => setShowReservaForm(true)}
               className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
@@ -661,34 +546,21 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
                 color: "#3b82f6",
               }}
             >
-              <Calendar size={9} /> Reservar
+              <Calendar size={9} /> Hacer Reserva
             </button>
           )}
-          {mesa.estado === "reservada" && (
-            <>
-              <button
-                onClick={handleConvertirReservaEnClientes}
-                className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-                style={{
-                  background: "#f9731615",
-                  borderColor: "#f9731640",
-                  color: "#f97316",
-                }}
-              >
-                <Users size={9} /> Sentar
-              </button>
-              <button
-                onClick={handleCancelarReserva}
-                className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-                style={{
-                  background: "#ef444415",
-                  borderColor: "#ef444440",
-                  color: "#ef4444",
-                }}
-              >
-                <X size={9} /> Cancelar
-              </button>
-            </>
+          {mesa.estado !== "" && (
+            <button
+              onClick={handleEditarEnPOS}
+              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+              style={{
+                background: "#8b5cf615",
+                borderColor: "#8b5cf640",
+                color: "#c4b5fd",
+              }}
+            >
+              <Edit3 size={9} /> Editar
+            </button>
           )}
           <button
             onClick={() => {
@@ -802,19 +674,19 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
                 </p>
                 <div className="space-y-1.5">
                   {menuFiltrado
-                    .filter((i) => i.categoria === cat)
+                    .filter((i) => (i.category || "otros") === cat)
                     .map((item) => (
                       <button
-                        key={item.nombre}
+                        key={item.id || item.nombre || item.name}
                         onClick={() => addItem(item)}
                         className="w-full flex items-center justify-between px-4 py-3.5 bg-white/3 active:bg-white/10 border border-white/6 rounded-2xl transition-all active:scale-[0.98] group text-left"
                       >
                         <span className="text-sm text-slate-400 group-hover:text-white transition-colors">
-                          {item.nombre}
+                          {item.nombre || item.name}
                         </span>
                         <div className="flex items-center gap-3">
                           <span className="text-[10px] text-slate-600">
-                            {fmt(item.precio)}
+                            {fmt(item.precio || item.price)}
                           </span>
                           <div className="w-6 h-6 rounded-full bg-primary-container group-hover:bg-success flex items-center justify-center transition-colors">
                             <Plus
@@ -845,6 +717,18 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
                   <p className="text-base font-black text-white flex items-center gap-2">
                     {mesa.reserva.nombre}
                   </p>
+
+                  {/* Notas de la reserva */}
+                  {mesa.reserva.notas && (
+                    <div className="bg-white/3 border border-white/5 rounded-xl p-2.5">
+                      <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mb-1">
+                        Notas
+                      </p>
+                      <p className="text-xs text-slate-300 whitespace-pre-wrap break-words">
+                        {mesa.reserva.notas}
+                      </p>
+                    </div>
+                  )}
 
                   {/* Acciones para el Teléfono */}
                   {mesa.reserva.telefono && (
@@ -1175,7 +1059,14 @@ function PanelBody({ mesa, onUpdate, onDelete, onClose, onToast }) {
 }
 
 // ─── Panel / Bottom Sheet (responsive) ───────────────────────────────────────
-function MesaPanel({ mesa, onClose, onUpdate, onDelete, onToast }) {
+function MesaPanel({
+  mesa,
+  onClose,
+  onUpdate,
+  onDelete,
+  onToast,
+  products = [],
+}) {
   return (
     <AnimatePresence>
       {mesa && (
@@ -1224,6 +1115,7 @@ function MesaPanel({ mesa, onClose, onUpdate, onDelete, onToast }) {
               onDelete={onDelete}
               onClose={onClose}
               onToast={onToast}
+              products={products}
             />
           </motion.div>
         </motion.div>
@@ -1238,64 +1130,230 @@ export default function MesasPOS() {
     useOutletContext();
   } catch (_) {}
 
-  const [mesas, setMesas] = useState(INITIAL_MESAS);
+  const { user } = useAuth();
+  const [mesas, setMesas] = useState([]);
+  const [products, setProducts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [businessId, setBusinessId] = useState(null);
   const toastRef = useRef(null);
 
-  // Load active tables from database on mount
-  useEffect(() => {
-    const loadMesas = async () => {
-      try {
-        // Get all active dine_in orders
-        const { data: ordenes, error } = await supabase
-          .from("orders")
-          .select(
-            "id, order_number, status, mesa, total, created_at, customer_name, customer_phone, notes",
-          )
-          .eq("order_type", "dine_in")
-          .in("status", ["pending", "confirmed", "preparing"]);
+  // Cargar datos de Supabase
+  const loadProductsFromDB = useCallback(async (businessIdParam) => {
+    if (!businessIdParam) return;
 
-        if (error) {
-          console.error("Error cargando mesas:", error);
-          return;
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select(
+          "id,name,description,price,stock,image_url,is_active,is_sold_out,category_id,order_index,created_at",
+        )
+        .eq("business_id", businessIdParam)
+        .eq("is_active", true)
+        .order("order_index", { ascending: true })
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Error cargando productos:", error);
+        setProducts([]);
+        return;
+      }
+
+      let optionGroupsByProduct = {};
+      if ((data || []).length > 0) {
+        const productIds = data.map((item) => item.id);
+        const [groupsRes, itemsRes] = await Promise.all([
+          supabase
+            .from("product_option_groups")
+            .select("*")
+            .in("product_id", productIds)
+            .order("order_index", { ascending: true }),
+          supabase
+            .from("products_items")
+            .select("*")
+            .in("product_id", productIds)
+            .order("order_index", { ascending: true }),
+        ]);
+
+        if (itemsRes.error) {
+          console.error("Error cargando opciones de producto:", itemsRes.error);
+        }
+        if (groupsRes.error) {
+          console.error("Error cargando grupos de opciones:", groupsRes.error);
         }
 
-        // Transform orders into table format
-        const mesasActivas = (ordenes || []).map((orden) => ({
-          id: orden.mesa || orden.id,
-          numero: String(orden.mesa || orden.id),
-          estado: orden.status === "pending" ? "ocupada" : "ocupada",
-          personas: 0,
+        const itemsByGroup = {};
+        (itemsRes.data || []).forEach((item) => {
+          const groupId = item.option_group_id;
+          if (!groupId) return;
+          itemsByGroup[groupId] = itemsByGroup[groupId] || [];
+          itemsByGroup[groupId].push(item);
+        });
+
+        const groupsByProduct = {};
+        (groupsRes.data || []).forEach((group) => {
+          const productId = group.product_id;
+          groupsByProduct[productId] = groupsByProduct[productId] || [];
+          groupsByProduct[productId].push(
+            normalizeOptionGroup(group, itemsByGroup[group.id] || []),
+          );
+        });
+
+        optionGroupsByProduct = groupsByProduct;
+      }
+
+      setProducts(
+        (data || []).map((item) => ({
+          id: item.id,
+          productId: item.id,
+          nombre: item.name,
+          name: item.name,
+          category: item.category_id || "otros",
+          precio: Number(item.price || 0),
+          price: Number(item.price || 0),
+          description: item.description || "",
+          image_url: item.image_url || "",
+          optionGroups: optionGroupsByProduct[item.id] || [],
+          stock: Number(item.stock || 0),
+        })),
+      );
+    } catch (err) {
+      console.error("Error en loadProductsFromDB:", err);
+      setProducts([]);
+    }
+  }, []);
+
+  // Cargar datos de Supabase
+  const loadMesasFromDB = useCallback(async () => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // Obtener business_id del usuario
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("business_id")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profileError || !profile?.business_id) {
+        console.error("Error obteniendo negocio:", profileError);
+        setLoading(false);
+        return;
+      }
+
+      setBusinessId(profile.business_id);
+
+      // Cargar productos del negocio
+      await loadProductsFromDB(profile.business_id);
+
+      // Cargar órdenes de tipo "mesa" activas
+      const { data: ordenes, error: ordenesError } = await supabase
+        .from("orders")
+        .select(
+          `id, 
+          order_number, 
+          status, 
+          mesa, 
+          total, 
+          created_at, 
+          customer_name, 
+          customer_phone, 
+          notes,
+          table_status,
+          order_items(id, product_name, quantity, unit_price, subtotal, options, notes)`,
+        )
+        .eq("business_id", profile.business_id)
+        .eq("order_type", "table")
+        .in("status", ["pending", "confirmed", "preparing", "ready"])
+        .order("created_at", { ascending: false });
+
+      if (ordenesError) {
+        console.error("Error cargando órdenes de mesa:", ordenesError);
+        setLoading(false);
+        return;
+      }
+
+      // Transformar órdenes en mesas
+      const mesasOrdenes = (ordenes || [])
+        .filter((o) => o.mesa) // Solo las que tienen número de mesa
+        .map((orden) => ({
+          id: `order-${orden.id}`,
+          orderId: orden.id,
+          numero: String(orden.mesa),
+          estado: mapOrderStatusToTableState(orden.status, orden.table_status),
+          personas: Number(orden.personas) || 0,
           startTime: new Date(orden.created_at).getTime(),
           total: parseFloat(orden.total) || 0,
-          comanda: [],
+          comanda: (orden.order_items || []).map((item) => ({
+            id: item.id,
+            item: item.product_name || "Producto",
+            precio: parseFloat(item.unit_price) || 0,
+            qty: parseInt(item.quantity) || 1,
+            subtotal: parseFloat(item.subtotal) || 0,
+            options: item.options || [],
+            notes: item.notes || "",
+          })),
           nota: orden.notes || "",
           reserva: {
             nombre: orden.customer_name || "",
             telefono: orden.customer_phone || "",
             email: "",
-            hora: "",
-            personas: 0,
-            activa: false,
+            hora: orden.hora_reserva || "",
+            personas: Number(orden.personas) || 0,
+            activa: orden.table_status === "reserva",
+            notas: orden.notes || "",
           },
-        }));
+        }))
+        // Excluir mesas con estado vacío (ya limpias, proceso terminado)
+        .filter((mesa) => mesa.estado !== "")
+        // Ordenar por número de mesa
+        .sort((a, b) => parseInt(a.numero) - parseInt(b.numero));
 
-        // Merge active tables with default free tables
-        const mesasLibresPorDefecto = INITIAL_MESAS.filter(
-          (m) => !mesasActivas.find((a) => a.numero === m.numero),
-        );
+      // Solo mostrar mesas con órdenes activas (sin vacías/limpias)
+      setMesas(mesasOrdenes);
+    } catch (err) {
+      console.error("Error en loadMesas:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [user?.id]);
 
-        setMesas([...mesasActivas, ...mesasLibresPorDefecto]);
-      } catch (err) {
-        console.error("Error en loadMesas:", err);
-      }
+  useEffect(() => {
+    loadMesasFromDB();
+  }, [loadMesasFromDB]);
+
+  // Suscribirse a cambios en órdenes
+  useEffect(() => {
+    if (!user?.id || !businessId) return;
+
+    const subscription = supabase
+      .channel(`orders-mesas-${businessId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "orders",
+          filter: `business_id=eq.${businessId}`,
+        },
+        () => {
+          loadMesasFromDB();
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(subscription);
     };
-
-    loadMesas();
-  }, []);
+  }, [user?.id, businessId, loadMesasFromDB]);
 
   // Keep panel in sync with state changes
   useEffect(() => {
@@ -1311,25 +1369,46 @@ export default function MesasPOS() {
     toastRef.current = setTimeout(() => setToast(null), 2200);
   }, []);
 
-  const updateMesa = useCallback((updated) => {
-    setMesas((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-  }, []);
+  // Actualizar mesa y sincronizar con Supabase
+  const updateMesa = useCallback(
+    async (updated) => {
+      // Actualizar estado local
+      setMesas((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+
+      // Si tiene orderId, actualizar en Supabase
+      if (updated.orderId && businessId) {
+        try {
+          const { error } = await supabase
+            .from("orders")
+            .update({
+              table_status: updated.estado,
+              notes: updated.nota,
+              status: mapTableStateToOrderStatus(updated.estado),
+            })
+            .eq("id", updated.orderId)
+            .eq("business_id", businessId);
+
+          if (error) {
+            console.error("Error actualizando mesa en Supabase:", error);
+            showToast("⚠️ Error guardando cambios");
+          }
+        } catch (err) {
+          console.error("Error en updateMesa:", err);
+          showToast("⚠️ Error guardando cambios");
+        }
+      }
+    },
+    [businessId, showToast],
+  );
 
   const deleteMesa = useCallback((id) => {
     setMesas((prev) => prev.filter((m) => m.id !== id));
   }, []);
 
-  const addMesa = () => {
-    const m = newMesa();
-    setMesas((prev) => [...prev, m]);
-    showToast(`Mesa ${m.numero} creada`);
-  };
-
   const kpis = {
     total: mesas.length,
-    libres: mesas.filter((m) => m.estado === "libre").length,
     ocupadas: mesas.filter((m) => m.estado === "ocupada").length,
-    reservadas: mesas.filter((m) => m.estado === "reservada").length,
+    reservas: mesas.filter((m) => m.estado === "reserva").length,
     sucias: mesas.filter((m) => m.estado === "sucio").length,
   };
 
@@ -1358,13 +1437,6 @@ export default function MesasPOS() {
               activeBorder: "border-white/40",
             },
             {
-              id: "libre",
-              label: "Libres",
-              value: kpis.libres,
-              color: "text-gray-400",
-              activeBorder: "border-gray-500/50",
-            },
-            {
               id: "ocupada",
               label: "Ocupadas",
               value: kpis.ocupadas,
@@ -1372,15 +1444,15 @@ export default function MesasPOS() {
               activeBorder: "border-orange-500/50",
             },
             {
-              id: "reservada",
+              id: "reserva",
               label: "Reservas",
-              value: kpis.reservadas,
+              value: kpis.reservas,
               color: "text-blue-400",
               activeBorder: "border-blue-500/50",
             },
             {
               id: "sucio",
-              label: "Limpiar",
+              label: "Por Limpiar",
               value: kpis.sucias,
               color: "text-red-400",
               activeBorder: "border-red-500/50",
@@ -1440,7 +1512,18 @@ export default function MesasPOS() {
 
       {/* ── Grid ── */}
       <div className="flex-1 p-4 overflow-y-auto">
-        {visible.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-24 text-slate-700">
+            <motion.div
+              animate={{ rotate: 360 }}
+              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+              className="mb-4"
+            >
+              <ChefHat size={32} className="opacity-50" />
+            </motion.div>
+            <p className="font-bold text-sm">Cargando mesas...</p>
+          </div>
+        ) : visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-slate-700">
             <Search size={32} className="mb-3 opacity-30" />
             <p className="font-bold text-sm">Sin mesas</p>
@@ -1455,7 +1538,6 @@ export default function MesasPOS() {
             {visible.map((mesa) => (
               <MesaTile key={mesa.id} mesa={mesa} onOpen={setSelected} />
             ))}
-            <AddMesaTile onAdd={addMesa} />
           </div>
         )}
       </div>
@@ -1467,6 +1549,7 @@ export default function MesasPOS() {
         onUpdate={updateMesa}
         onDelete={deleteMesa}
         onToast={showToast}
+        products={products}
       />
 
       {/* ── Toast ── */}

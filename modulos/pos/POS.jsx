@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Trash2, Pencil, X } from "lucide-react";
 import SplitPaymentModal from "./SplitPaymentModal";
 import { supabase } from "../../src/lib/supabaseClient";
@@ -351,6 +352,7 @@ const hasUsableProductImage = (value) => {
 
 const POS = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
@@ -590,16 +592,175 @@ const POS = () => {
   const [customerName, setCustomerName] = useState("");
   const [customerNumber, setCustomerNumber] = useState("");
   const [selectedTable, setSelectedTable] = useState("");
+  const [tableOccupancyWarning, setTableOccupancyWarning] = useState(null);
+  const [showReservationModal, setShowReservationModal] = useState(false);
+  const [reservationData, setReservationData] = useState({
+    nombre: "",
+    telefono: "",
+    fecha: "",
+    hora: "",
+    personas: "1",
+    notas: "",
+    mesa: "",
+  });
   const [referencePoint, setReferencePoint] = useState("");
   const [locationText, setLocationText] = useState("");
   const [moneyPaid, setMoneyPaid] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
+
+  useEffect(() => {
+    const editMesa = location.state?.mesaEdit;
+    if (!editMesa) return;
+
+    const nextTable = String(editMesa.mesa || editMesa.numero || "");
+    const nextCustomerName = editMesa.customerName || editMesa.nombre || "";
+    const nextCustomerPhone = editMesa.customerPhone || editMesa.telefono || "";
+    const nextCustomerNumber = editMesa.customerNumber || nextCustomerPhone;
+    const orderNotesValue = editMesa.notes || editMesa.nota || "";
+
+    setDeliveryMethod("table");
+    setSelectedTable(nextTable);
+    setCustomerName(nextCustomerName);
+    setCustomerNumber(nextCustomerNumber);
+    setOrderNotes(orderNotesValue);
+    setReservationData({
+      nombre: nextCustomerName,
+      telefono: nextCustomerPhone,
+      fecha: editMesa.fechaReserva || "",
+      hora: editMesa.horaReserva || "",
+      personas: String(editMesa.personas || 1),
+      notas: orderNotesValue,
+      mesa: nextTable,
+    });
+
+    if (Array.isArray(editMesa.comanda) && editMesa.comanda.length > 0) {
+      setCart(
+        editMesa.comanda.map((item, index) => ({
+          cartId: item.cartId || item.id || `${item.name || "item"}-${index}`,
+          productId: item.productId || item.id || index,
+          id: item.productId || item.id || index,
+          qty: Number(item.qty || 1),
+          name: item.name || item.item || "Producto",
+          price: Number(item.price || item.precio || 0),
+          note: item.note || item.notes || "",
+          notas: item.note || item.notes || "",
+          optionNames: item.optionNames || item.options || [],
+          selectedOptions: item.selectedOptions || [],
+          options: item.selectedOptions || item.options || [],
+          image_url: "",
+        })),
+      );
+    }
+  }, [location.state]);
 
   const normalizePhoneNumber = (value) => {
     if (!value) return "";
     const cleaned = String(value).replace(/\D/g, "");
     return cleaned;
   };
+
+  // Verificar si una mesa está ocupada o reservada en la ventana de bloqueo
+  const checkTableOccupancy = async (tableNumber) => {
+    if (!tableNumber || !businessId) {
+      setTableOccupancyWarning(null);
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("orders")
+        .select(
+          "id, table_status, customer_name, fecha_reserva, hora_reserva, personas",
+        )
+        .eq("business_id", businessId)
+        .eq("order_type", "table")
+        .eq("mesa", Number(tableNumber))
+        .in("table_status", ["ocupada", "reserva"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error("Error verificando mesa:", error);
+        setTableOccupancyWarning(null);
+        return;
+      }
+
+      const activeOrder = Array.isArray(data) ? data[0] : data;
+
+      if (!activeOrder) {
+        setTableOccupancyWarning(null);
+        return;
+      }
+
+      if (activeOrder.table_status === "ocupada") {
+        setTableOccupancyWarning({
+          occupied: true,
+          message:
+            "⚠️ Esta mesa está ocupada actualmente. Selecciona otra mesa.",
+        });
+        return;
+      }
+
+      const fechaReserva = activeOrder.fecha_reserva;
+      const horaReserva = activeOrder.hora_reserva;
+
+      if (!fechaReserva || !horaReserva) {
+        setTableOccupancyWarning({
+          occupied: true,
+          message: "⚠️ Esta mesa está reservada. Selecciona otra mesa.",
+        });
+        return;
+      }
+
+      const reservaDate = new Date(`${fechaReserva}T${horaReserva}`);
+      const reservaInicioBloqueo = new Date(
+        reservaDate.getTime() - 60 * 60 * 1000,
+      );
+      const reservaFinBloqueo = new Date(
+        reservaDate.getTime() + 4 * 60 * 60 * 1000,
+      );
+      const ahora = new Date();
+
+      const estaEnVentanaReserva =
+        ahora >= reservaInicioBloqueo && ahora <= reservaFinBloqueo;
+
+      if (estaEnVentanaReserva) {
+        const nombre = activeOrder.customer_name || "cliente";
+        const personas = activeOrder.personas || 1;
+        const fechaMostrar = new Date(
+          `${fechaReserva}T${horaReserva}`,
+        ).toLocaleString("es-ES", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        setTableOccupancyWarning({
+          occupied: true,
+          message: `⚠️ Mesa reservada para ${nombre} el ${fechaMostrar} (${personas} personas). No se pueden crear órdenes en esta mesa durante la reserva y 1 hora antes.`,
+        });
+        return;
+      }
+
+      setTableOccupancyWarning(null);
+    } catch (err) {
+      console.error("Error en checkTableOccupancy:", err);
+      setTableOccupancyWarning(null);
+    }
+  };
+
+  const isEditingTableOrder = Boolean(location.state?.mesaEdit);
+
+  // Cuando cambia selectedTable, verificar ocupancia
+  useEffect(() => {
+    if (selectedTable && deliveryMethod === "table" && !isEditingTableOrder) {
+      checkTableOccupancy(selectedTable);
+    } else {
+      setTableOccupancyWarning(null);
+    }
+  }, [selectedTable, deliveryMethod, businessId, isEditingTableOrder]);
 
   // Función para autorellenar campos de entrega
   const autoFillDeliveryFields = () => {
@@ -1005,6 +1166,9 @@ const POS = () => {
     if (deliveryMethod === "table" && !selectedTable.trim()) {
       errors.push("Seleccionar número de mesa");
     }
+    if (deliveryMethod === "table" && tableOccupancyWarning?.occupied) {
+      errors.push("Mesa ocupada - Selecciona otra mesa");
+    }
     if (
       deliveryMethod === "point" &&
       !(referencePoint?.trim() || locationText?.trim())
@@ -1025,6 +1189,239 @@ const POS = () => {
       errors.push("Agregar al menos una división de pago");
     }
     return errors;
+  };
+
+  // Abrir modal de reserva
+  const abrirModalReserva = () => {
+    if (!selectedTable.trim()) {
+      addToast("Seleccionar número de mesa", "error");
+      return;
+    }
+
+    setReservationData({
+      nombre: customerName || "",
+      telefono: customerNumber || "",
+      fecha: "",
+      hora: "",
+      personas: "1",
+      notas: "",
+      mesa: selectedTable,
+    });
+    setShowReservationModal(true);
+  };
+
+  const canSubmitReservation =
+    reservationData.nombre.trim() &&
+    reservationData.telefono.trim() &&
+    reservationData.fecha.trim() &&
+    reservationData.hora.trim() &&
+    reservationData.personas &&
+    Number(reservationData.personas) >= 1;
+
+  // Crear reserva con datos del modal
+  const crearReserva = async () => {
+    if (!reservationData.nombre.trim()) {
+      addToast("Ingresar nombre del cliente", "error");
+      return;
+    }
+    if (!reservationData.telefono.trim()) {
+      addToast("Ingresar número del cliente", "error");
+      return;
+    }
+    if (!reservationData.fecha.trim()) {
+      addToast("Seleccionar fecha de la reserva", "error");
+      return;
+    }
+    if (!reservationData.hora.trim()) {
+      addToast("Seleccionar hora de la reserva", "error");
+      return;
+    }
+    if (!reservationData.personas || Number(reservationData.personas) < 1) {
+      addToast("Ingresar cantidad de personas", "error");
+      return;
+    }
+    if (tableOccupancyWarning?.occupied) {
+      addToast("Mesa ocupada - Selecciona otra mesa", "error");
+      return;
+    }
+
+    if (!businessId) return;
+
+    const fechaReserva = reservationData.fecha; // "2026-04-02"
+    const horaReserva = reservationData.hora || "00:00"; // "11:33"
+
+    const orderNumber = generarNumeroPedido(reservationData.telefono);
+    const trackingToken = generarUuid();
+
+    const orderPayload = {
+      business_id: businessId,
+      status: "pending",
+      total: 0,
+      order_number: orderNumber,
+      updated_at: new Date().toISOString(),
+      scheduled_at: null,
+      delivery_address: null,
+      delivery_instructions: null,
+      delivery_fee: 0,
+      tax_amount: 0,
+      discount_amount: 0,
+      tip_amount: 0,
+      payment_method: null,
+      payment_status: "pending",
+      order_type: "table",
+      customer_name: reservationData.nombre || null,
+      customer_phone: reservationData.telefono || null,
+      currency: "COP",
+      mesa: Number(reservationData.mesa),
+      table_status: "reserva",
+      punto: null,
+      personas: Number(reservationData.personas),
+      fecha_reserva: fechaReserva,
+      hora_reserva: horaReserva,
+      notes: reservationData.notas?.trim() || null,
+      metadata: {
+        tiendaSlug: null,
+        canal: "pos",
+        createdFrom: "pos_app",
+        metodoEntrega: "mesa",
+        tracking_token: trackingToken,
+        business_whatsapp: normalizeWhatsappNumber("") || null,
+        payment_methods: [],
+        cliente: {
+          nombre: reservationData.nombre || null,
+          telefono: reservationData.telefono || null,
+          direccion: null,
+          referencia: null,
+        },
+        puntoRetiro: null,
+        reserva_type: "desde_pos",
+      },
+    };
+
+    try {
+      console.log("DEBUG crearReserva - orderPayload:", orderPayload);
+      const { error } = await supabase.rpc("create_order", {
+        p_order: orderPayload,
+        p_items: [],
+      });
+
+      if (error) {
+        console.error("Error creando reserva:", error);
+        addToast("Error al crear la reserva", "error");
+        return;
+      }
+
+      addToast(`✓ Reserva creada para ${reservationData.nombre}`, "success");
+
+      // Limpiar modal y campos
+      setShowReservationModal(false);
+      setReservationData({
+        nombre: "",
+        telefono: "",
+        fecha: "",
+        hora: "",
+        personas: "1",
+        notas: "",
+        mesa: "",
+      });
+    } catch (err) {
+      console.error("Error en crearReserva:", err);
+      addToast("Error al crear la reserva", "error");
+    }
+  };
+
+  // Crear reserva (antigua - se reemplaza por modal)
+  const crearReservaOld = async () => {
+    if (!selectedTable.trim()) {
+      addToast("Seleccionar número de mesa", "error");
+      return;
+    }
+    if (!customerName.trim()) {
+      addToast("Ingresar nombre del cliente", "error");
+      return;
+    }
+    if (!customerNumber.trim()) {
+      addToast("Ingresar número del cliente", "error");
+      return;
+    }
+    if (tableOccupancyWarning?.occupied) {
+      addToast("Mesa ocupada - Selecciona otra mesa", "error");
+      return;
+    }
+
+    if (!businessId) return;
+
+    const orderNumber = generarNumeroPedido(customerNumber);
+    const trackingToken = generarUuid();
+
+    const orderPayload = {
+      business_id: businessId,
+      status: "pending",
+      total: 0, // Reserva sin total
+      order_number: orderNumber,
+      updated_at: new Date().toISOString(),
+      scheduled_at: null,
+      delivery_address: null,
+      delivery_instructions: null,
+      delivery_fee: 0,
+      tax_amount: 0,
+      discount_amount: 0,
+      tip_amount: 0,
+      payment_method: null,
+      payment_status: "pending",
+      order_type: "table",
+      customer_name: customerName || null,
+      customer_phone: customerNumber || null,
+      currency: "COP",
+      mesa: Number(selectedTable),
+      table_status: "reserva", // ← Estado de RESERVA
+      punto: null,
+      notes: orderNotes?.trim() || null,
+      metadata: {
+        tiendaSlug: null,
+        canal: "pos",
+        createdFrom: "pos_app",
+        metodoEntrega: "mesa",
+        tracking_token: trackingToken,
+        business_whatsapp: normalizeWhatsappNumber("") || null,
+        payment_methods: [],
+        cliente: {
+          nombre: customerName || null,
+          telefono: customerNumber || null,
+          direccion: null,
+          referencia: null,
+        },
+        puntoRetiro: null,
+        reserva_type: "desde_pos",
+      },
+    };
+
+    try {
+      console.log("DEBUG crearReserva - orderPayload:", orderPayload);
+      const { error } = await supabase.rpc("create_order", {
+        p_order: orderPayload,
+        p_items: [], // Sin items, es solo una reserva
+      });
+
+      if (error) {
+        console.error("Error creando reserva:", error);
+        addToast("Error al crear la reserva", "error");
+        return;
+      }
+
+      addToast(`✓ Reserva creada para mesa ${selectedTable}`, "success");
+
+      // Limpiar campos de reserva pero mantener mesa seleccionada
+      setCart([]);
+      setOrderNotes("");
+      setCustomerName("");
+      setCustomerNumber("");
+      setPaymentMethod("");
+      setSplitPayments([{ method: "", amount: "" }]);
+    } catch (err) {
+      console.error("Error en crearReserva:", err);
+      addToast("Error al crear la reserva", "error");
+    }
   };
 
   const crearPedidoPOS = async () => {
@@ -1150,6 +1547,7 @@ const POS = () => {
             ? Number(selectedTable)
             : null
           : null,
+      table_status: deliveryMethod === "table" ? "ocupada" : null,
       punto:
         deliveryMethod === "point"
           ? referencePoint?.trim() || locationText?.trim() || null
@@ -1710,7 +2108,7 @@ const POS = () => {
                           className="flex h-full w-full items-center justify-center bg-neutral-200 px-3"
                           aria-label={product.name}
                         >
-                          <span className="truncate text-center text-3xl font-black text-neutral-500">
+                          <span className="truncate text-center text-2xl text-neutral-500">
                             {product.name}
                           </span>
                         </div>
@@ -1901,6 +2299,13 @@ const POS = () => {
                   size="md"
                   inputRef={tableInputRef}
                 />
+                {tableOccupancyWarning?.occupied && (
+                  <div className="mt-2 p-3 rounded-lg bg-red-500/15 border border-red-500/50 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <p className="text-xs font-bold text-red-600 leading-relaxed">
+                      {tableOccupancyWarning.message}
+                    </p>
+                  </div>
+                )}
                 <div className="grid grid-cols-5 gap-1 mt-2">
                   {Array.from({ length: 9 }, (_, i) => i + 1).map((num) => (
                     <button
@@ -1925,6 +2330,20 @@ const POS = () => {
                     </span>
                   </button>
                 </div>
+                {selectedTable && !tableOccupancyWarning?.occupied && (
+                  <div className="mt-3 space-y-2">
+                    <button
+                      onClick={abrirModalReserva}
+                      className="w-full py-2.5 px-3 rounded-lg border-2 border-dashed border-blue-400/80 hover:border-blue-400 bg-blue-500/5 hover:bg-blue-500/10 text-blue-300 hover:text-blue-200 font-bold text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2"
+                      title="Crear una reserva para esta mesa"
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        event_available
+                      </span>
+                      Hacer Reserva en Mesa {selectedTable}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2983,6 +3402,176 @@ const POS = () => {
               >
                 <span className="material-symbols-outlined">done</span>
                 <span>Listo</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal de Reserva */}
+      {showReservationModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background border border-outline rounded-2xl max-w-md w-full max-h-[88vh] p-6 flex flex-col animate-in fade-in slide-in-from-bottom-4 duration-300 overflow-hidden">
+            <div className="flex items-center justify-between gap-3 mb-4 flex-shrink-0">
+              <h2 className="text-xl font-black text-white">Crear Reserva</h2>
+              <div className="rounded-full border border-blue-500/50 bg-blue-500/10 px-3 py-1 text-xs font-black uppercase tracking-widest text-blue-300">
+                Mesa {reservationData.mesa || selectedTable || "-"}
+              </div>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto pr-1 flex-1">
+              {/* Nombre */}
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">
+                  Nombre del Cliente
+                </label>
+                <input
+                  type="text"
+                  value={reservationData.nombre}
+                  onChange={(e) =>
+                    setReservationData({
+                      ...reservationData,
+                      nombre: e.target.value,
+                    })
+                  }
+                  placeholder="Ej: Juan Pérez"
+                  className={`w-full bg-surface border rounded-lg p-3 text-on-surface focus:outline-none focus:border-primary transition-all ${
+                    !reservationData.nombre.trim()
+                      ? "border-red-500/40 bg-red-500/5"
+                      : "border-outline"
+                  }`}
+                />
+              </div>
+
+              {/* Teléfono */}
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">
+                  Teléfono
+                </label>
+                <input
+                  type="tel"
+                  value={reservationData.telefono}
+                  onChange={(e) =>
+                    setReservationData({
+                      ...reservationData,
+                      telefono: normalizePhoneNumber(e.target.value),
+                    })
+                  }
+                  placeholder="Ej: 3001234567"
+                  className={`w-full bg-surface border rounded-lg p-3 text-on-surface focus:outline-none focus:border-primary transition-all ${
+                    !reservationData.telefono.trim()
+                      ? "border-red-500/40 bg-red-500/5"
+                      : "border-outline"
+                  }`}
+                />
+              </div>
+
+              {/* Fecha */}
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">
+                  Fecha de la Reserva
+                </label>
+                <input
+                  type="date"
+                  value={reservationData.fecha}
+                  onChange={(e) =>
+                    setReservationData({
+                      ...reservationData,
+                      fecha: e.target.value,
+                    })
+                  }
+                  className={`w-full bg-surface border rounded-lg p-3 text-on-surface focus:outline-none focus:border-primary transition-all ${
+                    !reservationData.fecha.trim()
+                      ? "border-red-500/40 bg-red-500/5"
+                      : "border-outline"
+                  }`}
+                />
+              </div>
+
+              {/* Hora */}
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">
+                  Hora de la Reserva
+                </label>
+                <input
+                  type="time"
+                  value={reservationData.hora}
+                  onChange={(e) =>
+                    setReservationData({
+                      ...reservationData,
+                      hora: e.target.value,
+                    })
+                  }
+                  className={`w-full bg-surface border rounded-lg p-3 text-on-surface focus:outline-none focus:border-primary transition-all ${
+                    !reservationData.hora.trim()
+                      ? "border-red-500/40 bg-red-500/5"
+                      : "border-outline"
+                  }`}
+                />
+              </div>
+
+              {/* Cantidad de Personas */}
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">
+                  Cantidad de Personas
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={reservationData.personas}
+                  onChange={(e) =>
+                    setReservationData({
+                      ...reservationData,
+                      personas: e.target.value,
+                    })
+                  }
+                  placeholder="1"
+                  className={`w-full bg-surface border rounded-lg p-3 text-on-surface focus:outline-none focus:border-primary transition-all ${
+                    !reservationData.personas ||
+                    Number(reservationData.personas) < 1
+                      ? "border-red-500/40 bg-red-500/5"
+                      : "border-outline"
+                  }`}
+                />
+              </div>
+
+              {/* Notas */}
+              <div>
+                <label className="block text-xs font-bold text-on-surface-variant uppercase tracking-widest mb-2">
+                  Notas
+                </label>
+                <textarea
+                  rows="3"
+                  value={reservationData.notas}
+                  onChange={(e) =>
+                    setReservationData({
+                      ...reservationData,
+                      notas: e.target.value,
+                    })
+                  }
+                  placeholder="Ej: silla de bebé, cumpleañera, ventana, etc."
+                  className="w-full bg-surface border border-outline rounded-lg p-3 text-on-surface focus:outline-none focus:border-primary transition-all resize-none"
+                />
+              </div>
+            </div>
+
+            {/* Botones */}
+            <div className="flex gap-3 mt-6 flex-shrink-0">
+              <button
+                onClick={() => setShowReservationModal(false)}
+                className="flex-1 py-2.5 px-4 rounded-lg border border-outline text-on-surface-variant hover:text-on-surface hover:bg-surface-variant transition-all font-bold text-sm uppercase tracking-widest"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={crearReserva}
+                disabled={!canSubmitReservation}
+                className={`flex-1 py-2.5 px-4 rounded-lg font-bold text-sm uppercase tracking-widest transition-all ${
+                  canSubmitReservation
+                    ? "bg-blue-600 hover:bg-blue-700 text-white"
+                    : "bg-slate-500/30 text-slate-300 cursor-not-allowed opacity-70"
+                }`}
+              >
+                Crear Reserva
               </button>
             </div>
           </div>
