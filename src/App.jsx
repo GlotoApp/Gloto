@@ -21,6 +21,7 @@ const CierresEliminados = lazy(
   () => import("../modulos/pos/CierresEliminados"),
 );
 const Horarios = lazy(() => import("../modulos/pos/Horarios"));
+const Reservas = lazy(() => import("../modulos/pos/Reservas"));
 const Productos = lazy(() => import("../modulos/pos/Productos"));
 const Inventario = lazy(() => import("../modulos/pos/inventario"));
 const Estadisticas = lazy(() => import("../modulos/pos/Estadisticas"));
@@ -93,6 +94,7 @@ function App() {
               element={<CierresEliminados />}
             />
             <Route path="horarios" element={<Horarios />} />
+            <Route path="reservas" element={<Reservas />} />
             <Route path="estadisticas" element={<Estadisticas />} />
             <Route path="utilidades" element={<Utilidades />} />
             <Route path="planes" element={<Planes />} />

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Trash2, Pencil, X } from "lucide-react";
 import SplitPaymentModal from "./SplitPaymentModal";
 import { supabase } from "../../src/lib/supabaseClient";
@@ -345,6 +345,26 @@ const normalizeWhatsappNumber = (value) => {
   return `57${digits.replace(/^0+/, "")}`;
 };
 
+const normalizePaymentMethod = (value) => {
+  const method = String(value || "")
+    .trim()
+    .toLowerCase();
+  const aliases = {
+    cash: "efectivo",
+    efectivo: "efectivo",
+    card: "tarjeta",
+    tarjeta: "tarjeta",
+    credit_card: "tarjeta",
+    transfer: "transferencia",
+    transferencia: "transferencia",
+    bank_transfer: "transferencia",
+    split: "dividir",
+    dividido: "dividir",
+    dividir: "dividir",
+  };
+  return aliases[method] || method;
+};
+
 const hasUsableProductImage = (value) => {
   const imageUrl = String(value ?? "").trim();
   return imageUrl !== "" && !imageUrl.includes("placehold.co");
@@ -353,12 +373,17 @@ const hasUsableProductImage = (value) => {
 const POS = () => {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [cart, setCart] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [removingItems, setRemovingItems] = useState(new Set());
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showOrderSentModal, setShowOrderSentModal] = useState(false);
+  const [showUpdateSuccessModal, setShowUpdateSuccessModal] = useState(false);
+  const [showReservationSuccessModal, setShowReservationSuccessModal] =
+    useState(false);
+  const [createdReservation, setCreatedReservation] = useState(null);
   const [sentOrder, setSentOrder] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [optionModalOpen, setOptionModalOpen] = useState(false);
@@ -607,19 +632,122 @@ const POS = () => {
   const [locationText, setLocationText] = useState("");
   const [moneyPaid, setMoneyPaid] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
+  const [editingOrder, setEditingOrder] = useState(null);
+  const [editingSnapshot, setEditingSnapshot] = useState(null);
 
   useEffect(() => {
     const editMesa = location.state?.mesaEdit;
     if (!editMesa) return;
+    setMobilePanel("resumen");
 
     const nextTable = String(editMesa.mesa || editMesa.numero || "");
     const nextCustomerName = editMesa.customerName || editMesa.nombre || "";
     const nextCustomerPhone = editMesa.customerPhone || editMesa.telefono || "";
     const nextCustomerNumber = editMesa.customerNumber || nextCustomerPhone;
     const orderNotesValue = editMesa.notes || editMesa.nota || "";
+    const storedDeliveryMethod = normalizeDeliveryMethod(
+      editMesa.deliveryMethod ||
+        editMesa.metodoEntrega ||
+        editMesa.orderType ||
+        editMesa.order_type ||
+        "table",
+    );
+    const storedAddress = editMesa.address || editMesa.delivery_address || "";
+    const storedReferencePoint =
+      editMesa.referencePoint || editMesa.delivery_instructions || "";
+    const storedLocationText = editMesa.locationText || editMesa.punto || "";
 
-    setDeliveryMethod("table");
-    setSelectedTable(nextTable);
+    let existingPaymentMethods = editMesa.paymentMethods;
+    if (typeof existingPaymentMethods === "string") {
+      try {
+        existingPaymentMethods = JSON.parse(existingPaymentMethods);
+      } catch {
+        existingPaymentMethods = [];
+      }
+    }
+    existingPaymentMethods = Array.isArray(existingPaymentMethods)
+      ? existingPaymentMethods
+      : [];
+    const metadataPaymentMethods = existingPaymentMethods
+      .map((item) => ({
+        method: normalizePaymentMethod(item.metodo || item.method),
+        amount: Number(item.monto ?? item.amount ?? 0),
+      }))
+      .filter((item) => item.method);
+    const normalizedStoredPaymentMethod = normalizePaymentMethod(
+      editMesa.paymentMethod,
+    );
+    const existingPaymentMethod =
+      metadataPaymentMethods.length > 1
+        ? "dividir"
+        : normalizedStoredPaymentMethod;
+    const normalizedExistingPaymentMethods =
+      existingPaymentMethod === "dividir"
+        ? metadataPaymentMethods
+        : existingPaymentMethod
+          ? [
+              {
+                method: existingPaymentMethod,
+                amount:
+                  metadataPaymentMethods[0]?.amount ||
+                  Number(editMesa.total) ||
+                  0,
+              },
+            ]
+          : metadataPaymentMethods;
+    if (
+      existingPaymentMethod === "efectivo" &&
+      normalizedExistingPaymentMethods.every((item) => !item.amount)
+    ) {
+      normalizedExistingPaymentMethods[0] = {
+        method: "efectivo",
+        amount: Number(editMesa.total) || 0,
+      };
+    }
+
+    setEditingOrder(editMesa);
+    setEditingSnapshot({
+      cart: (editMesa.comanda || []).map((item) => ({
+        productId: item.productId || item.id,
+        qty: Number(item.qty || 1),
+        price: Number(item.price || item.precio || 0),
+        name: item.name || item.item || "Producto",
+        note: item.note || item.notes || "",
+        options: item.optionNames || item.options || [],
+      })),
+      deliveryMethod: storedDeliveryMethod,
+      address: storedAddress,
+      referencePoint: storedReferencePoint,
+      locationText: storedLocationText,
+      paymentMethod: existingPaymentMethod,
+      paymentMethods: normalizedExistingPaymentMethods,
+      orderNotes: orderNotesValue,
+      customerName: nextCustomerName,
+      customerNumber: nextCustomerNumber,
+      selectedTable: storedDeliveryMethod === "table" ? nextTable : "",
+    });
+    setDeliveryMethod(storedDeliveryMethod);
+    setPaymentMethod(existingPaymentMethod);
+    setMoneyPaid(
+      existingPaymentMethod === "efectivo"
+        ? String(normalizedExistingPaymentMethods[0]?.amount || "")
+        : "",
+    );
+    if (existingPaymentMethod === "dividir") {
+      setSplitPayments(
+        (normalizedExistingPaymentMethods.length
+          ? normalizedExistingPaymentMethods
+          : [{ method: "", amount: "" }]
+        ).map((item) => ({
+          method: item.method,
+          amount: String(item.amount),
+        })),
+      );
+    }
+    setSelectedTable(storedDeliveryMethod === "table" ? nextTable : "");
+    setAddress(storedAddress);
+    setReferencePoint(storedReferencePoint);
+    setLocationText(storedLocationText);
     setCustomerName(nextCustomerName);
     setCustomerNumber(nextCustomerNumber);
     setOrderNotes(orderNotesValue);
@@ -653,10 +781,32 @@ const POS = () => {
     }
   }, [location.state]);
 
+  const cancelEditingOrder = () => {
+    resetAllPOSState(false);
+    setEditingOrder(null);
+    setEditingSnapshot(null);
+    navigate("/pos", { replace: true, state: null });
+  };
+
   const normalizePhoneNumber = (value) => {
     if (!value) return "";
     const cleaned = String(value).replace(/\D/g, "");
     return cleaned;
+  };
+
+  const normalizeDeliveryMethod = (value) => {
+    const method = String(value ?? "")
+      .trim()
+      .toLowerCase();
+
+    if (["pickup", "recoger", "takeaway"].includes(method)) return "pickup";
+    if (["delivery", "domicilio", "entrega", "envio"].includes(method))
+      return "delivery";
+    if (["point", "punto", "retiro", "pickup_point"].includes(method))
+      return "point";
+    if (["table", "mesa"].includes(method)) return "table";
+
+    return "table";
   };
 
   // Verificar si una mesa está ocupada o reservada en la ventana de bloqueo
@@ -674,8 +824,9 @@ const POS = () => {
         )
         .eq("business_id", businessId)
         .eq("order_type", "table")
+        .eq("is_reservation", true)
         .eq("mesa", Number(tableNumber))
-        .in("table_status", ["ocupada", "reserva"])
+        .eq("table_status", "reserva")
         .order("created_at", { ascending: false })
         .limit(1);
 
@@ -692,59 +843,34 @@ const POS = () => {
         return;
       }
 
-      if (activeOrder.table_status === "ocupada") {
-        setTableOccupancyWarning({
-          occupied: true,
-          message:
-            "⚠️ Esta mesa está ocupada actualmente. Selecciona otra mesa.",
-        });
-        return;
-      }
-
       const fechaReserva = activeOrder.fecha_reserva;
       const horaReserva = activeOrder.hora_reserva;
+      const nombre = activeOrder.customer_name || "cliente";
 
       if (!fechaReserva || !horaReserva) {
         setTableOccupancyWarning({
           occupied: true,
-          message: "⚠️ Esta mesa está reservada. Selecciona otra mesa.",
+          message: `⚠️ La mesa está reservada para ${nombre}. Selecciona otra mesa.`,
         });
         return;
       }
 
-      const reservaDate = new Date(`${fechaReserva}T${horaReserva}`);
-      const reservaInicioBloqueo = new Date(
-        reservaDate.getTime() - 60 * 60 * 1000,
-      );
-      const reservaFinBloqueo = new Date(
-        reservaDate.getTime() + 4 * 60 * 60 * 1000,
-      );
-      const ahora = new Date();
+      const personas = activeOrder.personas || 1;
+      const fechaMostrar = new Date(
+        `${fechaReserva}T${horaReserva}`,
+      ).toLocaleString("es-CO", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
 
-      const estaEnVentanaReserva =
-        ahora >= reservaInicioBloqueo && ahora <= reservaFinBloqueo;
-
-      if (estaEnVentanaReserva) {
-        const nombre = activeOrder.customer_name || "cliente";
-        const personas = activeOrder.personas || 1;
-        const fechaMostrar = new Date(
-          `${fechaReserva}T${horaReserva}`,
-        ).toLocaleString("es-ES", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-        });
-
-        setTableOccupancyWarning({
-          occupied: true,
-          message: `⚠️ Mesa reservada para ${nombre} el ${fechaMostrar} (${personas} personas). No se pueden crear órdenes en esta mesa durante la reserva y 1 hora antes.`,
-        });
-        return;
-      }
-
-      setTableOccupancyWarning(null);
+      setTableOccupancyWarning({
+        occupied: true,
+        message: `⚠️ Mesa reservada para ${nombre} el ${fechaMostrar} (${personas} personas). Selecciona otra mesa.`,
+      });
     } catch (err) {
       console.error("Error en checkTableOccupancy:", err);
       setTableOccupancyWarning(null);
@@ -1092,9 +1218,29 @@ const POS = () => {
   const handleDeliveryChange = (method) => {
     if (deliveryMethod === method) {
       setDeliveryMethod("");
+      setSelectedTable("");
+      setAddress("");
+      setReferencePoint("");
+      setLocationText("");
       handlePaymentMethodChange("");
-    } else {
-      setDeliveryMethod(method);
+      return;
+    }
+
+    setDeliveryMethod(method);
+
+    if (method !== "table") {
+      setSelectedTable("");
+    } else if (!selectedTable && editingOrder?.mesa) {
+      setSelectedTable(String(editingOrder.mesa || editingOrder.numero || ""));
+    }
+
+    if (method !== "delivery") {
+      setAddress("");
+    }
+
+    if (method !== "point") {
+      setReferencePoint("");
+      setLocationText("");
     }
   };
 
@@ -1146,6 +1292,48 @@ const POS = () => {
   const remainingDisplay = formatPrice(Math.abs(remaining));
   const totalItems = cart.reduce((sum, item) => sum + item.qty, 0);
 
+  const currentEditSnapshot = editingSnapshot
+    ? {
+        cart: cart.map((item) => ({
+          productId: item.productId || item.id,
+          qty: Number(item.qty || 1),
+          price: Number(item.price || 0),
+          name: item.name || "Producto",
+          note: item.note || "",
+          options: item.optionNames || item.options || [],
+        })),
+        deliveryMethod,
+        address,
+        referencePoint,
+        locationText,
+        paymentMethod,
+        paymentMethods:
+          paymentMethod === "dividir"
+            ? splitPayments.map((item) => ({
+                method: item.method || "",
+                amount: Number(item.amount) || 0,
+              }))
+            : paymentMethod
+              ? [
+                  {
+                    method: paymentMethod,
+                    amount:
+                      paymentMethod === "efectivo"
+                        ? Number(moneyPaid) || 0
+                        : Number(total) || 0,
+                  },
+                ]
+              : [],
+        orderNotes,
+        customerName,
+        customerNumber,
+        selectedTable,
+      }
+    : null;
+  const hasEditChanges =
+    !editingSnapshot ||
+    JSON.stringify(currentEditSnapshot) !== JSON.stringify(editingSnapshot);
+
   const getOrderValidationErrors = () => {
     const errors = [];
     if (cart.length === 0) {
@@ -1175,11 +1363,12 @@ const POS = () => {
     ) {
       errors.push("Ingresar ubicación de retiro");
     }
-    if (!paymentMethod) {
+    if (!paymentMethod && !isEditingTableOrder) {
       errors.push("Seleccionar método de pago");
     }
     if (
       paymentMethod === "efectivo" &&
+      !isEditingTableOrder &&
       total > 0 &&
       !(parseFloat(moneyPaid) > 0)
     ) {
@@ -1198,16 +1387,16 @@ const POS = () => {
       return;
     }
 
-    setReservationData({
-      nombre: customerName || "",
-      telefono: customerNumber || "",
-      fecha: "",
-      hora: "",
-      personas: "1",
-      notas: "",
-      mesa: selectedTable,
+    navigate("/pos/reservas", {
+      state: {
+        nuevaReserva: {
+          mesa: selectedTable,
+          nombre: customerName || "",
+          telefono: customerNumber || "",
+          personas: "1",
+        },
+      },
     });
-    setShowReservationModal(true);
   };
 
   const canSubmitReservation =
@@ -1274,6 +1463,7 @@ const POS = () => {
       currency: "COP",
       mesa: Number(reservationData.mesa),
       table_status: "reserva",
+      is_reservation: true,
       punto: null,
       personas: Number(reservationData.personas),
       fecha_reserva: fechaReserva,
@@ -1311,10 +1501,21 @@ const POS = () => {
         return;
       }
 
-      addToast(`✓ Reserva creada para ${reservationData.nombre}`, "success");
+      const reservationInfo = {
+        customerName: reservationData.nombre,
+        customerPhone: reservationData.telefono,
+        table: reservationData.mesa,
+        date: fechaReserva,
+        time: horaReserva,
+        people: reservationData.personas,
+        notes: reservationData.notas?.trim() || "",
+        orderNumber,
+      };
 
-      // Limpiar modal y campos
+      setCreatedReservation(reservationInfo);
+      setShowReservationSuccessModal(true);
       setShowReservationModal(false);
+      resetAllPOSState(false);
       setReservationData({
         nombre: "",
         telefono: "",
@@ -1375,6 +1576,7 @@ const POS = () => {
       currency: "COP",
       mesa: Number(selectedTable),
       table_status: "reserva", // ← Estado de RESERVA
+      is_reservation: true,
       punto: null,
       notes: orderNotes?.trim() || null,
       metadata: {
@@ -1538,6 +1740,7 @@ const POS = () => {
       payment_method: paymentMethodText || null,
       payment_status: paymentStatus,
       order_type: orderTypeMap[deliveryMethod] || "pickup",
+      is_reservation: false,
       customer_name: customerName || null,
       customer_phone: customerNumber || null,
       currency: "COP",
@@ -1571,6 +1774,13 @@ const POS = () => {
       },
     };
 
+    if (isEditingTableOrder && editingOrder?.orderId) {
+      orderPayload.order_number = editingOrder.orderNumber || orderNumber;
+      orderPayload.status = editingOrder.orderStatus || orderStatus;
+      orderPayload.table_status = "ocupada";
+      orderPayload.is_reservation = false;
+    }
+
     const orderItemsPayload = items.map((item) => ({
       product_id: item.productId,
       quantity: item.cantidad,
@@ -1584,6 +1794,38 @@ const POS = () => {
     }));
 
     try {
+      if (isEditingTableOrder && editingOrder?.orderId) {
+        const { error: orderError } = await supabase
+          .from("orders")
+          .update(orderPayload)
+          .eq("id", editingOrder.orderId)
+          .eq("business_id", businessId);
+
+        if (orderError) throw orderError;
+
+        const { error: deleteItemsError } = await supabase
+          .from("order_items")
+          .delete()
+          .eq("order_id", editingOrder.orderId);
+
+        if (deleteItemsError) throw deleteItemsError;
+
+        const { error: insertItemsError } = await supabase
+          .from("order_items")
+          .insert(
+            orderItemsPayload.map((item) => ({
+              ...item,
+              order_id: editingOrder.orderId,
+            })),
+          );
+
+        if (insertItemsError) throw insertItemsError;
+
+        setShowUpdateSuccessModal(true);
+        cancelEditingOrder();
+        return;
+      }
+
       // DEBUG: confirmar que `mesa` y `punto` se están incluyendo en el payload
       // Abre la consola del navegador y revisa este log al crear el pedido.
       console.log(
@@ -1765,6 +2007,73 @@ const POS = () => {
     }
   };
 
+  const buildReservationText = (reservation) => {
+    if (!reservation) return "";
+    return [
+      "Reserva confirmada",
+      `Cliente: ${reservation.customerName}`,
+      `Mesa: ${reservation.table}`,
+      `Fecha: ${reservation.date}`,
+      `Hora: ${reservation.time}`,
+      `Personas: ${reservation.people}`,
+      reservation.notes ? `Notas: ${reservation.notes}` : "",
+      `Referencia: ${reservation.orderNumber}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  };
+
+  const handleShareReservation = async () => {
+    if (!createdReservation) return;
+    const text = buildReservationText(createdReservation);
+
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: "Reserva confirmada", text });
+      } catch (error) {
+        if (error?.name !== "AbortError") {
+          console.error("Error compartiendo reserva:", error);
+        }
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(text);
+      addToast("Información de reserva copiada", "success");
+    } catch (error) {
+      console.error("Error copiando reserva:", error);
+      addToast("No se pudo compartir la reserva", "error");
+    }
+  };
+
+  const handleCopyReservation = async () => {
+    if (!createdReservation) return;
+    try {
+      await navigator.clipboard.writeText(
+        buildReservationText(createdReservation),
+      );
+      addToast("Información de reserva copiada", "success");
+    } catch (error) {
+      console.error("Error copiando reserva:", error);
+      addToast("No se pudo copiar la reserva", "error");
+    }
+  };
+
+  const handleWhatsAppReservation = () => {
+    if (!createdReservation) return;
+    const phone = normalizeWhatsappNumber(createdReservation.customerPhone);
+    if (!phone) {
+      addToast("La reserva no tiene un teléfono válido", "error");
+      return;
+    }
+
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(
+      buildReservationText(createdReservation),
+    )}`;
+    window.open(url, "_blank", "noopener,noreferrer");
+  };
+
   const handleCloseSentOrderModal = () => {
     // Reset all order-related state to ensure no data persists between orders
     resetAllPOSState(false);
@@ -1935,6 +2244,25 @@ const POS = () => {
   return (
     <>
       <div className="grid grid-cols-1 lg:grid-cols-4 h-screen bg-background font-sans selection:bg-primary-container/30 pb-20 lg:pb-0">
+        {isEditingTableOrder && (
+          <div className="fixed top-0 left-20 right-0 z-40 flex items-center justify-between gap-3 border-b border-amber-400/20 bg-amber-500/10 px-4 py-2 backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setMobilePanel("resumen")}
+              className="min-w-0 truncate text-left text-[10px] font-black uppercase tracking-widest text-amber-300"
+            >
+              Editando mesa {editingOrder?.numero || selectedTable} -{" "}
+              {editingOrder?.orderNumber || ""}
+            </button>
+            <button
+              type="button"
+              onClick={cancelEditingOrder}
+              className="flex flex-shrink-0 items-center gap-1 rounded-lg border border-amber-400/30 px-2 py-1 text-[9px] font-black uppercase tracking-wider text-amber-200 hover:bg-amber-400/10"
+            >
+              <X className="h-3 w-3" /> Cancelar
+            </button>
+          </div>
+        )}
         {/* Stacked product toasts - mobile only */}
         {/* Contenedor de Toasts con Orden Invertido - Mobile */}
         <div className="fixed top-6 left-0 right-0 z-50 flex flex-col-reverse items-center gap-2 pointer-events-none px-6">
@@ -2726,10 +3054,12 @@ const POS = () => {
             {/* Botón de Acción Principal */}
             <button
               onClick={crearPedidoPOS}
-              disabled={cart.length === 0}
+              disabled={
+                cart.length === 0 || (isEditingTableOrder && !hasEditChanges)
+              }
               className="w-full bg-primary-container hover:bg-success active:scale-[0.98] text-on-surface font-black py-4 rounded-2xl transition-all uppercase text-[11px] tracking-[0.2em] disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Confirmar
+              {isEditingTableOrder ? "Actualizar" : "Confirmar"}
             </button>
           </div>
         </div>
@@ -2985,10 +3315,12 @@ const POS = () => {
             {/* Botón de Acción Principal */}
             <button
               onClick={crearPedidoPOS}
-              disabled={cart.length === 0}
+              disabled={
+                cart.length === 0 || (isEditingTableOrder && !hasEditChanges)
+              }
               className="w-full bg-primary-container hover:bg-success active:scale-[0.98] text-on-surface font-black py-3 rounded-2xl transition-all uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-primary-container/20 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Confirmar
+              {isEditingTableOrder ? "Actualizar" : "Confirmar"}
             </button>
           </div>
         </div>
@@ -3404,6 +3736,136 @@ const POS = () => {
                 <span>Listo</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {showUpdateSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-success/30 bg-surface p-8 text-center shadow-2xl">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-success/20">
+              <span className="material-symbols-outlined text-5xl text-success">
+                check_circle
+              </span>
+            </div>
+            <h3 className="mt-5 text-2xl font-bold text-on-surface">
+              Orden actualizada correctamente
+            </h3>
+            <p className="mt-2 text-on-surface-variant">
+              Los cambios de la orden se guardaron correctamente.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowUpdateSuccessModal(false)}
+              className="mt-6 w-full rounded-xl bg-primary-container px-5 py-3 font-bold uppercase tracking-widest text-on-primary transition-colors hover:bg-success"
+            >
+              Continuar
+            </button>
+          </div>
+        </div>
+      )}
+      {showReservationSuccessModal && createdReservation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-blue-400/30 bg-surface p-6 shadow-2xl">
+            <div className="text-center">
+              <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-blue-500/15">
+                <span className="material-symbols-outlined text-5xl text-blue-300">
+                  event_available
+                </span>
+              </div>
+              <h3 className="mt-4 text-2xl font-bold text-on-surface">
+                Reserva lista
+              </h3>
+              <p className="mt-2 text-on-surface-variant">
+                La reserva se creó correctamente.
+              </p>
+            </div>
+
+            <div className="mt-5 space-y-2 rounded-xl border border-outline bg-background/50 p-4 text-sm">
+              <div className="flex justify-between gap-4">
+                <span className="text-on-surface-variant">Cliente</span>
+                <strong className="text-right text-on-surface">
+                  {createdReservation.customerName}
+                </strong>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-on-surface-variant">Teléfono</span>
+                <strong className="text-right text-on-surface">
+                  {createdReservation.customerPhone}
+                </strong>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-on-surface-variant">Mesa</span>
+                <strong className="text-right text-on-surface">
+                  {createdReservation.table}
+                </strong>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-on-surface-variant">Fecha y hora</span>
+                <strong className="text-right text-on-surface">
+                  {createdReservation.date} · {createdReservation.time}
+                </strong>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-on-surface-variant">Personas</span>
+                <strong className="text-right text-on-surface">
+                  {createdReservation.people}
+                </strong>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="text-on-surface-variant">Referencia</span>
+                <strong className="text-right text-on-surface">
+                  {createdReservation.orderNumber}
+                </strong>
+              </div>
+              {createdReservation.notes && (
+                <div className="border-t border-outline pt-2 text-on-surface-variant">
+                  Notas: {createdReservation.notes}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={handleCopyReservation}
+                className="flex items-center justify-center gap-2 rounded-xl border border-outline bg-background px-4 py-3 text-sm font-bold text-on-surface hover:bg-surface-hover"
+              >
+                <span className="material-symbols-outlined text-base">
+                  content_copy
+                </span>
+                Copiar
+              </button>
+              <button
+                type="button"
+                onClick={handleShareReservation}
+                className="flex items-center justify-center gap-2 rounded-xl border border-outline bg-background px-4 py-3 text-sm font-bold text-on-surface hover:bg-surface-hover"
+              >
+                <span className="material-symbols-outlined text-base">
+                  share
+                </span>
+                Compartir
+              </button>
+              <button
+                type="button"
+                onClick={handleWhatsAppReservation}
+                className="flex items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-3 text-sm font-bold text-white hover:bg-green-500"
+              >
+                <span className="material-symbols-outlined text-base">
+                  chat
+                </span>
+                WhatsApp
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShowReservationSuccessModal(false);
+                setCreatedReservation(null);
+              }}
+              className="mt-3 w-full rounded-xl px-4 py-2 text-xs font-bold uppercase tracking-widest text-on-surface-variant hover:bg-surface-hover hover:text-on-surface"
+            >
+              Listo
+            </button>
           </div>
         </div>
       )}

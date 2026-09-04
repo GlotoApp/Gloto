@@ -735,6 +735,7 @@ const Ordenes = () => {
         .from("orders")
         .select("*, order_items(*)")
         .eq("business_id", profile.business_id)
+        .eq("is_reservation", false)
         .order("created_at", { ascending: false })
         .range(0, 29);
 
@@ -778,6 +779,7 @@ const Ordenes = () => {
       .from("orders")
       .select("*, order_items(*)")
       .eq("business_id", businessIdRef.current)
+      .eq("is_reservation", false)
       .order("created_at", { ascending: false })
       .range(from, from + 29);
 
@@ -1131,7 +1133,9 @@ const Ordenes = () => {
       <main className="max-w-7xl mx-auto space-y-4 pb-20">
         {loadingOrders ? (
           <div className="text-center py-20">
-            <p className="text-neutral-500 text-lg font-bold">Cargando…</p>
+            <p className="text-neutral-500 text-lg font-bold">
+              Cargando ordenes…
+            </p>
           </div>
         ) : filteredOrdenes.length === 0 ? (
           <div className="text-center py-20">

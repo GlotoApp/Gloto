@@ -240,6 +240,7 @@ export default function KitchenPanel() {
         .from("orders")
         .select("*, order_items(*)")
         .eq("business_id", profile.business_id)
+        .eq("is_reservation", false)
         .in("status", ["pending", "confirmed", "preparing", "complete"])
         .order("created_at", { ascending: true });
 

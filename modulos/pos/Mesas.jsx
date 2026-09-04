@@ -5,15 +5,11 @@ import { supabase } from "../../src/lib/supabaseClient";
 import { useAuth } from "../../src/components/AuthContext";
 import {
   X,
-  Receipt,
   RotateCcw,
   CheckCircle2,
   Plus,
   Search,
-  Trash2,
   ChefHat,
-  DollarSign,
-  ArrowRight,
   Minus,
   Edit3,
   Check,
@@ -64,23 +60,46 @@ const ESTADO = {
 const fmt = (n) => `$${Number(n).toLocaleString("es-CO")}`;
 const calc = (c) => c.reduce((s, i) => s + i.precio * i.qty, 0);
 
-// Mapear estado de orden a estado de mesa
-const mapOrderStatusToTableState = (orderStatus, tableStatus) => {
-  // Si hay table_status (incluso si es ""), usarlo (no usar falsy check)
-  if (tableStatus !== undefined && tableStatus !== null) return tableStatus;
-  const status = String(orderStatus || "").toLowerCase();
-  if (["pending", "confirmed"].includes(status)) return "ocupada";
-  if (["preparing"].includes(status)) return "ocupada";
-  if (["ready", "listo"].includes(status)) return "ocupada";
-  return ""; // Por defecto vacío (mesa cerrada)
+// El estado de la mesa depende únicamente de table_status, no del estado de la orden.
+const mapTableStatusToTableState = (tableStatus) =>
+  String(tableStatus ?? "")
+    .trim()
+    .toLowerCase();
+
+const getLocalDateKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 };
 
-// Mapear estado de mesa a estado de orden
-const mapTableStateToOrderStatus = (tableState) => {
-  const state = String(tableState || "").toLowerCase();
-  if (["ocupada", "reserva"].includes(state)) return "preparing";
-  if (state === "sucio") return "ready";
-  return "pending";
+const getPaymentMethodsFromMetadata = (metadata) => {
+  let parsedMetadata = metadata;
+  if (typeof parsedMetadata === "string") {
+    try {
+      parsedMetadata = JSON.parse(parsedMetadata);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(parsedMetadata?.payment_methods)
+    ? parsedMetadata.payment_methods
+    : [];
+};
+
+const normalizeDeliveryMethod = (value) => {
+  const method = String(value ?? "")
+    .trim()
+    .toLowerCase();
+
+  if (["pickup", "recoger", "takeaway"].includes(method)) return "pickup";
+  if (["delivery", "domicilio", "entrega", "envio"].includes(method))
+    return "delivery";
+  if (["point", "punto", "retiro", "pickup_point"].includes(method))
+    return "point";
+  if (["table", "mesa"].includes(method)) return "table";
+
+  return "table";
 };
 
 // Normalizar grupos de opciones (igual que en POS.jsx)
@@ -132,6 +151,37 @@ const normalizeOptionGroup = (group, items = []) => {
     opciones,
   };
 };
+
+const initializeOptionSelections = (product) => {
+  const selections = {};
+  (product.optionGroups || []).forEach((group) => {
+    const includedOption = (group.opciones || []).find(
+      (option) => Number(option.precio_extra || 0) === 0,
+    );
+    selections[group.id] =
+      group.selectionType === "multiple"
+        ? (group.opciones || [])
+            .filter((option) => Number(option.precio_extra || 0) === 0)
+            .map((option) => option.id)
+        : includedOption?.id || null;
+  });
+  return selections;
+};
+
+const getSelectedOptions = (product, selections) =>
+  (product?.optionGroups || []).flatMap((group) => {
+    const selected = selections[group.id];
+    if (group.selectionType === "multiple") {
+      return (Array.isArray(selected) ? selected : [])
+        .map((id) => group.opciones.find((option) => option.id === id))
+        .filter(Boolean);
+    }
+    const option = group.opciones.find((item) => item.id === selected);
+    return option ? [option] : [];
+  });
+
+const getOptionsExtraPrice = (options) =>
+  options.reduce((sum, option) => sum + Number(option.precio_extra || 0), 0);
 
 function useTimer(startTime) {
   const [t, setT] = useState(0);
@@ -201,6 +251,18 @@ function MesaTile({ mesa, onOpen }) {
 
         {/* Info */}
         <div className="flex-1 flex flex-col justify-end gap-1">
+          {mesa.reserva?.nombre && (
+            <span className="truncate text-[10px] font-bold text-slate-300">
+              {mesa.reserva.nombre}
+            </span>
+          )}
+          {mesa.estado === "reserva" && mesa.reserva?.personas > 0 && (
+            <span className="flex items-center gap-1 text-[9px] font-bold text-slate-500">
+              <Users size={9} />
+              {mesa.reserva.personas} persona
+              {mesa.reserva.personas !== 1 && "s"}
+            </span>
+          )}
           {isOcc && (
             <>
               <div className="flex items-center gap-1 text-slate-500">
@@ -236,19 +298,9 @@ function MesaTile({ mesa, onOpen }) {
 }
 
 // ─── Panel Body ───────────────────────────────────────────────────────────────
-function PanelBody({
-  mesa,
-  onUpdate,
-  onDelete,
-  onClose,
-  onToast,
-  products = [],
-}) {
+function PanelBody({ mesa, onUpdate, onClose, onToast }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState("comanda");
-  const [busqueda, setBusqueda] = useState("");
-  const [editNota, setEditNota] = useState(false);
-  const [nota, setNota] = useState(mesa.nota || "");
   const [personas, setPersonas] = useState(mesa.personas);
   const [showReservaForm, setShowReservaForm] = useState(false);
   const [reservaNombre, setReservaNombre] = useState(
@@ -265,53 +317,10 @@ function PanelBody({
   const timer = useTimer(mesa.startTime);
   const cfg = ESTADO[mesa.estado];
   const total = calc(mesa.comanda);
-  const menuFiltrado = products.filter(
-    (i) =>
-      i.nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
-      i.name.toLowerCase().includes(busqueda.toLowerCase()),
-  );
-  const categorias = [
-    ...new Set(menuFiltrado.map((i) => i.category || "otros")),
-  ];
-
-  const addItem = (menuItem) => {
-    const existing = mesa.comanda.find(
-      (c) => c.item === (menuItem.nombre || menuItem.name),
-    );
-    const newComanda = existing
-      ? mesa.comanda.map((c) =>
-          c.item === (menuItem.nombre || menuItem.name)
-            ? { ...c, qty: c.qty + 1 }
-            : c,
-        )
-      : [
-          ...mesa.comanda,
-          {
-            id: Date.now(),
-            item: menuItem.nombre || menuItem.name,
-            precio: menuItem.precio || menuItem.price,
-            qty: 1,
-          },
-        ];
-    onUpdate({ ...mesa, comanda: newComanda, total: calc(newComanda) });
-    onToast(`✓ ${menuItem.nombre || menuItem.name}`);
-  };
-
-  const changeQty = (id, delta) => {
-    const item = mesa.comanda.find((c) => c.id === id);
-    if (!item) return;
-    const newComanda =
-      item.qty + delta <= 0
-        ? mesa.comanda.filter((c) => c.id !== id)
-        : mesa.comanda.map((c) =>
-            c.id === id ? { ...c, qty: c.qty + delta } : c,
-          );
-    onUpdate({ ...mesa, comanda: newComanda, total: calc(newComanda) });
-  };
 
   const handleEstado = (s) => {
     if (s === "ocupada") {
-      // Sentar: pasar de reserva o vacío a ocupada
+      // Ocupada: marcar la mesa como ocupada
       onUpdate({
         ...mesa,
         estado: s,
@@ -356,11 +365,6 @@ function PanelBody({
     }
   };
 
-  const handleCobrar = () => {
-    onToast(`💳 ${fmt(total)} cobrado — Mesa ${mesa.numero}`);
-    handleEstado("sucio");
-  };
-
   const handleCrearReserva = () => {
     if (!reservaNombre || !reservaTelefono || !reservaHora) {
       onToast("⚠️ Completa: nombre, teléfono, hora");
@@ -382,23 +386,6 @@ function PanelBody({
     onToast(`✓ Reserva para ${reservaNombre} a las ${reservaHora}`);
   };
 
-  const handleCancelarReserva = () => {
-    onUpdate({
-      ...mesa,
-      estado: "",
-      reserva: {
-        nombre: "",
-        telefono: "",
-        email: "",
-        hora: "",
-        personas: 0,
-        activa: false,
-      },
-    });
-    setShowReservaForm(false);
-    onToast("Reserva cancelada");
-  };
-
   const handleConvertirReservaEnClientes = () => {
     if (mesa.reserva?.activa) {
       handleEstado("ocupada");
@@ -411,18 +398,32 @@ function PanelBody({
       numero: String(mesa.numero),
       estado: mesa.estado,
       orderId: mesa.orderId,
+      orderNumber: mesa.orderNumber || "",
+      orderStatus: mesa.orderStatus || "",
+      tableStatus: mesa.tableStatus || mesa.estado || "",
+      isReservation: Boolean(mesa.isReservation),
+      total: Number(mesa.total || 0),
+      paymentMethod: mesa.paymentMethod || "",
+      paymentStatus: mesa.paymentStatus || "pending",
+      paymentMethods: Array.isArray(mesa.paymentMethods)
+        ? mesa.paymentMethods
+        : [],
       customerName: mesa.reserva?.nombre || "",
       customerPhone: mesa.reserva?.telefono || "",
       customerPhoneRaw: mesa.reserva?.telefono || "",
       notes: mesa.nota || mesa.reserva?.notas || "",
       nota: mesa.nota || mesa.reserva?.notas || "",
+      deliveryMethod: mesa.deliveryMethod || "table",
+      address: mesa.address || "",
+      referencePoint: mesa.referencePoint || "",
+      locationText: mesa.locationText || "",
       personas: mesa.personas || mesa.reserva?.personas || 1,
       fechaReserva: mesa.reserva?.fecha || "",
       horaReserva: mesa.reserva?.hora || "",
       comanda: (mesa.comanda || []).map((item) => ({
         id: item.id,
         cartId: item.id,
-        productId: item.id,
+        productId: item.productId || item.id,
         qty: Number(item.qty || 1),
         name: item.item,
         price: Number(item.precio || 0),
@@ -479,62 +480,48 @@ function PanelBody({
         </div>
 
         <div className="flex gap-1.5 mt-3 flex-wrap">
-          {/* BOTÓN 1: Sentar (de reserva o vacío → ocupada) */}
-          {(mesa.estado === "reserva" || mesa.estado === "") && (
-            <button
-              onClick={() => handleEstado("ocupada")}
-              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-              style={{
-                background: "#f9731615",
-                borderColor: "#f9731640",
-                color: "#f97316",
-              }}
-            >
-              <Users size={9} /> Sentar
-            </button>
-          )}
+          {/* BOTÓN 1: Ocupada */}
+          <button
+            onClick={() => handleEstado("ocupada")}
+            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
+              mesa.estado === "ocupada" ? "shadow-lg" : "opacity-45"
+            }`}
+            style={{
+              background: mesa.estado === "ocupada" ? "#f9731635" : "#f9731608",
+              borderColor: mesa.estado === "ocupada" ? "#f97316" : "#f9731640",
+              color: "#f97316",
+            }}
+          >
+            <Users size={9} /> Ocupada
+          </button>
           {/* BOTÓN 2: Desocupar (ocupada → sucio) */}
-          {mesa.estado === "ocupada" && (
-            <button
-              onClick={() => handleEstado("sucio")}
-              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-              style={{
-                background: "#ef444415",
-                borderColor: "#ef444440",
-                color: "#ef4444",
-              }}
-            >
-              <RotateCcw size={9} /> Desocupar
-            </button>
-          )}
+          <button
+            onClick={() => handleEstado("sucio")}
+            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
+              mesa.estado === "sucio" ? "shadow-lg" : "opacity-45"
+            }`}
+            style={{
+              background: mesa.estado === "sucio" ? "#ef444435" : "#ef444408",
+              borderColor: mesa.estado === "sucio" ? "#ef4444" : "#ef444440",
+              color: "#ef4444",
+            }}
+          >
+            <RotateCcw size={9} /> Desocupar
+          </button>
           {/* BOTÓN 3: Limpia (sucio → vacío) */}
-          {mesa.estado === "sucio" && (
-            <button
-              onClick={() => handleEstado("")}
-              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-              style={{
-                background: "#22c55e15",
-                borderColor: "#22c55e40",
-                color: "#22c55e",
-              }}
-            >
-              <CheckCircle2 size={9} /> Limpia
-            </button>
-          )}
-          {/* RESERVA: Botones para reserva */}
-          {mesa.estado === "reserva" && (
-            <button
-              onClick={handleCancelarReserva}
-              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-              style={{
-                background: "#ef444415",
-                borderColor: "#ef444440",
-                color: "#ef4444",
-              }}
-            >
-              <X size={9} /> Cancelar Reserva
-            </button>
-          )}
+          <button
+            onClick={() => handleEstado("")}
+            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
+              mesa.estado === "" ? "shadow-lg" : "opacity-45"
+            }`}
+            style={{
+              background: mesa.estado === "" ? "#22c55e35" : "#22c55e08",
+              borderColor: mesa.estado === "" ? "#22c55e" : "#22c55e40",
+              color: "#22c55e",
+            }}
+          >
+            <CheckCircle2 size={9} /> Limpia
+          </button>
           {/* BOTÓN: Crear/Editar Reserva (solo si está vacío) */}
           {mesa.estado === "" && (
             <button
@@ -549,30 +536,6 @@ function PanelBody({
               <Calendar size={9} /> Hacer Reserva
             </button>
           )}
-          {mesa.estado !== "" && (
-            <button
-              onClick={handleEditarEnPOS}
-              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-              style={{
-                background: "#8b5cf615",
-                borderColor: "#8b5cf640",
-                color: "#c4b5fd",
-              }}
-            >
-              <Edit3 size={9} /> Editar
-            </button>
-          )}
-          <button
-            onClick={() => {
-              if (window.confirm(`¿Eliminar Mesa ${mesa.numero}?`)) {
-                onDelete(mesa.id);
-                onClose();
-              }
-            }}
-            className="px-2.5 py-1.5 bg-white/4 border border-white/8 text-slate-600 rounded-xl hover:bg-red-900/20 hover:border-red-500/30 hover:text-red-400 active:scale-95 transition-all ml-auto"
-          >
-            <Trash2 size={11} />
-          </button>
         </div>
       </div>
 
@@ -580,7 +543,6 @@ function PanelBody({
       <div className="flex border-b border-white/6 flex-shrink-0">
         {[
           ["comanda", "Comanda"],
-          ["menu", "Agregar"],
           ["info", "Info"],
         ].map(([id, label]) => (
           <button
@@ -606,12 +568,9 @@ function PanelBody({
                 <p className="text-sm font-bold text-slate-600 mb-3">
                   Comanda vacía
                 </p>
-                <button
-                  onClick={() => setTab("menu")}
-                  className="text-primary-container text-[10px] font-black uppercase tracking-widest flex items-center gap-1 mx-auto"
-                >
-                  Agregar ítems <ArrowRight size={10} />
-                </button>
+                <p className="text-xs text-slate-700">
+                  Usa Editar para agregar productos a esta mesa.
+                </p>
               </div>
             ) : (
               mesa.comanda.map((item) => (
@@ -623,26 +582,19 @@ function PanelBody({
                     <p className="text-sm font-semibold text-slate-200 truncate">
                       {item.item}
                     </p>
+                    {item.options?.length > 0 && (
+                      <p className="text-[10px] text-blue-400">
+                        {item.options.join(" · ")}
+                      </p>
+                    )}
                     <p className="text-[10px] text-slate-600">
                       {fmt(item.precio)} c/u
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => changeQty(item.id, -1)}
-                      className="w-8 h-8 rounded-full bg-white/8 active:bg-white/20 flex items-center justify-center text-slate-400"
-                    >
-                      <Minus size={12} />
-                    </button>
                     <span className="w-6 text-center text-sm font-black text-white">
                       {item.qty}
                     </span>
-                    <button
-                      onClick={() => changeQty(item.id, 1)}
-                      className="w-8 h-8 rounded-full bg-white/8 active:bg-white/20 flex items-center justify-center text-slate-400"
-                    >
-                      <Plus size={12} />
-                    </button>
                   </div>
                   <span className="text-sm font-black text-white w-20 text-right">
                     {fmt(item.precio * item.qty)}
@@ -650,56 +602,6 @@ function PanelBody({
                 </div>
               ))
             )}
-          </div>
-        )}
-
-        {tab === "menu" && (
-          <div className="p-5 space-y-4">
-            <div className="relative">
-              <Search
-                size={12}
-                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600"
-              />
-              <input
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-                placeholder="Buscar..."
-                className="w-full bg-white/5 border border-white/8 rounded-2xl pl-9 pr-4 py-3 text-sm text-white placeholder-slate-700 outline-none focus:border-blue-500/30 transition-colors"
-              />
-            </div>
-            {categorias.map((cat) => (
-              <div key={cat}>
-                <p className="text-[8px] font-black text-slate-700 uppercase tracking-widest mb-2">
-                  {cat}
-                </p>
-                <div className="space-y-1.5">
-                  {menuFiltrado
-                    .filter((i) => (i.category || "otros") === cat)
-                    .map((item) => (
-                      <button
-                        key={item.id || item.nombre || item.name}
-                        onClick={() => addItem(item)}
-                        className="w-full flex items-center justify-between px-4 py-3.5 bg-white/3 active:bg-white/10 border border-white/6 rounded-2xl transition-all active:scale-[0.98] group text-left"
-                      >
-                        <span className="text-sm text-slate-400 group-hover:text-white transition-colors">
-                          {item.nombre || item.name}
-                        </span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-[10px] text-slate-600">
-                            {fmt(item.precio || item.price)}
-                          </span>
-                          <div className="w-6 h-6 rounded-full bg-primary-container group-hover:bg-success flex items-center justify-center transition-colors">
-                            <Plus
-                              size={10}
-                              className="text-on-surface group-hover:text-white"
-                            />
-                          </div>
-                        </div>
-                      </button>
-                    ))}
-                </div>
-              </div>
-            ))}
           </div>
         )}
 
@@ -790,14 +692,6 @@ function PanelBody({
                       </a>
                     </div>
                   )}
-
-                  {/* Hora de la reserva (si cuenta con ella) */}
-                  {mesa.reserva.hora && (
-                    <div className="pt-2 border-t border-white/5 flex items-center gap-1.5 text-xs text-slate-400">
-                      <span>🕐</span>{" "}
-                      <span>Hora estipulada: {mesa.reserva.hora}</span>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -834,57 +728,13 @@ function PanelBody({
                 </button>
               </div>
             </div>
-
-            {/* Notas del Pedido */}
-            <div className="bg-white/3 border border-white/7 rounded-2xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest">
-                  Nota / Observaciones
-                </p>
-                <button
-                  onClick={() => setEditNota((v) => !v)}
-                  className="text-slate-600 hover:text-white p-1"
-                >
-                  <Edit3 size={12} />
-                </button>
-              </div>
-              {editNota ? (
-                <div className="space-y-2">
-                  <textarea
-                    value={nota}
-                    onChange={(e) => setNota(e.target.value)}
-                    rows={3}
-                    className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm text-white outline-none focus:border-blue-500/30 resize-none"
-                    placeholder="Alergias, preferencias..."
-                  />
-                  <button
-                    onClick={() => {
-                      onUpdate({ ...mesa, nota });
-                      setEditNota(false);
-                      onToast("Nota guardada");
-                    }}
-                    className="w-full py-2.5 bg-blue-600/25 border border-blue-500/30 text-blue-300 text-[9px] font-black rounded-xl uppercase tracking-wider"
-                  >
-                    Guardar
-                  </button>
-                </div>
-              ) : (
-                <p className="text-sm text-slate-400 min-h-[20px]">
-                  {mesa.nota || (
-                    <span className="text-slate-700 italic text-xs">
-                      Sin notas en esta mesa
-                    </span>
-                  )}
-                </p>
-              )}
-            </div>
           </div>
         )}
       </div>
 
       {/* Footer */}
-      {mesa.estado === "ocupada" && (
-        <div className="p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-black/40 border-t border-white/6 flex-shrink-0 space-y-3">
+      <div className="p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] bg-black/40 border-t border-white/6 flex-shrink-0 space-y-3">
+        {mesa.estado === "ocupada" && (
           <div className="flex justify-between items-center">
             <span className="text-[9px] font-black text-slate-600 uppercase tracking-widest">
               Total
@@ -893,45 +743,16 @@ function PanelBody({
               {fmt(total)}
             </span>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {/* Botón 1: Actualizar */}
-            <button
-              onClick={() => onUpdate({ ...mesa })}
-              className="py-4 bg-white/5 hover:bg-white/10 rounded-2xl text-[9px] font-black uppercase tracking-widest text-slate-400 active:scale-95 transition-all flex items-center justify-center gap-1.5"
-            >
-              <RotateCcw size={11} /> Actualizar
-            </button>
-
-            {/* Botón 2: Cerrar Mesa */}
-            <button
-              onClick={() => {
-                onUpdate({
-                  ...mesa,
-                  estado: "sucio",
-                  startTime: null,
-                  personas: 0,
-                  comanda: [],
-                  total: 0,
-                  nota: "",
-                });
-                onToast(`🔔 Cliente enviado a caja — Mesa ${mesa.numero}`);
-                onClose();
-              }}
-              className="py-4 bg-amber-600/20 border border-amber-500/30 rounded-2xl text-[9px] font-black uppercase tracking-widest text-amber-400 active:scale-95 transition-all flex items-center justify-center gap-1.5"
-            >
-              <Receipt size={11} /> Cerrar Mesa
-            </button>
-
-            {/* Botón 3: Cobrar */}
-            <button
-              onClick={handleCobrar}
-              className="py-4 bg-emerald-600 rounded-2xl text-[9px] font-black uppercase tracking-widest text-white shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-1.5"
-            >
-              <DollarSign size={11} /> Cobrar
-            </button>
-          </div>
+        )}
+        <div className="grid grid-cols-1 gap-2">
+          <button
+            onClick={handleEditarEnPOS}
+            className="py-4 bg-violet-500/10 border border-violet-500/25 rounded-2xl text-[9px] font-black uppercase tracking-widest text-violet-300 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+          >
+            <Edit3 size={11} /> Editar
+          </button>
         </div>
-      )}
+      </div>
 
       {/* Modal Reserva */}
       <AnimatePresence>
@@ -1059,14 +880,7 @@ function PanelBody({
 }
 
 // ─── Panel / Bottom Sheet (responsive) ───────────────────────────────────────
-function MesaPanel({
-  mesa,
-  onClose,
-  onUpdate,
-  onDelete,
-  onToast,
-  products = [],
-}) {
+function MesaPanel({ mesa, onClose, onUpdate, onToast, products = [] }) {
   return (
     <AnimatePresence>
       {mesa && (
@@ -1112,7 +926,6 @@ function MesaPanel({
             <PanelBody
               mesa={mesa}
               onUpdate={onUpdate}
-              onDelete={onDelete}
               onClose={onClose}
               onToast={onToast}
               products={products}
@@ -1161,6 +974,20 @@ export default function MesasPOS() {
         setProducts([]);
         return;
       }
+
+      const { data: categoryData, error: categoryError } = await supabase
+        .from("categories")
+        .select("id,name")
+        .eq("business_id", businessIdParam);
+
+      if (categoryError) {
+        console.error("Error cargando categorías:", categoryError);
+      }
+
+      const categoryNamesById = (categoryData || []).reduce((result, item) => {
+        result[item.id] = item.name;
+        return result;
+      }, {});
 
       let optionGroupsByProduct = {};
       if ((data || []).length > 0) {
@@ -1212,6 +1039,7 @@ export default function MesasPOS() {
           nombre: item.name,
           name: item.name,
           category: item.category_id || "otros",
+          categoryName: categoryNamesById[item.category_id] || "Otros",
           precio: Number(item.price || 0),
           price: Number(item.price || 0),
           description: item.description || "",
@@ -1254,7 +1082,7 @@ export default function MesasPOS() {
       // Cargar productos del negocio
       await loadProductsFromDB(profile.business_id);
 
-      // Cargar órdenes de tipo "mesa" activas
+      // Cargar todas las órdenes de tipo "mesa"; table_status decide si siguen visibles
       const { data: ordenes, error: ordenesError } = await supabase
         .from("orders")
         .select(
@@ -1268,11 +1096,21 @@ export default function MesasPOS() {
           customer_phone, 
           notes,
           table_status,
-          order_items(id, product_name, quantity, unit_price, subtotal, options, notes)`,
+          payment_method,
+          payment_status,
+          order_type,
+          is_reservation,
+          personas,
+          fecha_reserva,
+          hora_reserva,
+          delivery_address,
+          delivery_instructions,
+          punto,
+          metadata,
+          order_items(id, product_id, product_name, quantity, unit_price, subtotal, options, notes)`,
         )
         .eq("business_id", profile.business_id)
         .eq("order_type", "table")
-        .in("status", ["pending", "confirmed", "preparing", "ready"])
         .order("created_at", { ascending: false });
 
       if (ordenesError) {
@@ -1281,19 +1119,53 @@ export default function MesasPOS() {
         return;
       }
 
-      // Transformar órdenes en mesas
+      const today = getLocalDateKey();
+
+      // Las reservas caducan visualmente por fecha; las mesas activas no.
       const mesasOrdenes = (ordenes || [])
-        .filter((o) => o.mesa) // Solo las que tienen número de mesa
+        .filter((orden) => {
+          if (!orden.mesa || !String(orden.table_status ?? "").trim()) {
+            return false;
+          }
+
+          const isReservation =
+            Boolean(orden.is_reservation) ||
+            mapTableStatusToTableState(orden.table_status) === "reserva";
+
+          return !isReservation || orden.fecha_reserva === today;
+        })
         .map((orden) => ({
           id: `order-${orden.id}`,
           orderId: orden.id,
+          orderNumber: orden.order_number || "",
+          orderStatus: orden.status || "",
+          tableStatus: orden.table_status || "",
+          isReservation: Boolean(orden.is_reservation),
           numero: String(orden.mesa),
-          estado: mapOrderStatusToTableState(orden.status, orden.table_status),
+          estado: mapTableStatusToTableState(orden.table_status),
+          paymentMethod: orden.payment_method || "",
+          paymentStatus: orden.payment_status || "pending",
+          paymentMethods: getPaymentMethodsFromMetadata(orden.metadata),
+          deliveryMethod: normalizeDeliveryMethod(
+            orden.metadata?.metodoEntrega ||
+              orden.order_type ||
+              (orden.punto
+                ? "point"
+                : orden.delivery_address
+                  ? "delivery"
+                  : "table"),
+          ),
+          address: orden.delivery_address || "",
+          referencePoint: orden.delivery_instructions || "",
+          locationText: orden.punto || "",
           personas: Number(orden.personas) || 0,
+          fechaReserva: orden.fecha_reserva || "",
+          horaReserva: orden.hora_reserva || "",
           startTime: new Date(orden.created_at).getTime(),
           total: parseFloat(orden.total) || 0,
           comanda: (orden.order_items || []).map((item) => ({
             id: item.id,
+            productId: item.product_id,
             item: item.product_name || "Producto",
             precio: parseFloat(item.unit_price) || 0,
             qty: parseInt(item.quantity) || 1,
@@ -1307,17 +1179,16 @@ export default function MesasPOS() {
             telefono: orden.customer_phone || "",
             email: "",
             hora: orden.hora_reserva || "",
+            fecha: orden.fecha_reserva || "",
             personas: Number(orden.personas) || 0,
             activa: orden.table_status === "reserva",
             notas: orden.notes || "",
           },
         }))
-        // Excluir mesas con estado vacío (ya limpias, proceso terminado)
-        .filter((mesa) => mesa.estado !== "")
         // Ordenar por número de mesa
         .sort((a, b) => parseInt(a.numero) - parseInt(b.numero));
 
-      // Solo mostrar mesas con órdenes activas (sin vacías/limpias)
+      // Solo mostrar mesas cuyo table_status indica que siguen en uso.
       setMesas(mesasOrdenes);
     } catch (err) {
       console.error("Error en loadMesas:", err);
@@ -1328,6 +1199,14 @@ export default function MesasPOS() {
 
   useEffect(() => {
     loadMesasFromDB();
+  }, [loadMesasFromDB]);
+
+  useEffect(() => {
+    const refreshAtDateBoundary = window.setInterval(() => {
+      loadMesasFromDB();
+    }, 60 * 1000);
+
+    return () => window.clearInterval(refreshAtDateBoundary);
   }, [loadMesasFromDB]);
 
   // Suscribirse a cambios en órdenes
@@ -1383,7 +1262,8 @@ export default function MesasPOS() {
             .update({
               table_status: updated.estado,
               notes: updated.nota,
-              status: mapTableStateToOrderStatus(updated.estado),
+              personas: Number(updated.personas) || 0,
+              updated_at: new Date().toISOString(),
             })
             .eq("id", updated.orderId)
             .eq("business_id", businessId);
@@ -1400,10 +1280,6 @@ export default function MesasPOS() {
     },
     [businessId, showToast],
   );
-
-  const deleteMesa = useCallback((id) => {
-    setMesas((prev) => prev.filter((m) => m.id !== id));
-  }, []);
 
   const kpis = {
     total: mesas.length,
@@ -1547,7 +1423,6 @@ export default function MesasPOS() {
         mesa={selected}
         onClose={() => setSelected(null)}
         onUpdate={updateMesa}
-        onDelete={deleteMesa}
         onToast={showToast}
         products={products}
       />

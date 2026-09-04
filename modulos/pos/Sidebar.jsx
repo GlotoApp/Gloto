@@ -12,6 +12,7 @@ import {
   X,
   ClipboardList,
   CalendarDays,
+  Clock3,
   PencilRuler,
   CreditCard,
 } from "lucide-react";
@@ -41,28 +42,24 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
   const menuItems = [
     { name: "POS", path: "/pos", icon: Plus },
     { name: "Mesas", path: "/pos/mesas", icon: "table_bar" },
-    { name: "Órdenes", path: "/pos/ordenes", icon: ClipboardList },
     {
       name: "Cocina",
       path: "/pos/cocina",
       icon: ChefHat,
-      subMenu: [
-        // Se agrega esta propiedad
-        { name: "Productos", path: "/pos/productos" },
-        { name: "Categorías", path: "/pos/categorias" },
-      ],
     },
+    { name: "Órdenes", path: "/pos/ordenes", icon: ClipboardList },
+    { name: "Reservas", path: "/pos/reservas", icon: CalendarDays },
+    { name: "Catálogo", path: "/pos/productos", icon: BookOpen },
     {
       name: "Inventario",
       path: "/pos/inventario",
       icon: Package,
       subMenu: [
-        // Se agrega esta propiedad
         { name: "Cierre de Caja", path: "/pos/caja" },
         { name: "Cierres Eliminados", path: "/pos/caja/CierresEliminados" },
       ],
     },
-    { name: "Horarios", path: "/pos/horarios", icon: CalendarDays },
+    { name: "Horarios", path: "/pos/horarios", icon: Clock3 },
     { name: "Estadísticas", path: "/pos/estadisticas", icon: BarChart3 },
     { name: "Utilidades", path: "/pos/utilidades", icon: PencilRuler },
     { name: "Planes", path: "/pos/planes", icon: CreditCard },
@@ -182,58 +179,59 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
 
             return (
               <React.Fragment key={item.path}>
-                <Link
-                  to={item.path}
-                  onClick={handleItemClick}
-                  className={`group relative flex items-center h-12 rounded-default transition-all duration-300 pl-4 pr-3.75 gap-4 w-full ${
-                    isActive
-                      ? "text-primary font-medium"
-                      : "text-on-surface-variant hover:text-on-surface hover:bg-surface-hover"
-                  }`}
-                >
-                  <span
-                    className={`absolute left-0 w-1 h-6 rounded-r-full bg-primary-container transition-all duration-300 ${
+                {item.name !== "Catálogo" && (
+                  <Link
+                    to={item.path}
+                    onClick={handleItemClick}
+                    className={`group relative flex items-center h-12 rounded-default transition-all duration-300 pl-4 pr-3.75 gap-4 w-full ${
                       isActive
-                        ? "scale-y-100 opacity-100"
-                        : "scale-y-0 opacity-0 group-hover:scale-y-100 group-hover:opacity-50 group-hover:bg-primary"
-                    }`}
-                  />
-
-                  <div
-                    className={`flex items-center justify-center flex-shrink-0 w-5 h-5 transition-transform duration-300 ${
-                      !isExpanded && "group-hover:scale-110"
-                    } ${isActive ? "text-primary-container" : "group-hover:text-on-surface"}`}
-                  >
-                    {isGoogleIcon ? (
-                      <span className="material-symbols-outlined !text-[22px]">
-                        {item.icon}
-                      </span>
-                    ) : (
-                      <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
-                    )}
-                  </div>
-
-                  <span
-                    className={`font-label-caps text-xs font-bold uppercase tracking-tight truncate flex-1 transition-all duration-300 ${
-                      isActive ? "text-primary-container" : ""
-                    } ${
-                      isExpanded
-                        ? "opacity-100 translate-x-0"
-                        : "opacity-0 -translate-x-4 pointer-events-none w-0"
+                        ? "text-primary font-medium"
+                        : "text-on-surface-variant hover:text-on-surface hover:bg-surface-hover"
                     }`}
                   >
-                    {item.name}
-                  </span>
+                    <span
+                      className={`absolute left-0 w-1 h-6 rounded-r-full bg-primary-container transition-all duration-300 ${
+                        isActive
+                          ? "scale-y-100 opacity-100"
+                          : "scale-y-0 opacity-0 group-hover:scale-y-100 group-hover:opacity-50 group-hover:bg-primary"
+                      }`}
+                    />
 
-                  {!isExpanded && (
-                    <div className="fixed left-20 ml-2 px-3 py-1 bg-primary-container text-on-primary text-[10px] font-label-caps font-black uppercase tracking-widest rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[100] shadow-lg shadow-background">
-                      {item.name}
+                    <div
+                      className={`flex items-center justify-center flex-shrink-0 w-5 h-5 transition-transform duration-300 ${
+                        !isExpanded && "group-hover:scale-110"
+                      } ${isActive ? "text-primary-container" : "group-hover:text-on-surface"}`}
+                    >
+                      {isGoogleIcon ? (
+                        <span className="material-symbols-outlined !text-[22px]">
+                          {item.icon}
+                        </span>
+                      ) : (
+                        <Icon size={20} strokeWidth={isActive ? 2.5 : 2} />
+                      )}
                     </div>
-                  )}
-                </Link>
 
-                {/* Bloque expandible de Catálogo */}
-                {item.name === "Cocina" && (
+                    <span
+                      className={`font-label-caps text-xs font-bold uppercase tracking-tight truncate flex-1 transition-all duration-300 ${
+                        isActive ? "text-primary-container" : ""
+                      } ${
+                        isExpanded
+                          ? "opacity-100 translate-x-0"
+                          : "opacity-0 -translate-x-4 pointer-events-none w-0"
+                      }`}
+                    >
+                      {item.name}
+                    </span>
+
+                    {!isExpanded && (
+                      <div className="fixed left-20 ml-2 px-3 py-1 bg-primary-container text-on-primary text-[10px] font-label-caps font-black uppercase tracking-widest rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[100] shadow-lg shadow-background">
+                        {item.name}
+                      </div>
+                    )}
+                  </Link>
+                )}
+
+                {item.name === "Catálogo" && (
                   <div className="flex flex-col transition-all duration-300">
                     <button
                       onClick={handleToggleClickCatalogo}
@@ -250,7 +248,6 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
                             : "scale-y-0 opacity-0 group-hover:scale-y-100 group-hover:opacity-50 group-hover:bg-primary"
                         }`}
                       />
-
                       <div
                         className={`flex items-center justify-center flex-shrink-0 w-5 h-5 transition-transform duration-300 ${
                           !isExpanded && "group-hover:scale-110"
@@ -261,7 +258,6 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
                           strokeWidth={isCatalogoActive ? 2.5 : 2}
                         />
                       </div>
-
                       <span
                         className={`font-label-caps text-xs font-bold uppercase tracking-tight flex-1 truncate text-left transition-all duration-300 ${
                           isCatalogoActive ? "text-primary-container" : ""
@@ -273,7 +269,6 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
                       >
                         Catálogo
                       </span>
-
                       {isExpanded && (
                         <ChevronDown
                           size={14}
@@ -282,7 +277,6 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
                           }`}
                         />
                       )}
-
                       {!isExpanded && (
                         <div className="fixed left-20 ml-2 px-3 py-1 bg-primary-container text-on-primary text-[10px] font-label-caps font-black uppercase tracking-widest rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[100] shadow-lg shadow-background">
                           Catálogo
@@ -290,7 +284,6 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
                       )}
                     </button>
 
-                    {/* Submenu de Catálogo */}
                     {catalogoOpen && isExpanded && (
                       <div className="mt-2 ml-4 flex flex-col border-l border-primary-container/30 space-y-1 pl-3 animate-in slide-in-from-top-2 duration-300">
                         {catalogoSubMenu.map((sub) => {
