@@ -13,6 +13,7 @@ import {
   Filter,
   X,
   Clipboard,
+  Edit3,
   ArrowUpDown,
   RefreshCcw,
   LoaderCircle,
@@ -20,6 +21,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../../src/lib/supabaseClient";
 import { useAuth } from "../../src/components/AuthContext";
+import { useNavigate } from "react-router-dom";
 
 // --- CONFIGURACIÓN DE CONSTANTES ---
 const ORIGEN_CONFIG = {
@@ -201,7 +203,7 @@ const formatDateTime = (value) => {
 };
 
 const OrderCard = memo(
-  ({ orden, onDelete, onPrint, onShare, onEdit, canDelete }) => {
+  ({ orden, onDelete, onInvoice, onPrint, onShare, onEdit, canDelete }) => {
     const [isOpen, setIsOpen] = useState(false);
     const config = ORIGEN_CONFIG[orden.origen || "pos"];
     const Icon = config.icon;
@@ -428,14 +430,20 @@ const OrderCard = memo(
                       icon={Trash2}
                       label="Eliminar"
                       color="border-red-500/20 bg-red-500/5 text-red-500 hover:bg-red-500 hover:text-white"
-                      onClick={() => onDelete(orden.id)}
+                      onClick={() => onDelete(orden)}
                     />
                   )}
                   <ActionButton
                     icon={FileText}
                     label="Factura"
                     color="border-white/10 bg-white/5 text-neutral-400 hover:bg-white/10"
-                    onClick={() => onEdit(orden.id)}
+                    onClick={() => onInvoice(orden)}
+                  />
+                  <ActionButton
+                    icon={Edit3}
+                    label="Editar"
+                    color="border-sky-500/20 bg-sky-500/5 text-sky-400 hover:bg-sky-500 hover:text-white"
+                    onClick={() => onEdit(orden)}
                   />
                   <ActionButton
                     icon={Printer}
@@ -467,6 +475,143 @@ const DetailBox = ({ label, value, color = "text-neutral-300" }) => (
     <p className={`text-[10px] font-bold uppercase ${color}`}>{value}</p>
   </div>
 );
+
+const InvoicePreview = ({ order, onClose, onPrint }) => {
+  if (!order) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
+      <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl bg-neutral-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+          <div>
+            <h2 className="text-sm font-black uppercase tracking-widest text-white">
+              Factura
+            </h2>
+            <p className="mt-1 text-[10px] text-neutral-500">
+              Orden {order.numeroFactura}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg px-3 py-2 text-xs font-bold text-neutral-400 hover:bg-white/10 hover:text-white"
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <div className="overflow-y-auto bg-white p-5 text-black sm:p-8">
+          <div className="border-b border-dashed border-black pb-4 text-center">
+            <h1 className="text-2xl font-black uppercase tracking-tight">
+              Factura
+            </h1>
+            <p className="mt-1 text-xs font-bold">N.º {order.numeroFactura}</p>
+            <p className="text-[11px]">{order.horaIngreso}</p>
+          </div>
+
+          <div className="border-b border-dashed border-black py-4 text-[11px] leading-5">
+            <p>
+              <strong>Cliente:</strong> {order.cliente}
+            </p>
+            <p>
+              <strong>Teléfono:</strong> {order.telefono}
+            </p>
+            <p>
+              <strong>Entrega:</strong> {displayOrderType(order.metodoEntrega)}
+            </p>
+            {order.mesa && (
+              <p>
+                <strong>Mesa:</strong> {order.mesa}
+              </p>
+            )}
+            {order.deliveryAddress && (
+              <p>
+                <strong>Dirección:</strong> {order.deliveryAddress}
+              </p>
+            )}
+            {order.deliveryInstructions && (
+              <p>
+                <strong>Referencia:</strong> {order.deliveryInstructions}
+              </p>
+            )}
+          </div>
+
+          <table className="w-full border-collapse text-[11px]">
+            <thead>
+              <tr className="border-b border-dashed border-black text-left uppercase">
+                <th className="py-2">Producto</th>
+                <th className="py-2 text-center">Cant.</th>
+                <th className="py-2 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.items.map((item) => (
+                <tr
+                  key={item.id}
+                  className="border-b border-dotted border-black/40 align-top"
+                >
+                  <td className="py-2 pr-2">
+                    <div className="font-bold">{item.product_name}</div>
+                    {item.options?.length > 0 && (
+                      <div className="text-[10px]">
+                        {item.options.join(" · ")}
+                      </div>
+                    )}
+                    {item.notes && (
+                      <div className="text-[10px]">Nota: {item.notes}</div>
+                    )}
+                  </td>
+                  <td className="py-2 text-center">{item.quantity}</td>
+                  <td className="py-2 text-right font-bold">
+                    {formatMoney(
+                      item.subtotal || item.unit_price * item.quantity,
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <div className="space-y-1 border-t border-black pt-4 text-right text-xs">
+            <p>
+              Subtotal: <strong>{formatMoney(order.total)}</strong>
+            </p>
+            <p className="text-base font-black">
+              TOTAL A PAGAR: {formatMoney(order.total)}
+            </p>
+          </div>
+          <div className="mt-4 border-t border-dashed border-black pt-3 text-[11px]">
+            <p>
+              <strong>Método de pago:</strong> {order.metodoPago}
+            </p>
+            {order.observaciones && (
+              <p className="mt-2">
+                <strong>Observaciones:</strong> {order.observaciones}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-white/10 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/10 px-4 py-2 text-xs font-bold text-neutral-300 hover:bg-white/10"
+          >
+            Cerrar
+          </button>
+          <button
+            type="button"
+            onClick={() => onPrint(order)}
+            className="rounded-lg bg-violet-600 px-4 py-2 text-xs font-black uppercase text-white hover:bg-violet-500"
+          >
+            Imprimir factura
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const normalizeStatus = (status) => {
   const key = String(status || "").toLowerCase();
@@ -639,6 +784,14 @@ const mapDatabaseOrderToUi = (order) => {
   const createdAt = order.created_at ? new Date(order.created_at) : new Date();
   const items = Array.isArray(order.order_items) ? order.order_items : [];
   const metodoEntrega = normalizeOrderType(order.order_type);
+  let metadata = order.metadata || {};
+  if (typeof metadata === "string") {
+    try {
+      metadata = JSON.parse(metadata);
+    } catch {
+      metadata = {};
+    }
+  }
 
   return {
     id: order.id,
@@ -653,9 +806,17 @@ const mapDatabaseOrderToUi = (order) => {
     deliveryDetails: getDeliveryDetails(order),
     total: Number(order.total || 0),
     status: normalizeStatus(order.status),
+    databaseStatus: String(order.status || "pending").toLowerCase(),
     origen: "pos",
     cliente: order.customer_name || "Cliente",
     telefono: order.customer_phone || "Sin teléfono",
+    mesa: order.mesa || "",
+    deliveryAddress: order.delivery_address || "",
+    deliveryInstructions: order.delivery_instructions || "",
+    punto: order.punto || "",
+    paymentMethods: Array.isArray(metadata.payment_methods)
+      ? metadata.payment_methods
+      : [],
     pago: normalizePaymentMethod(order.payment_method),
     metodoPago: normalizePaymentMethod(order.payment_method),
     horaIngreso: formatDateTime(order.created_at),
@@ -663,6 +824,7 @@ const mapDatabaseOrderToUi = (order) => {
     observaciones: order.notes || order.delivery_instructions || "",
     items: items.map((item) => ({
       id: item.id,
+      product_id: item.product_id,
       product_name: item.product_name || "Producto",
       quantity: Number(item.quantity || 0),
       unit_price: Number(item.unit_price || 0),
@@ -678,6 +840,7 @@ const mapDatabaseOrderToUi = (order) => {
 // --- COMPONENTE PRINCIPAL ---
 const Ordenes = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -693,6 +856,7 @@ const Ordenes = () => {
   const [ordersPage, setOrdersPage] = useState(0);
   const [hasMoreOrders, setHasMoreOrders] = useState(true);
   const [loadingMoreOrders, setLoadingMoreOrders] = useState(false);
+  const [invoiceOrder, setInvoiceOrder] = useState(null);
   const ordersEndRef = useRef(null);
   const businessIdRef = useRef(null);
 
@@ -909,20 +1073,69 @@ const Ordenes = () => {
     return `${NOMBRES_MESES[monthIndex]} ${year}`.toUpperCase();
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (orden) => {
     if (!canDelete) {
       alert("Solo el administrador puede eliminar órdenes.");
       return;
     }
 
-    if (window.confirm(`¿Eliminar orden ${id}?`)) {
-      alert(`Orden ${id} eliminada`);
+    const nombre = orden.cliente || "Cliente";
+    const numeroOrden = orden.numeroFactura || orden.id;
+    if (!window.confirm(`¿Eliminar la orden ${numeroOrden} de ${nombre}?`)) {
+      return;
     }
+
+    const { error } = await supabase.from("orders").delete().eq("id", orden.id);
+    if (error) {
+      console.error("Error eliminando orden:", error);
+      alert("No se pudo eliminar la orden.");
+      return;
+    }
+
+    setOrders((current) =>
+      current.filter((currentOrder) => currentOrder.id !== orden.id),
+    );
   };
 
-  const handlePrint = (id) => {
-    alert(`Imprimiendo orden ${id}`);
+  const handlePrint = (orden) => {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Permite las ventanas emergentes para imprimir la orden.");
+      return;
+    }
+
+    const escaparHtml = (value) =>
+      String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    const itemsHtml = (orden.items || [])
+      .map(
+        (item) =>
+          `<tr><td>${escaparHtml(item.product_name)}</td><td>${item.quantity}</td><td>${formatMoney(item.subtotal || item.unit_price * item.quantity)}</td></tr>`,
+      )
+      .join("");
+
+    printWindow.document.write(`
+      <html><head><title>Factura ${escaparHtml(orden.numeroFactura)}</title>
+      <style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1{text-align:center}p{margin:6px 0}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{border:1px solid #ccc;padding:8px;text-align:left}th{background:#f3f3f3}.total{text-align:right;font-size:18px;font-weight:bold;margin-top:20px}</style>
+      </head><body>
+      <h1>Factura</h1>
+      <p><strong>Orden:</strong> ${escaparHtml(orden.numeroFactura)}</p>
+      <p><strong>Cliente:</strong> ${escaparHtml(orden.cliente)}</p>
+      <p><strong>Entrega:</strong> ${escaparHtml(displayOrderType(orden.metodoEntrega))}</p>
+      <p><strong>Pago:</strong> ${escaparHtml(orden.metodoPago)}</p>
+      <table><thead><tr><th>Producto</th><th>Cantidad</th><th>Total</th></tr></thead><tbody>${itemsHtml}</tbody></table>
+      <p class="total">Total: ${formatMoney(orden.total)}</p>
+      </body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
   };
+
+  const handleInvoice = (orden) => setInvoiceOrder(orden);
 
   const handleShare = async (orden) => {
     const text = `Factura ${orden.numeroFactura}\nCliente: ${orden.cliente}\nTotal: ${formatMoney(orden.total)}\nEntrega: ${orden.metodoEntrega}\nPago: ${orden.metodoPago}`;
@@ -945,8 +1158,45 @@ const Ordenes = () => {
     }
   };
 
-  const handleEdit = (id) => {
-    alert(`Editar orden ${id}`);
+  const handleEdit = (orden) => {
+    const deliveryMethodMap = {
+      mesa: "table",
+      recoger: "pickup",
+      domicilio: "delivery",
+      punto: "point",
+    };
+
+    navigate("/pos", {
+      state: {
+        mesaEdit: {
+          orderId: orden.id,
+          orderNumber: orden.numeroFactura,
+          orderStatus: orden.databaseStatus,
+          orderType: orden.metodoEntrega,
+          mesa: orden.mesa,
+          numero: orden.mesa,
+          deliveryMethod: deliveryMethodMap[orden.metodoEntrega],
+          customerName: orden.cliente,
+          customerPhone: orden.telefono,
+          paymentMethod: orden.metodoPago,
+          paymentMethods: orden.paymentMethods,
+          total: orden.total,
+          address: orden.deliveryAddress,
+          referencePoint: orden.deliveryInstructions,
+          locationText: orden.punto,
+          notes: orden.observaciones,
+          comanda: orden.items.map((item) => ({
+            id: item.id,
+            productId: item.product_id,
+            name: item.product_name,
+            qty: item.quantity,
+            price: item.unit_price,
+            notes: item.notes,
+            options: item.options,
+          })),
+        },
+      },
+    });
   };
 
   const handleOpenMap = (orden) => {
@@ -1203,6 +1453,7 @@ const Ordenes = () => {
                                     key={orden.id}
                                     orden={orden}
                                     onDelete={handleDelete}
+                                    onInvoice={handleInvoice}
                                     onPrint={handlePrint}
                                     onShare={handleShare}
                                     onEdit={handleEdit}
@@ -1241,6 +1492,11 @@ const Ordenes = () => {
           </>
         )}
       </main>
+      <InvoicePreview
+        order={invoiceOrder}
+        onClose={() => setInvoiceOrder(null)}
+        onPrint={handlePrint}
+      />
     </div>
   );
 };

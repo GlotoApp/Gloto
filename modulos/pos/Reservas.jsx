@@ -304,8 +304,14 @@ const Reservas = () => {
   };
 
   const deleteReservation = async (reservation) => {
+    const customerName = reservation.customer_name || "este cliente";
+    const reservationDetails = [
+      reservation.mesa ? `mesa ${reservation.mesa}` : "sin mesa",
+      reservation.fecha_reserva || "sin fecha",
+      formatTime12Hour(reservation.hora_reserva),
+    ].join(" · ");
     const confirmed = window.confirm(
-      `¿Eliminar la reserva de ${reservation.customer_name || "este cliente"}?`,
+      `¿Está seguro de eliminar esta reserva?\n\nCliente: ${customerName}\n${reservationDetails}`,
     );
     if (!confirmed || !businessId || deletingId) return;
 
@@ -335,16 +341,14 @@ const Reservas = () => {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-on-surface">
-      <div className="mx-auto max-w-6xl">
-        <header className="border-b border-white/8 bg-background px-4 py-6 md:px-8">
-          <div className="flex flex-wrap items-end justify-between gap-5">
+    <div className="min-h-screen bg-background p-4 font-sans text-white">
+      <div className="mx-auto max-w-7xl pb-20">
+        <header className="mb-10 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <h1 className="mt-2 text-4xl font-black tracking-[-0.03em]">
-                Reservas
-              </h1>
-              <p className="mt-2 max-w-xl text-sm text-on-surface-variant">
-                Controla la disponibilidad por mesa y fecha desde un solo lugar.
+              <h1 className="text-2xl font-black tracking-tighter">Reservas</h1>
+              <p className="mt-1 text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+                Disponibilidad y agenda de mesas
               </p>
             </div>
             <button
@@ -353,14 +357,14 @@ const Reservas = () => {
                 setForm((current) => ({ ...current, fecha: selectedDate }));
                 setShowForm(true);
               }}
-              className="rounded-xl bg-primary-container px-5 py-3 text-sm font-black text-on-primary shadow-lg shadow-primary-container/20 transition-colors hover:bg-success"
+              className="rounded-xl bg-violet-600 px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-white shadow-lg shadow-violet-900/20 transition-colors hover:bg-violet-500"
             >
-              + Nueva reserva
+              + Nueva Reserva
             </button>
           </div>
         </header>
 
-        <div className="grid gap-3 border-b border-white/8 bg-background px-4 py-4 sm:grid-cols-3 md:px-8">
+        <div className="mb-5 grid gap-3 sm:grid-cols-3">
           {[
             ["Reservas totales", reservations.length, "event_note"],
             ["Fechas ocupadas", reservedDates, "calendar_month"],
@@ -368,16 +372,16 @@ const Reservas = () => {
           ].map(([label, value, icon]) => (
             <div
               key={label}
-              className="flex items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-3"
+              className="flex min-h-[76px] items-center gap-3 rounded-2xl border border-white/5 bg-neutral-900/40 px-4 py-3"
             >
-              <span className="material-symbols-outlined text-primary">
-                {icon}
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400">
+                <span className="material-symbols-outlined">{icon}</span>
               </span>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-widest text-on-surface-variant">
+              <div className="min-w-0">
+                <p className="truncate text-[8px] font-black uppercase tracking-widest text-neutral-500">
                   {label}
                 </p>
-                <p className="mt-1 text-2xl font-black text-on-surface">
+                <p className="mt-1 text-2xl font-black leading-none text-white">
                   {value}
                 </p>
               </div>
@@ -385,23 +389,23 @@ const Reservas = () => {
           ))}
         </div>
 
-        <main className="px-4 py-6 md:px-8">
+        <main className="space-y-5">
           {showForm && (
             <form
               onSubmit={createReservation}
-              className="mb-5 rounded-2xl border border-primary/30 bg-surface p-4 shadow-xl md:p-5"
+              className="mb-5 rounded-2xl border border-violet-500/20 bg-neutral-900/40 p-4 shadow-xl md:p-6"
             >
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-black">Nueva reserva</h2>
-                  <p className="text-xs text-on-surface-variant">
+                  <h2 className="text-lg font-black">Nueva Reserva</h2>
+                  <p className="text-xs text-neutral-500">
                     La disponibilidad se valida antes de guardar.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setShowForm(false)}
-                  className="text-xs font-bold text-on-surface-variant hover:text-on-surface"
+                  className="text-xs font-bold text-neutral-500 hover:text-white"
                 >
                   Cancelar
                 </button>
@@ -427,7 +431,7 @@ const Reservas = () => {
                       onChange={(event) =>
                         updateForm(field, event.target.value)
                       }
-                      className="mt-1 w-full rounded-lg border border-outline bg-background px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
+                      className="mt-1 w-full rounded-xl border border-white/5 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-violet-500/50"
                     />
                   </label>
                 ))}
@@ -439,7 +443,7 @@ const Reservas = () => {
                     onChange={(event) =>
                       updateForm("notas", event.target.value)
                     }
-                    className="mt-1 w-full rounded-lg border border-outline bg-background px-3 py-2 text-sm text-on-surface outline-none focus:border-primary"
+                    className="mt-1 w-full rounded-xl border border-white/5 bg-neutral-950 px-3 py-2 text-sm text-white outline-none focus:border-violet-500/50"
                   />
                 </label>
               </div>
@@ -452,7 +456,7 @@ const Reservas = () => {
               <button
                 type="submit"
                 disabled={saving || reservationDateConflict}
-                className="mt-4 rounded-xl bg-primary-container px-5 py-3 text-sm font-black text-on-primary hover:bg-success disabled:opacity-50"
+                className="mt-4 rounded-xl bg-violet-600 px-5 py-3 text-sm font-black text-white hover:bg-violet-500 disabled:opacity-50"
               >
                 {saving ? "Guardando..." : "Crear reserva"}
               </button>
@@ -466,10 +470,10 @@ const Reservas = () => {
           )}
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.8fr)]">
-            <section className="rounded-3xl border border-white/8 bg-surface p-4 shadow-2xl md:p-6">
-              <div className="mb-5 flex items-center justify-between border-b border-white/8 pb-4">
+            <section className="rounded-2xl border border-white/5 bg-neutral-900/40 p-4 shadow-2xl md:p-6">
+              <div className="mb-5 flex items-center justify-between border-b border-white/5 pb-4">
                 <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.25em] text-primary">
+                  <p className="text-[9px] font-black uppercase tracking-[0.25em] text-violet-400">
                     Disponibilidad
                   </p>
                   <h2 className="mt-1 text-lg font-black">Calendario</h2>
@@ -477,18 +481,18 @@ const Reservas = () => {
                 <button
                   type="button"
                   onClick={() => moveMonth(-1)}
-                  className="rounded-lg p-2 text-on-surface-variant hover:bg-surface-hover hover:text-on-surface"
+                  className="rounded-lg p-2 text-neutral-500 hover:bg-white/10 hover:text-white"
                   aria-label="Mes anterior"
                 >
                   <ChevronLeft size={18} />
                 </button>
-                <h2 className="rounded-lg bg-background px-3 py-2 text-sm font-black capitalize">
+                <h2 className="rounded-lg bg-neutral-950 px-3 py-2 text-sm font-black capitalize">
                   {formatMonth(monthDate)}
                 </h2>
                 <button
                   type="button"
                   onClick={() => moveMonth(1)}
-                  className="rounded-lg p-2 text-on-surface-variant hover:bg-surface-hover hover:text-on-surface"
+                  className="rounded-lg p-2 text-neutral-500 hover:bg-white/10 hover:text-white"
                   aria-label="Mes siguiente"
                 >
                   <ChevronRight size={18} />
@@ -519,17 +523,17 @@ const Reservas = () => {
                       onClick={() => setSelectedDate(dateKey)}
                       className={`relative min-h-20 rounded-2xl border p-3 text-left transition-all ${
                         isSelected
-                          ? "border-primary bg-primary/15 text-on-surface shadow-lg shadow-primary/10"
-                          : "border-white/6 bg-background hover:border-primary/40 hover:bg-surface-hover"
+                          ? "border-violet-500/50 bg-violet-500/15 text-white shadow-lg shadow-violet-900/10"
+                          : "border-white/6 bg-neutral-950 hover:border-violet-500/40 hover:bg-white/5"
                       } ${!isCurrentMonth ? "opacity-35" : ""}`}
                     >
                       <span
-                        className={`text-sm font-bold ${isToday ? "text-primary" : ""}`}
+                        className={`text-sm font-bold ${isToday ? "text-violet-400" : ""}`}
                       >
                         {day.getDate()}
                       </span>
                       {count > 0 && (
-                        <span className="absolute bottom-2 left-2 rounded-full bg-primary px-2 py-0.5 text-[10px] font-black text-on-primary">
+                        <span className="absolute bottom-2 left-2 rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-black text-white">
                           {count}
                         </span>
                       )}
@@ -539,13 +543,13 @@ const Reservas = () => {
               </div>
             </section>
 
-            <section className="rounded-3xl border border-white/8 bg-surface p-4 shadow-2xl md:p-6">
-              <div className="mb-4 flex items-start gap-3 border-b border-white/8 pb-4">
-                <div className="rounded-xl bg-primary/15 p-2 text-primary">
+            <section className="rounded-2xl border border-white/5 bg-neutral-900/40 p-4 shadow-2xl md:p-6">
+              <div className="mb-4 flex items-start gap-3 border-b border-white/5 pb-4">
+                <div className="rounded-xl bg-violet-500/15 p-2 text-violet-400">
                   <CalendarDays size={20} />
                 </div>
                 <div>
-                  <p className="text-[9px] font-black uppercase tracking-[0.25em] text-primary">
+                  <p className="text-[9px] font-black uppercase tracking-[0.25em] text-violet-400">
                     Agenda del día
                   </p>
                   <h2 className="mt-1 text-lg font-black capitalize">
@@ -571,19 +575,19 @@ const Reservas = () => {
                   {selectedReservations.map((reservation) => (
                     <article
                       key={reservation.id}
-                      className="rounded-2xl border border-white/8 bg-background p-4 transition-colors hover:border-primary/40"
+                      className="rounded-2xl border border-white/5 bg-neutral-950/60 p-4 transition-colors hover:border-violet-500/40"
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <h3 className="font-bold text-on-surface">
                             {reservation.customer_name || "Cliente sin nombre"}
                           </h3>
-                          <p className="mt-2 flex items-center gap-1 text-xs font-bold text-primary">
+                          <p className="mt-2 flex items-center gap-1 text-xs font-bold text-violet-400">
                             <Clock3 size={13} />
                             {formatTime12Hour(reservation.hora_reserva)}
                           </p>
                         </div>
-                        <span className="rounded-full bg-primary/15 px-2 py-1 text-[10px] font-black uppercase text-primary">
+                        <span className="rounded-full bg-violet-500/15 px-2 py-1 text-[10px] font-black uppercase text-violet-400">
                           Mesa {reservation.mesa || "-"}
                         </span>
                       </div>

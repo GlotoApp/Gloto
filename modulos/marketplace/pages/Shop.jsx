@@ -1839,14 +1839,22 @@ const Shop = () => {
             abrirCarrito();
           }}
           onConfirmar={async () => {
-            const pedido = await crearPedido();
-            setCheckoutOpen(false);
-            if (pedido) {
-              navigate(
-                `/marketplace/seguimiento?order=${encodeURIComponent(
-                  pedido.numero,
-                )}&token=${encodeURIComponent(pedido.trackingToken)}`,
+            try {
+              const pedido = await crearPedido();
+              setCheckoutOpen(false);
+              if (pedido) {
+                navigate(
+                  `/marketplace/seguimiento?order=${encodeURIComponent(
+                    pedido.numero,
+                  )}&token=${encodeURIComponent(pedido.trackingToken)}`,
+                );
+              }
+            } catch (error) {
+              console.error("No se pudo confirmar el pedido:", error);
+              setShareMessage(
+                "No se pudo guardar el pedido. Intenta nuevamente.",
               );
+              window.setTimeout(() => setShareMessage(""), 3500);
             }
           }}
         />

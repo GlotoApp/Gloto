@@ -66,11 +66,39 @@ const mapTableStatusToTableState = (tableStatus) =>
     .trim()
     .toLowerCase();
 
+const getTableStateFromOrder = (order) => {
+  const tableStatus = mapTableStatusToTableState(order.table_status);
+  if (tableStatus) return tableStatus;
+
+  const orderStatus = String(order.status ?? "")
+    .trim()
+    .toLowerCase();
+  return ["pending", "confirmed", "preparing", "ready"].includes(orderStatus)
+    ? "ocupada"
+    : "";
+};
+
 const getLocalDateKey = (date = new Date()) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+};
+
+const formatReservationDateTime = (date, time) => {
+  if (!date || !time) return "";
+
+  const reservationDate = new Date(`${date}T${time}`);
+  if (Number.isNaN(reservationDate.getTime())) return `${date} · ${time}`;
+
+  return reservationDate.toLocaleString("es-CO", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 };
 
 const getPaymentMethodsFromMetadata = (metadata) => {
@@ -256,6 +284,16 @@ function MesaTile({ mesa, onOpen }) {
               {mesa.reserva.nombre}
             </span>
           )}
+          {mesa.estado === "reserva" &&
+            (mesa.reserva?.fecha || mesa.reserva?.hora) && (
+              <span className="flex items-center gap-1 text-[9px] font-bold text-blue-300">
+                <Calendar size={9} />
+                {formatReservationDateTime(
+                  mesa.reserva.fecha,
+                  mesa.reserva.hora,
+                ) || `${mesa.reserva.fecha || ""} · ${mesa.reserva.hora || ""}`}
+              </span>
+            )}
           {mesa.estado === "reserva" && mesa.reserva?.personas > 0 && (
             <span className="flex items-center gap-1 text-[9px] font-bold text-slate-500">
               <Users size={9} />
@@ -1082,7 +1120,8 @@ export default function MesasPOS() {
       // Cargar productos del negocio
       await loadProductsFromDB(profile.business_id);
 
-      // Cargar todas las órdenes de tipo "mesa"; table_status decide si siguen visibles
+      // Cargar órdenes de tipo "mesa". Las órdenes antiguas pueden tener
+      // table_status NULL, así que su estado activo se deriva de status.
       const { data: ordenes, error: ordenesError } = await supabase
         .from("orders")
         .select(
@@ -1124,13 +1163,13 @@ export default function MesasPOS() {
       // Las reservas caducan visualmente por fecha; las mesas activas no.
       const mesasOrdenes = (ordenes || [])
         .filter((orden) => {
-          if (!orden.mesa || !String(orden.table_status ?? "").trim()) {
+          if (!orden.mesa || !getTableStateFromOrder(orden)) {
             return false;
           }
 
           const isReservation =
             Boolean(orden.is_reservation) ||
-            mapTableStatusToTableState(orden.table_status) === "reserva";
+            getTableStateFromOrder(orden) === "reserva";
 
           return !isReservation || orden.fecha_reserva === today;
         })
@@ -1142,7 +1181,7 @@ export default function MesasPOS() {
           tableStatus: orden.table_status || "",
           isReservation: Boolean(orden.is_reservation),
           numero: String(orden.mesa),
-          estado: mapTableStatusToTableState(orden.table_status),
+          estado: getTableStateFromOrder(orden),
           paymentMethod: orden.payment_method || "",
           paymentStatus: orden.payment_status || "pending",
           paymentMethods: getPaymentMethodsFromMetadata(orden.metadata),
@@ -1188,7 +1227,7 @@ export default function MesasPOS() {
         // Ordenar por número de mesa
         .sort((a, b) => parseInt(a.numero) - parseInt(b.numero));
 
-      // Solo mostrar mesas cuyo table_status indica que siguen en uso.
+      // Solo mostrar mesas con una orden activa o una reserva vigente.
       setMesas(mesasOrdenes);
     } catch (err) {
       console.error("Error en loadMesas:", err);

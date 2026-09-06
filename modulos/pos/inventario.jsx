@@ -20,6 +20,8 @@ import {
   Clipboard,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { supabase } from "../../src/lib/supabaseClient";
+import { useAuth } from "../../src/components/AuthContext";
 
 // ─── DATOS INICIALES ────────────────────────────────────────────────────────
 const INITIAL_INVENTORY = [
@@ -157,15 +159,21 @@ const INITIAL_RECIPES = [
 ];
 
 const DEFAULT_CATEGORIES = [
-  "Insumos",
-  "Lácteos",
-  "Barra",
-  "Fritura",
-  "Bebidas",
-  "Repostería",
+  "INSUMOS",
+  "LÁCTEOS",
+  "BARRA",
+  "FRITURA",
+  "BEBIDAS",
+  "REPOSTERÍA",
 ];
-const DEFAULT_RECIPE_CATS = ["Fritos", "Barra", "Repostería", "Bebidas"];
-const DEFAULT_UNITS = ["kg", "g", "L", "mL", "unidad"];
+const DEFAULT_RECIPE_CATS = ["FRITOS", "BARRA", "REPOSTERÍA", "BEBIDAS"];
+const DEFAULT_UNITS = ["KG", "G", "L", "ML", "UNIDAD"];
+
+const toInventoryText = (value) =>
+  String(value ?? "")
+    .trim()
+    .toUpperCase();
+const toInventoryInputText = (value) => String(value ?? "").toUpperCase();
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 function calcRecipeCost(recipe, inventory) {
@@ -545,14 +553,21 @@ const DetailBox = ({ label, value, color = "text-neutral-300" }) => (
 );
 
 // ════════════════════════════════════════════════════════════════════════════
-export default function Inventario() {
-  const [tab, setTab] = useState("insumos");
+export default function Inventario({
+  initialTab = "insumos",
+  standalone = false,
+} = {}) {
+  const { user } = useAuth();
+  const [tab, setTab] = useState(initialTab);
+  const isRecipesView = initialTab === "recetas";
+  const [businessId, setBusinessId] = useState(null);
+  const [loadingData, setLoadingData] = useState(true);
 
   const [categories, setCategories] = useState(DEFAULT_CATEGORIES);
   const [recipeCats, setRecipeCats] = useState(DEFAULT_RECIPE_CATS);
   const [unitsList, setUnitsList] = useState(DEFAULT_UNITS);
 
-  const [inventory, setInventory] = useState(INITIAL_INVENTORY);
+  const [inventory, setInventory] = useState([]);
   const [invSearch, setInvSearch] = useState("");
   const [invCatFilter, setInvCatFilter] = useState("Todos");
   const [invUnitFilter, setInvUnitFilter] = useState("Todos");
@@ -568,8 +583,12 @@ export default function Inventario() {
     minStock: 10,
     price: 0,
   });
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [newUnitName, setNewUnitName] = useState("");
+  const [isCreatingCategory, setIsCreatingCategory] = useState(false);
+  const [isCreatingUnit, setIsCreatingUnit] = useState(false);
 
-  const [recipes, setRecipes] = useState(INITIAL_RECIPES);
+  const [recipes, setRecipes] = useState([]);
   const [recSearch, setRecSearch] = useState("");
   const [recCatFilter, setRecCatFilter] = useState("Todas");
   const [showRecModal, setShowRecModal] = useState(false);
@@ -582,6 +601,135 @@ export default function Inventario() {
     ingredients: [],
   });
   const [expandedRec, setExpandedRec] = useState(null);
+
+  useEffect(() => {
+    const loadInventory = async () => {
+      if (!user?.id) {
+        setLoadingData(false);
+        return;
+      }
+
+      setLoadingData(true);
+      try {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("business_id")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (profileError || !profile?.business_id) {
+          throw profileError || new Error("No se encontró el negocio");
+        }
+
+        setBusinessId(profile.business_id);
+
+        const [
+          inventoryResponse,
+          recipesResponse,
+          categoriesResponse,
+          unitsResponse,
+        ] = await Promise.all([
+          supabase
+            .from("inventory_items")
+            .select(
+              "id,business_id,name,category,stock,unit,min_stock,price,is_active",
+            )
+            .eq("business_id", profile.business_id)
+            .eq("is_active", true)
+            .order("name"),
+          supabase
+            .from("recipes")
+            .select(
+              "id,business_id,name,category,servings,description,recipe_ingredients(id,inventory_item_id,quantity,unit)",
+            )
+            .eq("business_id", profile.business_id)
+            .order("name"),
+          supabase
+            .from("inventory_categories")
+            .select("name")
+            .eq("business_id", profile.business_id)
+            .order("name"),
+          supabase
+            .from("inventory_units")
+            .select("name")
+            .eq("business_id", profile.business_id)
+            .order("name"),
+        ]);
+
+        if (inventoryResponse.error) throw inventoryResponse.error;
+        if (recipesResponse.error) throw recipesResponse.error;
+        if (categoriesResponse.error) throw categoriesResponse.error;
+        if (unitsResponse.error) throw unitsResponse.error;
+
+        const storedCategories = (categoriesResponse.data || []).map(
+          (item) => item.name,
+        );
+        const storedUnits = (unitsResponse.data || []).map((item) => item.name);
+        const missingCategories = DEFAULT_CATEGORIES.filter(
+          (name) => !storedCategories.includes(name),
+        );
+        const missingUnits = DEFAULT_UNITS.filter(
+          (name) => !storedUnits.includes(name),
+        );
+        if (missingCategories.length > 0) {
+          await supabase.from("inventory_categories").insert(
+            missingCategories.map((name) => ({
+              business_id: profile.business_id,
+              name,
+            })),
+          );
+        }
+        if (missingUnits.length > 0) {
+          await supabase.from("inventory_units").insert(
+            missingUnits.map((name) => ({
+              business_id: profile.business_id,
+              name,
+            })),
+          );
+        }
+        setCategories(
+          [...new Set([...storedCategories, ...missingCategories])].sort(),
+        );
+        setUnitsList([...new Set([...storedUnits, ...missingUnits])].sort());
+
+        setInventory(
+          (inventoryResponse.data || []).map((item) => ({
+            id: item.id,
+            name: item.name,
+            category: toInventoryText(item.category),
+            stock: Number(item.stock || 0),
+            unit: toInventoryText(item.unit),
+            minStock: Number(item.min_stock || 0),
+            price: Number(item.price || 0),
+          })),
+        );
+        setRecipes(
+          (recipesResponse.data || []).map((recipe) => ({
+            id: recipe.id,
+            name: toInventoryText(recipe.name),
+            category: toInventoryText(recipe.category),
+            servings: Number(recipe.servings || 1),
+            description: recipe.description || "",
+            ingredients: (recipe.recipe_ingredients || []).map(
+              (ingredient) => ({
+                inventoryId: ingredient.inventory_item_id,
+                quantity: Number(ingredient.quantity || 0),
+                unit: toInventoryText(ingredient.unit),
+              }),
+            ),
+          })),
+        );
+      } catch (error) {
+        console.error("Error cargando inventario:", error);
+        setInventory([]);
+        setRecipes([]);
+      } finally {
+        setLoadingData(false);
+      }
+    };
+
+    loadInventory();
+  }, [user?.id]);
 
   const dynamicUnitsFilter = useMemo(() => {
     return [
@@ -649,43 +797,64 @@ export default function Inventario() {
     return list;
   }, [recipes, recSearch, recCatFilter]);
 
-  const handleCategoryChange = (val) => {
+  const handleCategoryChange = async (val) => {
     if (val === "NEW_CATEGORY") {
-      const newCat = prompt("Ingresa el nombre de la nueva categoría:");
-      if (newCat && newCat.trim() !== "") {
-        const cleanCat = newCat.trim();
-        if (!categories.includes(cleanCat)) {
-          setCategories((prev) => [...prev, cleanCat]);
-        }
-        setInvForm((prev) => ({ ...prev, category: cleanCat }));
-      } else {
-        setInvForm((prev) => ({
-          ...prev,
-          category: categories[0] || "Insumos",
-        }));
-      }
+      setIsCreatingCategory(true);
+      setNewCategoryName("");
     } else {
-      setInvForm((prev) => ({ ...prev, category: val }));
+      setIsCreatingCategory(false);
+      setInvForm((prev) => ({ ...prev, category: toInventoryText(val) }));
     }
   };
 
-  const handleUnitChange = (val) => {
-    if (val === "NEW_UNIT") {
-      const newUnit = prompt(
-        "Ingresa el nombre de la nueva unidad (ej: caja, paq, oz):",
-      );
-      if (newUnit && newUnit.trim() !== "") {
-        const cleanUnit = newUnit.trim();
-        if (!unitsList.includes(cleanUnit)) {
-          setUnitsList((prev) => [...prev, cleanUnit]);
-        }
-        setInvForm((prev) => ({ ...prev, unit: cleanUnit }));
-      } else {
-        setInvForm((prev) => ({ ...prev, unit: unitsList[0] || "kg" }));
-      }
-    } else {
-      setInvForm((prev) => ({ ...prev, unit: val }));
+  const saveNewCategory = async () => {
+    const cleanCategory = toInventoryText(newCategoryName);
+    if (!businessId || !cleanCategory) return;
+    const { error } = await supabase.from("inventory_categories").insert({
+      business_id: businessId,
+      name: cleanCategory,
+    });
+    if (error && error.code !== "23505") {
+      console.error("Error guardando categoría:", error);
+      return;
     }
+    setCategories((current) =>
+      current.includes(cleanCategory)
+        ? current
+        : [...current, cleanCategory].sort(),
+    );
+    setInvForm((current) => ({ ...current, category: cleanCategory }));
+    setNewCategoryName("");
+    setIsCreatingCategory(false);
+  };
+
+  const handleUnitChange = async (val) => {
+    if (val === "NEW_UNIT") {
+      setIsCreatingUnit(true);
+      setNewUnitName("");
+    } else {
+      setIsCreatingUnit(false);
+      setInvForm((prev) => ({ ...prev, unit: toInventoryText(val) }));
+    }
+  };
+
+  const saveNewUnit = async () => {
+    const cleanUnit = toInventoryText(newUnitName);
+    if (!businessId || !cleanUnit) return;
+    const { error } = await supabase.from("inventory_units").insert({
+      business_id: businessId,
+      name: cleanUnit,
+    });
+    if (error && error.code !== "23505") {
+      console.error("Error guardando unidad:", error);
+      return;
+    }
+    setUnitsList((current) =>
+      current.includes(cleanUnit) ? current : [...current, cleanUnit].sort(),
+    );
+    setInvForm((current) => ({ ...current, unit: cleanUnit }));
+    setNewUnitName("");
+    setIsCreatingUnit(false);
   };
 
   const handleRecipeCategoryChange = (val) => {
@@ -712,11 +881,15 @@ export default function Inventario() {
 
   const openNewInv = () => {
     setEditingInv(null);
+    setIsCreatingCategory(false);
+    setIsCreatingUnit(false);
+    setNewCategoryName("");
+    setNewUnitName("");
     setInvForm({
       name: "",
-      category: categories[0] || "Insumos",
+      category: categories[0] || "INSUMOS",
       stock: 0,
-      unit: unitsList[0] || "kg",
+      unit: unitsList[0] || "KG",
       minStock: 10,
       price: 0,
     });
@@ -724,26 +897,122 @@ export default function Inventario() {
   };
   const openEditInv = (item) => {
     setEditingInv(item);
+    setIsCreatingCategory(false);
+    setIsCreatingUnit(false);
+    setNewCategoryName("");
+    setNewUnitName("");
     setInvForm({ ...item });
     setShowInvModal(true);
   };
-  const saveInv = () => {
-    if (!invForm.name.trim()) return;
-    if (editingInv)
-      setInventory((inv) =>
-        inv.map((i) => (i.id === editingInv.id ? { ...i, ...invForm } : i)),
-      );
-    else setInventory((inv) => [...inv, { id: Date.now(), ...invForm }]);
+  const saveInv = async () => {
+    if (!businessId || !invForm.name.trim()) return;
+
+    const desiredStock = Number(invForm.stock) || 0;
+    const payload = {
+      business_id: businessId,
+      name: toInventoryText(invForm.name),
+      category: toInventoryText(invForm.category),
+      stock: editingInv ? undefined : 0,
+      unit: toInventoryText(invForm.unit),
+      min_stock: Number(invForm.minStock) || 0,
+      price: Number(invForm.price) || 0,
+      is_active: true,
+    };
+
+    const response = editingInv
+      ? await supabase
+          .from("inventory_items")
+          .update(payload)
+          .eq("id", editingInv.id)
+          .eq("business_id", businessId)
+          .select()
+          .single()
+      : await supabase
+          .from("inventory_items")
+          .insert(payload)
+          .select()
+          .single();
+
+    if (response.error) {
+      console.error("Error guardando insumo:", response.error);
+      alert("No se pudo guardar el insumo.");
+      return;
+    }
+
+    let saved = response.data;
+    const stockDelta = desiredStock - Number(editingInv?.stock || 0);
+    if (stockDelta !== 0) {
+      const stockResponse = await supabase.rpc("adjust_inventory_stock", {
+        p_item_id: saved.id,
+        p_quantity_delta: stockDelta,
+        p_reason: editingInv ? "edit_adjustment" : "initial_stock",
+        p_notes: editingInv
+          ? "Ajuste desde edición del insumo"
+          : "Stock inicial del insumo",
+      });
+      if (stockResponse.error) {
+        console.error("Error registrando stock inicial:", stockResponse.error);
+        alert("El insumo se guardó, pero no se pudo registrar su stock.");
+      } else {
+        saved = Array.isArray(stockResponse.data)
+          ? stockResponse.data[0] || saved
+          : stockResponse.data || saved;
+      }
+    }
+    const mapped = {
+      id: saved.id,
+      name: saved.name,
+      category: saved.category,
+      stock: Number(saved.stock || 0),
+      unit: saved.unit,
+      minStock: Number(saved.min_stock || 0),
+      price: Number(saved.price || 0),
+    };
+    setInventory((current) =>
+      editingInv
+        ? current.map((item) => (item.id === saved.id ? mapped : item))
+        : [...current, mapped],
+    );
     setShowInvModal(false);
   };
-  const deleteInv = (id) => {
-    if (confirm("¿Eliminar este insumo?"))
-      setInventory((inv) => inv.filter((i) => i.id !== id));
+  const deleteInv = async (id) => {
+    if (!businessId || !confirm("¿Eliminar este insumo?")) return;
+
+    const { error } = await supabase
+      .from("inventory_items")
+      .delete()
+      .eq("id", id)
+      .eq("business_id", businessId);
+    if (error) {
+      console.error("Error eliminando insumo:", error);
+      alert("No se puede eliminar un insumo usado en una receta.");
+      return;
+    }
+    setInventory((current) => current.filter((item) => item.id !== id));
   };
-  const updateStock = (id, delta) =>
-    setInventory((inv) =>
-      inv.map((i) => (i.id === id ? { ...i, stock: i.stock + delta } : i)),
+  const updateStock = async (id, delta) => {
+    const { data, error } = await supabase.rpc("adjust_inventory_stock", {
+      p_item_id: id,
+      p_quantity_delta: delta,
+      p_reason: "manual_adjustment",
+      p_notes: "Ajuste manual desde inventario",
+    });
+    if (error) {
+      console.error("Error actualizando stock:", error);
+      alert("No se pudo actualizar el stock.");
+      return;
+    }
+    setInventory((current) =>
+      current.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              stock: Number((Array.isArray(data) ? data[0] : data)?.stock || 0),
+            }
+          : item,
+      ),
     );
+  };
 
   const openNewRec = () => {
     setEditingRec(null);
@@ -764,18 +1033,96 @@ export default function Inventario() {
     });
     setShowRecModal(true);
   };
-  const saveRec = () => {
-    if (!recForm.name.trim()) return;
-    if (editingRec)
-      setRecipes((rs) =>
-        rs.map((r) => (r.id === editingRec.id ? { ...r, ...recForm } : r)),
-      );
-    else setRecipes((rs) => [...rs, { id: Date.now(), ...recForm }]);
+  const saveRec = async () => {
+    if (!businessId || !recForm.name.trim()) return;
+
+    const recipePayload = {
+      business_id: businessId,
+      name: toInventoryText(recForm.name),
+      category: toInventoryText(recForm.category),
+      servings: Number(recForm.servings) || 1,
+      description: recForm.description || "",
+    };
+    const response = editingRec
+      ? await supabase
+          .from("recipes")
+          .update(recipePayload)
+          .eq("id", editingRec.id)
+          .eq("business_id", businessId)
+          .select()
+          .single()
+      : await supabase.from("recipes").insert(recipePayload).select().single();
+
+    if (response.error) {
+      console.error("Error guardando receta:", response.error);
+      alert("No se pudo guardar la receta.");
+      return;
+    }
+
+    const recipeId = response.data.id;
+    const { error: deleteIngredientsError } = await supabase
+      .from("recipe_ingredients")
+      .delete()
+      .eq("recipe_id", recipeId);
+    if (deleteIngredientsError) {
+      console.error("Error reemplazando ingredientes:", deleteIngredientsError);
+      alert("No se pudieron guardar los ingredientes.");
+      return;
+    }
+
+    const ingredients = recForm.ingredients
+      .filter(
+        (ingredient) =>
+          ingredient.inventoryId && Number(ingredient.quantity) > 0,
+      )
+      .map((ingredient) => ({
+        recipe_id: recipeId,
+        inventory_item_id: ingredient.inventoryId,
+        quantity: Number(ingredient.quantity),
+        unit: toInventoryText(ingredient.unit),
+      }));
+    if (ingredients.length > 0) {
+      const { error: insertIngredientsError } = await supabase
+        .from("recipe_ingredients")
+        .insert(ingredients);
+      if (insertIngredientsError) {
+        console.error("Error guardando ingredientes:", insertIngredientsError);
+        alert("No se pudieron guardar los ingredientes.");
+        return;
+      }
+    }
+
+    const mapped = {
+      id: recipeId,
+      name: toInventoryText(response.data.name),
+      category: toInventoryText(response.data.category),
+      servings: Number(response.data.servings || 1),
+      description: response.data.description || "",
+      ingredients: recForm.ingredients.map((ingredient) => ({
+        ...ingredient,
+        unit: toInventoryText(ingredient.unit),
+      })),
+    };
+    setRecipes((current) =>
+      editingRec
+        ? current.map((recipe) => (recipe.id === recipeId ? mapped : recipe))
+        : [...current, mapped],
+    );
     setShowRecModal(false);
   };
-  const deleteRec = (id) => {
-    if (confirm("¿Eliminar esta receta?"))
-      setRecipes((rs) => rs.filter((r) => r.id !== id));
+  const deleteRec = async (id) => {
+    if (!businessId || !confirm("¿Eliminar esta receta?")) return;
+    const { error } = await supabase
+      .from("recipes")
+      .delete()
+      .eq("id", id)
+      .eq("business_id", businessId);
+    if (error) {
+      console.error("Error eliminando receta:", error);
+      alert("No se pudo eliminar la receta.");
+      return;
+    }
+    setRecipes((current) => current.filter((recipe) => recipe.id !== id));
   };
 
   const addIngredient = () =>
@@ -790,6 +1137,22 @@ export default function Inventario() {
         },
       ],
     }));
+
+  const addIngredientFromInventory = (item) => {
+    setRecForm((current) => {
+      if (current.ingredients.some((ingredient) => ingredient.inventoryId === item.id)) {
+        return current;
+      }
+      return {
+        ...current,
+        ingredients: [
+          ...current.ingredients,
+          { inventoryId: item.id, quantity: 0, unit: item.unit },
+        ],
+      };
+    });
+  };
+
   const updateIngredient = (idx, field, val) =>
     setRecForm((f) => {
       const ings = [...f.ingredients];
@@ -799,11 +1162,11 @@ export default function Inventario() {
           field === "quantity"
             ? parseFloat(val) || 0
             : field === "inventoryId"
-              ? parseInt(val)
+                ? val
               : val,
       };
       if (field === "inventoryId") {
-        const item = inventory.find((i) => i.id === parseInt(val));
+        const item = inventory.find((i) => i.id === val);
         if (item) ings[idx].unit = item.unit;
       }
       return { ...f, ingredients: ings };
@@ -819,34 +1182,62 @@ export default function Inventario() {
       {/* ── SECCIÓN 1: ESTADÍSTICAS ARRIBA DE TODO ── */}
       <header className="max-w-7xl mx-auto mb-6 space-y-4">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-black tracking-tighter">Inventario</h1>
+          <h1 className="text-2xl font-black tracking-tighter">
+            {isRecipesView ? "Recetas" : "Insumos"}
+          </h1>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
+            {loadingData
+              ? "Cargando inventario..."
+              : isRecipesView
+                ? "Costos, porciones e ingredientes de producción"
+                : "Control de existencias y stock de insumos"}
+          </p>
         </div>
 
         {/* STAT CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            {
-              label: "Valor de Bodega",
-              value: `$${stats.totalValue.toLocaleString("de-DE")}`,
-              color: "text-white",
-            },
-            {
-              label: "Stock Bajo",
-              value: stats.lowStock,
-              color: "text-orange-400",
-              alert: stats.lowStock > 0,
-            },
-            {
-              label: "Insumos Activos",
-              value: stats.total,
-              color: "text-violet-400",
-            },
-            {
-              label: "Recetas",
-              value: stats.recipeCount,
-              color: "text-blue-400",
-            },
-          ].map((s) => (
+          {(isRecipesView
+            ? [
+                {
+                  label: "Recetas creadas",
+                  value: stats.recipeCount,
+                  color: "text-blue-400",
+                },
+                {
+                  label: "Insumos disponibles",
+                  value: stats.total,
+                  color: "text-violet-400",
+                },
+                {
+                  label: "Categorías",
+                  value: dynamicRecipeCatsFilter.length - 1,
+                  color: "text-emerald-400",
+                },
+                {
+                  label: "Costo de insumos",
+                  value: `$${stats.totalValue.toLocaleString("de-DE")}`,
+                  color: "text-white",
+                },
+              ]
+            : [
+                {
+                  label: "Valor de Bodega",
+                  value: `$${stats.totalValue.toLocaleString("de-DE")}`,
+                  color: "text-white",
+                },
+                {
+                  label: "Stock Bajo",
+                  value: stats.lowStock,
+                  color: "text-orange-400",
+                  alert: stats.lowStock > 0,
+                },
+                {
+                  label: "Insumos Activos",
+                  value: stats.total,
+                  color: "text-violet-400",
+                },
+              ]
+          ).map((s) => (
             <div
               key={s.label}
               className={`bg-neutral-900/40 border rounded-2xl p-6 transition-all ${s.alert ? "border-orange-500/30" : "border-white/5"}`}
@@ -869,7 +1260,9 @@ export default function Inventario() {
             {/* 💻 CONTENEDOR FILA: TABS A LA IZQUIERDA + BUSCADOR A LA DERECHA */}
             <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center w-full">
               {/* Pestañas (Tabs) */}
-              <div className="flex bg-neutral-900/60 p-1 rounded-3xl border border-white/5 shrink-0 w-full sm:w-fit">
+              <div
+                className={`${standalone ? "hidden" : "flex"} bg-neutral-900/60 p-1 rounded-3xl border border-white/5 shrink-0 w-full sm:w-fit`}
+              >
                 {[
                   {
                     id: "insumos",
@@ -1023,7 +1416,9 @@ export default function Inventario() {
             {/* 💻 CONTENEDOR FILA: TABS A LA IZQUIERDA + BUSCADOR A LA DERECHA */}
             <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center w-full">
               {/* Pestañas (Tabs) */}
-              <div className="flex bg-neutral-900/60 p-1 rounded-3xl border border-white/5 shrink-0 w-full sm:w-fit">
+              <div
+                className={`${standalone ? "hidden" : "flex"} bg-neutral-900/60 p-1 rounded-3xl border border-white/5 shrink-0 w-full sm:w-fit`}
+              >
                 {[
                   {
                     id: "insumos",
@@ -1272,9 +1667,9 @@ export default function Inventario() {
               invForm.name !== editingInv.name ||
               invForm.category !== editingInv.category ||
               invForm.unit !== editingInv.unit ||
-              invForm.stock !== editingInv.stock ||
-              invForm.minStock !== editingInv.minStock ||
-              invForm.price !== editingInv.price;
+              Number(invForm.stock || 0) !== Number(editingInv.stock || 0) ||
+              Number(invForm.minStock || 0) !== Number(editingInv.minStock || 0) ||
+              Number(invForm.price || 0) !== Number(editingInv.price || 0);
           }
 
           return (
@@ -1289,7 +1684,10 @@ export default function Inventario() {
                     value={invForm.name}
                     placeholder="Ej: Harina de Maíz"
                     onChange={(e) =>
-                      setInvForm({ ...invForm, name: e.target.value })
+                      setInvForm({
+                        ...invForm,
+                        name: toInventoryInputText(e.target.value),
+                      })
                     }
                     className={inputCls}
                   />
@@ -1313,6 +1711,29 @@ export default function Inventario() {
                         + NUEVA CATEGORÍA...
                       </option>
                     </select>
+                    {isCreatingCategory && (
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          autoFocus
+                          value={newCategoryName}
+                          onChange={(event) =>
+                            setNewCategoryName(
+                              toInventoryInputText(event.target.value),
+                            )
+                          }
+                          placeholder="NOMBRE DE LA CATEGORÍA"
+                          className={inputCls}
+                        />
+                        <button
+                          type="button"
+                          onClick={saveNewCategory}
+                          disabled={!newCategoryName.trim()}
+                          className="shrink-0 rounded-lg bg-violet-500 px-3 text-[10px] font-black uppercase text-white disabled:opacity-40"
+                        >
+                          Guardar
+                        </button>
+                      </div>
+                    )}
                   </Field>
                   <Field label="Unidad">
                     <select
@@ -1332,17 +1753,41 @@ export default function Inventario() {
                         + NUEVA UNIDAD...
                       </option>
                     </select>
+                    {isCreatingUnit && (
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          autoFocus
+                          value={newUnitName}
+                          onChange={(event) =>
+                            setNewUnitName(
+                              toInventoryInputText(event.target.value),
+                            )
+                          }
+                          placeholder="NOMBRE DE LA UNIDAD"
+                          className={inputCls}
+                        />
+                        <button
+                          type="button"
+                          onClick={saveNewUnit}
+                          disabled={!newUnitName.trim()}
+                          className="shrink-0 rounded-lg bg-violet-500 px-3 text-[10px] font-black uppercase text-white disabled:opacity-40"
+                        >
+                          Guardar
+                        </button>
+                      </div>
+                    )}
                   </Field>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <Field label="Stock Actual">
                     <input
                       type="number"
+                      step="any"
                       value={invForm.stock}
                       onChange={(e) =>
                         setInvForm({
                           ...invForm,
-                          stock: parseFloat(e.target.value) || 0,
+                          stock: e.target.value,
                         })
                       }
                       className={inputCls}
@@ -1351,25 +1796,31 @@ export default function Inventario() {
                   <Field label="Stock Mínimo">
                     <input
                       type="number"
+                      step="any"
                       value={invForm.minStock}
                       onChange={(e) =>
                         setInvForm({
                           ...invForm,
-                          minStock: parseFloat(e.target.value) || 0,
+                          minStock: e.target.value,
                         })
                       }
                       className={inputCls}
                     />
                   </Field>
                 </div>
-                <Field label="Precio por Unidad ($)">
+                <Field label={`Precio por ${invForm.unit || "UNIDAD"} ($)`}>
                   <input
-                    type="number"
-                    value={invForm.price}
+                    type="text"
+                    inputMode="numeric"
+                    value={
+                      invForm.price === "" || invForm.price === null
+                        ? ""
+                        : Number(invForm.price).toLocaleString("es-CO")
+                    }
                     onChange={(e) =>
                       setInvForm({
                         ...invForm,
-                        price: parseInt(e.target.value) || 0,
+                        price: e.target.value.replace(/\D/g, ""),
                       })
                     }
                     className={inputCls}
@@ -1555,6 +2006,48 @@ export default function Inventario() {
                         </button>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="mt-3 rounded-xl border border-white/10 bg-neutral-950/60 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-violet-300">
+                        Insumos disponibles
+                      </p>
+                      <span className="text-[9px] text-neutral-500">
+                        {inventory.length} registrados
+                      </span>
+                    </div>
+                    {inventory.length === 0 ? (
+                      <p className="py-3 text-center text-[10px] text-neutral-500">
+                        Primero crea insumos para usarlos en recetas.
+                      </p>
+                    ) : (
+                      <div className="grid max-h-36 gap-1.5 overflow-y-auto sm:grid-cols-2">
+                        {inventory.map((item) => {
+                          const alreadyAdded = recForm.ingredients.some(
+                            (ingredient) => ingredient.inventoryId === item.id,
+                          );
+                          return (
+                            <button
+                              key={item.id}
+                              type="button"
+                              disabled={alreadyAdded}
+                              onClick={() => addIngredientFromInventory(item)}
+                              className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left text-[10px] font-bold transition-colors ${
+                                alreadyAdded
+                                  ? "border-emerald-500/20 bg-emerald-500/5 text-emerald-300"
+                                  : "border-white/10 bg-neutral-900 text-neutral-300 hover:border-violet-500/40 hover:text-white"
+                              }`}
+                            >
+                              <span className="truncate">{item.name}</span>
+                              <span className="shrink-0 text-[9px] text-neutral-500">
+                                {alreadyAdded ? "AGREGADO" : `+ ${item.unit}`}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   {/* Preview costo formateado en COP (puntos para miles) */}

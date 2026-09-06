@@ -449,6 +449,9 @@ export default function KitchenPanel() {
     },
   ];
 
+  const cantidadPorEstado = (estado) =>
+    ordenesFiltradasPorTipo.filter((orden) => orden.estado === estado).length;
+
   return (
     <div className="h-screen bg-background text-slate-100 flex flex-col overflow-hidden font-sans">
       <header className="p-3 md:p-4 bg-background relative z-10">
@@ -614,12 +617,7 @@ export default function KitchenPanel() {
                   </div>
                   <div>
                     <h2 className="uppercase text-1xl font-black tabular-nums leading-none">
-                      {col.label} /{" "}
-                      {
-                        ordenesFiltradasPorTipo.filter(
-                          (o) => o.estado === col.id,
-                        ).length
-                      }
+                      {col.label} / {cantidadPorEstado(col.id)}
                     </h2>
                   </div>
                 </div>
@@ -670,12 +668,17 @@ export default function KitchenPanel() {
               <button
                 key={col.id}
                 onClick={() => setActiveTab(idx)}
-                className={`p-2.5 rounded-3xl transition-all duration-200 ${
+                className={`relative p-2.5 rounded-3xl transition-all duration-200 ${
                   activeTab === idx
                     ? "bg-primary-container/20 text-primary-container"
                     : "text-slate-600 hover:text-slate-400"
                 }`}
               >
+                {cantidadPorEstado(col.id) > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-5 h-5 px-1 rounded-full bg-red-600 text-[10px] font-black leading-5 text-white text-center shadow-lg shadow-red-950/50">
+                    {cantidadPorEstado(col.id)}
+                  </span>
+                )}
                 <col.icon
                   size={20}
                   strokeWidth={activeTab === idx ? 2.5 : 1.8}

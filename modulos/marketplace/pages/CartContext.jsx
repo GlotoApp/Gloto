@@ -413,6 +413,9 @@ export const CartProvider = ({ children }) => {
 
       if (rpcError) {
         console.error("Error guardando orden en Supabase:", rpcError);
+        throw new Error(
+          rpcError.message || "No se pudo guardar el pedido en Supabase.",
+        );
       } else {
         savedOrderId = rpcData?.id;
       }

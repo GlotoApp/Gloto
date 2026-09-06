@@ -775,11 +775,32 @@ const POS = () => {
           optionNames: item.optionNames || item.options || [],
           selectedOptions: item.selectedOptions || [],
           options: item.selectedOptions || item.options || [],
-          image_url: "",
+          image_url: item.image_url || item.image || item.imageUrl || "",
         })),
       );
     }
   }, [location.state]);
+
+  // Las órdenes guardan el product_id, pero la imagen pertenece al catálogo.
+  // Cuando el catálogo termina de cargar, completamos la miniatura del carrito
+  // sin reemplazar los datos históricos de la orden.
+  useEffect(() => {
+    if (!location.state?.mesaEdit || products.length === 0) return;
+
+    setCart((currentCart) =>
+      currentCart.map((item) => {
+        if (item.image_url) return item;
+
+        const product = products.find(
+          (catalogProduct) => catalogProduct.id === item.productId,
+        );
+        const imageUrl =
+          product?.image_url || product?.image || product?.imageUrl || "";
+
+        return imageUrl ? { ...item, image_url: imageUrl } : item;
+      }),
+    );
+  }, [location.state, products]);
 
   const cancelEditingOrder = () => {
     resetAllPOSState(false);
@@ -820,15 +841,13 @@ const POS = () => {
       const { data, error } = await supabase
         .from("orders")
         .select(
-          "id, table_status, customer_name, fecha_reserva, hora_reserva, personas",
+          "id, status, table_status, is_reservation, customer_name, fecha_reserva, hora_reserva, personas, created_at",
         )
         .eq("business_id", businessId)
         .eq("order_type", "table")
-        .eq("is_reservation", true)
         .eq("mesa", Number(tableNumber))
-        .eq("table_status", "reserva")
         .order("created_at", { ascending: false })
-        .limit(1);
+        .limit(20);
 
       if (error) {
         console.error("Error verificando mesa:", error);
@@ -836,10 +855,33 @@ const POS = () => {
         return;
       }
 
-      const activeOrder = Array.isArray(data) ? data[0] : data;
+      const activeStatuses = ["pending", "confirmed", "preparing", "ready"];
+      const activeOrder = (data || []).find((order) => {
+        const tableStatus = String(order.table_status || "")
+          .trim()
+          .toLowerCase();
+        const orderStatus = String(order.status || "")
+          .trim()
+          .toLowerCase();
+
+        return (
+          (Boolean(order.is_reservation) && tableStatus === "reserva") ||
+          (!order.is_reservation &&
+            (tableStatus === "ocupada" || activeStatuses.includes(orderStatus)))
+        );
+      });
 
       if (!activeOrder) {
         setTableOccupancyWarning(null);
+        return;
+      }
+
+      if (!activeOrder.is_reservation) {
+        const nombre = activeOrder.customer_name || "cliente";
+        setTableOccupancyWarning({
+          occupied: true,
+          message: `⚠️ La mesa está ocupada por ${nombre}. Selecciona otra mesa.`,
+        });
         return;
       }
 
@@ -1777,7 +1819,7 @@ const POS = () => {
     if (isEditingTableOrder && editingOrder?.orderId) {
       orderPayload.order_number = editingOrder.orderNumber || orderNumber;
       orderPayload.status = editingOrder.orderStatus || orderStatus;
-      orderPayload.table_status = "ocupada";
+      orderPayload.table_status = deliveryMethod === "table" ? "ocupada" : null;
       orderPayload.is_reservation = false;
     }
 

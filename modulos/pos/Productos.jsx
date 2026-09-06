@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Plus,
   Search,
@@ -66,6 +66,7 @@ const handleImageError = (e) => {
 const Productos = ({ section = "productos" }) => {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   // ========== ESTADO COMPARTIDO ==========
   const [categories, setCategories] = useState([]);
   const [categoryRecords, setCategoryRecords] = useState([]);
@@ -400,14 +401,20 @@ const Productos = ({ section = "productos" }) => {
     setIsModalOpen(true);
   };
 
+  const closeProductModal = () => {
+    setIsModalOpen(false);
+    setEditingId(null);
+    navigate(location.pathname, { replace: true, state: null });
+  };
+
   useEffect(() => {
     const productId = location.state?.productId;
     if (!productId || loadingProducts) return;
     const product = products.find((item) => item.id === productId);
     if (!product) return;
     handleEditProduct(product);
-    window.history.replaceState({}, document.title, window.location.pathname);
-  }, [location.state, loadingProducts, products]);
+    navigate(location.pathname, { replace: true, state: null });
+  }, [location.state, loadingProducts, products, navigate, location.pathname]);
 
   const createOptionId = () =>
     `option-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -1344,7 +1351,7 @@ const Productos = ({ section = "productos" }) => {
                     </div>
                   </div>
                   <button
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={closeProductModal}
                     className="p-2 sm:p-3 hover:bg-white/10 rounded-lg sm:rounded-2xl transition-all text-neutral-400 hover:text-white flex-shrink-0"
                   >
                     <X size={24} className="sm:w-7 sm:h-7" />
@@ -1979,7 +1986,7 @@ const Productos = ({ section = "productos" }) => {
                   <span>{savingProduct ? "Guardando..." : "Guardar"}</span>
                 </button>
                 <button
-                  onClick={() => setIsModalOpen(false)}
+                  onClick={closeProductModal}
                   className="px-4 sm:px-8 py-2.5 sm:py-3 bg-neutral-700/50 border border-neutral-600/50 text-neutral-300 rounded-lg sm:rounded-xl font-black uppercase text-[9px] sm:text-[10px] tracking-[0.2em] sm:tracking-[0.3em] hover:bg-neutral-700 hover:border-neutral-500 transition-all"
                 >
                   <span className="hidden sm:inline">Cancelar</span>

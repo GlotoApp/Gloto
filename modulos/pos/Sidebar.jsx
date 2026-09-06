@@ -23,12 +23,14 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
   const location = useLocation();
   const [cajaOpen, setCajaOpen] = useState(false);
   const [catalogoOpen, setCatalogoOpen] = useState(false);
+  const [inventarioOpen, setInventarioOpen] = useState(false);
 
   // Cerrar submenús si se colapsa el sidebar de manera manual o automática
   useEffect(() => {
     if (!isExpanded) {
       setCajaOpen(false);
       setCatalogoOpen(false);
+      setInventarioOpen(false);
     }
   }, [isExpanded]);
 
@@ -55,8 +57,13 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
       path: "/pos/inventario",
       icon: Package,
       subMenu: [
-        { name: "Cierre de Caja", path: "/pos/caja" },
-        { name: "Cierres Eliminados", path: "/pos/caja/CierresEliminados" },
+        { name: "Insumos", path: "/pos/inventario" },
+        { name: "Recetas", path: "/pos/inventario/recetas" },
+        { name: "Categorías", path: "/pos/inventario/categorias" },
+        {
+          name: "Historial de movimientos",
+          path: "/pos/inventario/movimientos",
+        },
       ],
     },
     { name: "Horarios", path: "/pos/horarios", icon: Clock3 },
@@ -76,6 +83,7 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
   ];
 
   const isCajaActive = location.pathname.startsWith("/pos/caja");
+  const isInventarioActive = location.pathname.startsWith("/pos/inventario");
   const isCatalogoActive =
     location.pathname === "/pos/productos" ||
     location.pathname === "/pos/categorias";
@@ -89,6 +97,10 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
   useEffect(() => {
     if (isCajaActive) setCajaOpen(true);
   }, [isCajaActive]);
+
+  useEffect(() => {
+    if (isInventarioActive) setInventarioOpen(true);
+  }, [isInventarioActive]);
 
   // --- FUNCIÓN PARA AUTO-CERRAR/REDUCIR EL SIDEBAR ---
   const handleItemClick = () => {
@@ -111,6 +123,12 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
       toggleSidebar();
     }
     setCatalogoOpen(!catalogoOpen);
+  };
+
+  const handleToggleClickInventario = (e) => {
+    e.preventDefault();
+    if (!isExpanded) toggleSidebar();
+    setInventarioOpen(!inventarioOpen);
   };
 
   return (
@@ -179,7 +197,7 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
 
             return (
               <React.Fragment key={item.path}>
-                {item.name !== "Catálogo" && (
+                {item.name !== "Catálogo" && item.name !== "Inventario" && (
                   <Link
                     to={item.path}
                     onClick={handleItemClick}
@@ -319,16 +337,16 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
                 {item.name === "Inventario" && (
                   <div className="flex flex-col transition-all duration-300">
                     <button
-                      onClick={handleToggleClickCaja}
+                      onClick={handleToggleClickInventario}
                       className={`group relative flex items-center h-12 rounded-default transition-all duration-300 px-4 gap-4 w-full ${
-                        isCajaActive
+                        isInventarioActive
                           ? "text-primary"
                           : "text-on-surface-variant hover:text-on-surface hover:bg-surface-hover"
                       }`}
                     >
                       <span
                         className={`absolute left-0 w-1 h-6 rounded-r-full bg-primary-container transition-all duration-300 ${
-                          isCajaActive
+                          isInventarioActive
                             ? "scale-y-100 opacity-100"
                             : "scale-y-0 opacity-0 group-hover:scale-y-100 group-hover:opacity-50 group-hover:bg-primary"
                         }`}
@@ -337,45 +355,46 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
                       <div
                         className={`flex items-center justify-center flex-shrink-0 w-5 h-5 transition-transform duration-300 ${
                           !isExpanded && "group-hover:scale-110"
-                        } ${isCajaActive ? "text-primary-container" : "group-hover:text-on-surface"}`}
+                        } ${isInventarioActive ? "text-primary-container" : "group-hover:text-on-surface"}`}
                       >
-                        <span className="material-symbols-outlined !text-[22px]">
-                          point_of_sale
-                        </span>
+                        <Package
+                          size={20}
+                          strokeWidth={isInventarioActive ? 2.5 : 2}
+                        />
                       </div>
 
                       <span
                         className={`font-label-caps text-xs font-bold uppercase tracking-tight flex-1 truncate text-left transition-all duration-300 ${
-                          isCajaActive ? "text-primary-container" : ""
+                          isInventarioActive ? "text-primary-container" : ""
                         } ${
                           isExpanded
                             ? "opacity-100 translate-x-0"
                             : "opacity-0 -translate-x-4 pointer-events-none w-0"
                         }`}
                       >
-                        Caja
+                        Inventario
                       </span>
 
                       {isExpanded && (
                         <ChevronDown
                           size={14}
                           className={`text-primary/50 transition-transform duration-300 flex-shrink-0 ${
-                            cajaOpen ? "rotate-180" : ""
+                            inventarioOpen ? "rotate-180" : ""
                           }`}
                         />
                       )}
 
                       {!isExpanded && (
                         <div className="fixed left-20 ml-2 px-3 py-1 bg-primary-container text-on-primary text-[10px] font-label-caps font-black uppercase tracking-widest rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-[100] shadow-lg shadow-background">
-                          Caja
+                          Inventario
                         </div>
                       )}
                     </button>
 
                     {/* Submenu de Caja */}
-                    {cajaOpen && isExpanded && (
+                    {inventarioOpen && isExpanded && (
                       <div className="mt-2 ml-4 flex flex-col border-l border-primary-container/30 space-y-1 pl-3 animate-in slide-in-from-top-2 duration-300">
-                        {cajaSubMenu.map((sub) => {
+                        {item.subMenu.map((sub) => {
                           const isSubActive = location.pathname === sub.path;
                           return (
                             <Link
