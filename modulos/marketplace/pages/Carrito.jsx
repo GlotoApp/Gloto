@@ -55,6 +55,7 @@ const Carrito = ({ onIrAPagar }) => {
     actualizarDivision,
     setMetodoPago,
     puedeHacerPedido,
+    itemsAgotados,
     totalItems,
     totalPrecio,
     totalPagado,
@@ -369,6 +370,18 @@ const Carrito = ({ onIrAPagar }) => {
                         Máximo disponible alcanzado
                       </p>
                     )}
+                    {p.isAvailable === false && (
+                      <p
+                        style={{
+                          fontSize: "12px",
+                          fontWeight: 800,
+                          color: "#fc8181",
+                          margin: "4px 0 0",
+                        }}
+                      >
+                        Agotado mientras estaba en tu carrito
+                      </p>
+                    )}
                   </div>
 
                   {/* Stepper cantidad */}
@@ -439,6 +452,24 @@ const Carrito = ({ onIrAPagar }) => {
 
         {items.length > 0 && (
           <>
+            {itemsAgotados.length > 0 && (
+              <div
+                style={{
+                  margin: "4px 20px 12px",
+                  padding: "12px 14px",
+                  border: "1px solid rgba(252,129,129,0.35)",
+                  borderRadius: "14px",
+                  background: "rgba(252,129,129,0.08)",
+                  color: "#fc8181",
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  lineHeight: 1.45,
+                }}
+              >
+                Hay productos agotados en tu carrito. Elimínalos para continuar
+                con la compra.
+              </div>
+            )}
             {/* Observaciones generales */}
             <div style={{ padding: "16px 20px" }}>
               <label

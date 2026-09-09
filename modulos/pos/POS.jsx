@@ -379,6 +379,12 @@ const POS = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [removingItems, setRemovingItems] = useState(new Set());
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showOutOfStockWarning, setShowOutOfStockWarning] = useState(false);
+  const [outOfStockProduct, setOutOfStockProduct] = useState(null);
+  const [outOfStockMessage, setOutOfStockMessage] = useState("");
+  const [outOfStockCartId, setOutOfStockCartId] = useState(null);
+  const [pendingOutOfStockQuantity, setPendingOutOfStockQuantity] =
+    useState(null);
   const [showOrderSentModal, setShowOrderSentModal] = useState(false);
   const [showUpdateSuccessModal, setShowUpdateSuccessModal] = useState(false);
   const [showReservationSuccessModal, setShowReservationSuccessModal] =
@@ -608,6 +614,60 @@ const POS = () => {
 
     loadProfile();
   }, [user]);
+
+  useEffect(() => {
+    if (!businessId) return undefined;
+
+    const channel = supabase
+      .channel(`pos-products-${businessId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "products",
+          filter: `business_id=eq.${businessId}`,
+        },
+        (payload) => {
+          const productId = payload.new?.id || payload.old?.id;
+          if (!productId) return;
+
+          if (payload.eventType === "DELETE" || !payload.new?.is_active) {
+            setProducts((current) =>
+              current.filter((product) => product.id !== productId),
+            );
+            return;
+          }
+
+          const nextProduct = payload.new;
+          setProducts((current) => {
+            const exists = current.some((product) => product.id === productId);
+            if (!exists) return current;
+
+            return current.map((product) =>
+              product.id === productId
+                ? {
+                    ...product,
+                    name: nextProduct.name,
+                    description: nextProduct.description || "",
+                    desc: nextProduct.description || "",
+                    price: Number(nextProduct.price || 0),
+                    stock: Number(nextProduct.stock || 0),
+                    image_url: nextProduct.image_url || "",
+                    soldOut: Boolean(nextProduct.is_sold_out),
+                    orderIndex: Number(nextProduct.order_index || 0),
+                  }
+                : product,
+            );
+          });
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [businessId]);
 
   // Estado para el item que cambia de color
   const [highlightItem, setHighlightItem] = useState(null);
@@ -857,7 +917,9 @@ const POS = () => {
 
       const activeStatuses = ["pending", "confirmed", "preparing", "ready"];
       const activeOrder = (data || []).find((order) => {
-        const tableStatus = String(order.table_status || "")
+        const hasExplicitTableStatus =
+          order.table_status !== null && order.table_status !== undefined;
+        const tableStatus = String(order.table_status ?? "")
           .trim()
           .toLowerCase();
         const orderStatus = String(order.status || "")
@@ -867,7 +929,9 @@ const POS = () => {
         return (
           (Boolean(order.is_reservation) && tableStatus === "reserva") ||
           (!order.is_reservation &&
-            (tableStatus === "ocupada" || activeStatuses.includes(orderStatus)))
+            (tableStatus === "ocupada" ||
+              (!hasExplicitTableStatus &&
+                activeStatuses.includes(orderStatus))))
         );
       });
 
@@ -1015,7 +1079,58 @@ const POS = () => {
     addToast(name, "success");
   };
 
-  const addToCart = (product) => {
+  const addToCart = (product, skipStockWarning = false) => {
+    const quantityInCart = cart.reduce(
+      (sum, item) =>
+        item.productId === product?.id ? sum + Number(item.qty || 0) : sum,
+      0,
+    );
+    const originalQuantityInEdit =
+      editingSnapshot?.cart.reduce(
+        (sum, item) =>
+          item.productId === product?.id ? sum + Number(item.qty || 0) : sum,
+        0,
+      ) || 0;
+    const numericStock = Number(product?.stock);
+    const hasFiniteStock = Number.isFinite(numericStock);
+    const editQuantityLimit =
+      isEditingTableOrder && originalQuantityInEdit > 0 && hasFiniteStock
+        ? Math.max(0, numericStock + originalQuantityInEdit)
+        : null;
+    const isOutOfStock =
+      product?.soldOut || (hasFiniteStock && numericStock <= 0);
+
+    if (
+      editQuantityLimit !== null &&
+      quantityInCart >= editQuantityLimit &&
+      !isOutOfStock &&
+      !skipStockWarning
+    ) {
+      addToast(
+        `Máximo disponible para esta mesa: ${editQuantityLimit} ${product.name}`,
+        "error",
+      );
+      return;
+    }
+
+    const exceedsAvailableStock =
+      !isEditingTableOrder &&
+      hasFiniteStock &&
+      quantityInCart >= Math.max(0, numericStock);
+
+    if ((isOutOfStock || exceedsAvailableStock) && !skipStockWarning) {
+      setOutOfStockProduct(product);
+      setOutOfStockMessage(
+        isOutOfStock
+          ? "El sistema marca este producto como AGOTADO porque su inventario está en cero o en negativo. Aun así, puedes continuar la venta; el faltante quedará registrado en el inventario."
+          : `El sistema indica que solo hay ${numericStock} unidades disponibles. Puedes continuar la venta; el excedente quedará registrado como faltante en el inventario.`,
+      );
+      setOutOfStockCartId(null);
+      setPendingOutOfStockQuantity(null);
+      setShowOutOfStockWarning(true);
+      return;
+    }
+
     if (product?.hasOptionGroups) {
       setActiveProduct(product);
       setOptionSelections(initializeOptionSelections(product));
@@ -1089,6 +1204,23 @@ const POS = () => {
         },
       ];
     });
+  };
+
+  const continueWithOutOfStockProduct = () => {
+    const product = outOfStockProduct;
+    const cartId = outOfStockCartId;
+    const pendingQuantity = pendingOutOfStockQuantity;
+    setShowOutOfStockWarning(false);
+    setOutOfStockProduct(null);
+    setOutOfStockMessage("");
+    setOutOfStockCartId(null);
+    setPendingOutOfStockQuantity(null);
+    if (cartId) {
+      const item = cart.find((currentItem) => currentItem.cartId === cartId);
+      if (item) updateQty(cartId, pendingQuantity || item.qty + 1);
+    } else if (product) {
+      addToCart(product, true);
+    }
   };
 
   const clearCart = () => {
@@ -1251,10 +1383,112 @@ const POS = () => {
     }
   };
 
+  const incrementCartItem = (cartItem) => {
+    const product = products.find((item) => item.id === cartItem.productId);
+    if (!product) {
+      updateQty(cartItem.cartId, cartItem.qty + 1);
+      return;
+    }
+
+    const originalQuantityInEdit =
+      editingSnapshot?.cart.reduce(
+        (sum, item) =>
+          item.productId === cartItem.productId
+            ? sum + Number(item.qty || 0)
+            : sum,
+        0,
+      ) || 0;
+    const numericStock = Number(product.stock);
+    const isOutOfStock =
+      product.soldOut || (Number.isFinite(numericStock) && numericStock <= 0);
+
+    if (isOutOfStock) {
+      setOutOfStockProduct(product);
+      setOutOfStockCartId(cartItem.cartId);
+      setPendingOutOfStockQuantity(null);
+      setOutOfStockMessage(
+        "El sistema marca este producto como AGOTADO porque su inventario está en cero o en negativo. Aun así, puedes continuar la venta; el faltante quedará registrado en el inventario.",
+      );
+      setShowOutOfStockWarning(true);
+      return;
+    }
+
+    if (
+      isEditingTableOrder &&
+      originalQuantityInEdit > 0 &&
+      Number.isFinite(numericStock)
+    ) {
+      const editQuantityLimit = Math.max(
+        0,
+        numericStock + originalQuantityInEdit,
+      );
+      if (cartItem.qty >= editQuantityLimit) {
+        addToast(
+          `Máximo disponible para esta mesa: ${editQuantityLimit} ${product.name}`,
+          "error",
+        );
+        return;
+      }
+    }
+
+    const exceedsAvailableStock =
+      !isEditingTableOrder &&
+      Number.isFinite(numericStock) &&
+      cartItem.qty >= Math.max(0, numericStock);
+
+    if (isOutOfStock || exceedsAvailableStock) {
+      setOutOfStockProduct(product);
+      setOutOfStockCartId(cartItem.cartId);
+      setPendingOutOfStockQuantity(null);
+      setOutOfStockMessage(
+        isOutOfStock
+          ? "El sistema marca este producto como AGOTADO porque su inventario está en cero o en negativo. Aun así, puedes continuar la venta; el faltante quedará registrado en el inventario."
+          : `El sistema indica que solo hay ${numericStock} unidades disponibles. Puedes continuar la venta; el excedente quedará registrado como faltante en el inventario.`,
+      );
+      setShowOutOfStockWarning(true);
+      return;
+    }
+
+    updateQty(cartItem.cartId, cartItem.qty + 1);
+  };
+
   const handleQtyInputChange = (cartId, value) => {
     const digits = String(value).replace(/\D/g, "");
-    const qty = digits ? Math.max(1, Number(digits)) : 1;
-    updateQty(cartId, qty);
+    let qty = digits ? Math.max(1, Number(digits)) : 1;
+    const currentItem = cart.find((item) => item.cartId === cartId);
+    const product = products.find((item) => item.id === currentItem?.productId);
+    const originalQuantityInEdit =
+      editingSnapshot?.cart.reduce(
+        (sum, item) =>
+          item.productId === currentItem?.productId
+            ? sum + Number(item.qty || 0)
+            : sum,
+        0,
+      ) || 0;
+    const numericStock = Number(product?.stock);
+
+    if (
+      isEditingTableOrder &&
+      originalQuantityInEdit > 0 &&
+      Number.isFinite(numericStock)
+    ) {
+      const editQuantityLimit = Math.max(
+        0,
+        numericStock + originalQuantityInEdit,
+      );
+      if (qty > editQuantityLimit) {
+        setOutOfStockProduct(product);
+        setOutOfStockCartId(cartId);
+        setPendingOutOfStockQuantity(qty);
+        setOutOfStockMessage(
+          `La cantidad escrita supera las ${editQuantityLimit} unidades disponibles para esta mesa. El sistema considera agotado el excedente, pero puedes continuar la venta y registrar el faltante en el inventario.`,
+        );
+        setShowOutOfStockWarning(true);
+        return;
+      }
+    }
+
+    updateQty(cartId, Math.max(1, qty));
   };
 
   const handleDeliveryChange = (method) => {
@@ -1837,31 +2071,16 @@ const POS = () => {
 
     try {
       if (isEditingTableOrder && editingOrder?.orderId) {
-        const { error: orderError } = await supabase
-          .from("orders")
-          .update(orderPayload)
-          .eq("id", editingOrder.orderId)
-          .eq("business_id", businessId);
+        const { error: replaceOrderError } = await supabase.rpc(
+          "replace_pos_order_items_with_inventory",
+          {
+            p_order_id: editingOrder.orderId,
+            p_order: orderPayload,
+            p_items: orderItemsPayload,
+          },
+        );
 
-        if (orderError) throw orderError;
-
-        const { error: deleteItemsError } = await supabase
-          .from("order_items")
-          .delete()
-          .eq("order_id", editingOrder.orderId);
-
-        if (deleteItemsError) throw deleteItemsError;
-
-        const { error: insertItemsError } = await supabase
-          .from("order_items")
-          .insert(
-            orderItemsPayload.map((item) => ({
-              ...item,
-              order_id: editingOrder.orderId,
-            })),
-          );
-
-        if (insertItemsError) throw insertItemsError;
+        if (replaceOrderError) throw replaceOrderError;
 
         setShowUpdateSuccessModal(true);
         cancelEditingOrder();
@@ -1876,9 +2095,10 @@ const POS = () => {
         orderPayload.punto,
         orderPayload,
       );
-      const { error } = await supabase.rpc("create_order", {
+      const { error } = await supabase.rpc("create_order_with_inventory", {
         p_order: orderPayload,
         p_items: orderItemsPayload,
+        p_channel: "pos",
       });
 
       if (error) {
@@ -2440,9 +2660,7 @@ const POS = () => {
                     onClick={() => addToCart(product)}
                     className="group relative bg-surface  rounded-[25px] hover:bg-surface-hover/50 hover:border-primary-container/40 transition-all duration-500 cursor-pointer flex flex-col active:scale-[0.97]"
                   >
-                    {(product.soldOut ||
-                      (typeof product.stock === "number" &&
-                        product.stock <= 0)) && (
+                    {Number(product.stock) <= 0 && (
                       <div className="absolute top-2 left-2 z-20 px-2 py-1 rounded-full bg-red-600 text-white text-xs font-bold uppercase tracking-wider">
                         Agotado
                       </div>
@@ -2993,7 +3211,7 @@ const POS = () => {
                       aria-label="Cantidad del producto"
                     />
                     <button
-                      onClick={() => updateQty(item.cartId, item.qty + 1)}
+                      onClick={() => incrementCartItem(item)}
                       className="opacity-60 hover:opacity-100 transition-opacity w-2 h-2 flex items-center justify-center rounded-full hover:text-primary-container"
                       aria-label="Aumentar cantidad"
                     >
@@ -3248,7 +3466,7 @@ const POS = () => {
                         aria-label="Cantidad del producto"
                       />
                       <button
-                        onClick={() => updateQty(item.cartId, item.qty + 1)}
+                        onClick={() => incrementCartItem(item)}
                         className="opacity-60 hover:opacity-100 transition-opacity w-2 h-2 flex items-center justify-center rounded-full hover:text-primary-container"
                         aria-label="Aumentar cantidad"
                       >
@@ -3697,6 +3915,51 @@ const POS = () => {
           </div>
         )}
       </div>
+
+      {showOutOfStockWarning && outOfStockProduct && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-orange-400/30 bg-surface p-6 shadow-2xl">
+            <div className="mb-4 flex items-start gap-3">
+              <span className="material-symbols-outlined text-3xl text-orange-300">
+                warning
+              </span>
+              <div>
+                <h3 className="text-lg font-black uppercase text-on-surface">
+                  Producto agotado
+                </h3>
+                <p className="mt-1 text-sm font-bold text-on-surface">
+                  {outOfStockProduct.name}
+                </p>
+              </div>
+            </div>
+            <p className="mb-6 text-sm leading-relaxed text-on-surface-variant">
+              {outOfStockMessage}
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowOutOfStockWarning(false);
+                  setOutOfStockProduct(null);
+                  setOutOfStockMessage("");
+                  setOutOfStockCartId(null);
+                  setPendingOutOfStockQuantity(null);
+                }}
+                className="flex-1 rounded-xl border border-outline bg-background px-4 py-3 text-xs font-black uppercase tracking-widest text-on-surface-variant hover:text-on-surface"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={continueWithOutOfStockProduct}
+                className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-xs font-black uppercase tracking-widest text-white hover:bg-orange-400"
+              >
+                Continuar venta
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de confirmación para limpiar carrito */}
       {showConfirmModal && (

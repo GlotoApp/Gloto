@@ -58,7 +58,10 @@ const Sidebar = ({ isExpanded, toggleSidebar }) => {
       icon: Package,
       subMenu: [
         { name: "Insumos", path: "/pos/inventario" },
-        { name: "Recetas", path: "/pos/inventario/recetas" },
+        {
+          name: "Componentes de producto",
+          path: "/pos/inventario/componentes-producto",
+        },
         { name: "Categorías", path: "/pos/inventario/categorias" },
         {
           name: "Historial de movimientos",

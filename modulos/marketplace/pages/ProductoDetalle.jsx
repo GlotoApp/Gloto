@@ -292,6 +292,7 @@ const ProductoDetalle = ({
   const yaEnCarrito = carrito[itemId] || 0;
 
   const agotado =
+    producto.isAvailable === false ||
     stockDisponible <= 0 ||
     producto.is_sold_out === true ||
     producto.isSoldOut === true ||

@@ -559,7 +559,7 @@ export default function Inventario({
 } = {}) {
   const { user } = useAuth();
   const [tab, setTab] = useState(initialTab);
-  const isRecipesView = initialTab === "recetas";
+  const isProductComponentsView = initialTab === "componentes";
   const [businessId, setBusinessId] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
 
@@ -589,6 +589,7 @@ export default function Inventario({
   const [isCreatingUnit, setIsCreatingUnit] = useState(false);
 
   const [recipes, setRecipes] = useState([]);
+  const [productComponents, setProductComponents] = useState([]);
   const [recSearch, setRecSearch] = useState("");
   const [recCatFilter, setRecCatFilter] = useState("Todas");
   const [showRecModal, setShowRecModal] = useState(false);
@@ -626,6 +627,7 @@ export default function Inventario({
         const [
           inventoryResponse,
           recipesResponse,
+          productComponentsResponse,
           categoriesResponse,
           unitsResponse,
         ] = await Promise.all([
@@ -645,6 +647,10 @@ export default function Inventario({
             .eq("business_id", profile.business_id)
             .order("name"),
           supabase
+            .from("product_components")
+            .select("product_id,component_id,quantity,products!inner(id,name)")
+            .eq("products.business_id", profile.business_id),
+          supabase
             .from("inventory_categories")
             .select("name")
             .eq("business_id", profile.business_id)
@@ -658,6 +664,8 @@ export default function Inventario({
 
         if (inventoryResponse.error) throw inventoryResponse.error;
         if (recipesResponse.error) throw recipesResponse.error;
+        if (productComponentsResponse.error)
+          throw productComponentsResponse.error;
         if (categoriesResponse.error) throw categoriesResponse.error;
         if (unitsResponse.error) throw unitsResponse.error;
 
@@ -719,10 +727,12 @@ export default function Inventario({
             ),
           })),
         );
+        setProductComponents(productComponentsResponse.data || []);
       } catch (error) {
         console.error("Error cargando inventario:", error);
         setInventory([]);
         setRecipes([]);
+        setProductComponents([]);
       } finally {
         setLoadingData(false);
       }
@@ -780,6 +790,10 @@ export default function Inventario({
       lowStock: inventory.filter((i) => i.stock <= i.minStock).length,
       total: inventory.length,
       recipeCount: recipes.length,
+      componentsCost: recipes.reduce(
+        (sum, recipe) => sum + calcRecipeCost(recipe, inventory),
+        0,
+      ),
     }),
     [inventory, recipes],
   );
@@ -860,7 +874,7 @@ export default function Inventario({
   const handleRecipeCategoryChange = (val) => {
     if (val === "NEW_RECIPE_CAT") {
       const newCat = prompt(
-        "Ingresa el nombre de la nueva categoría para recetas:",
+        "Ingresa el nombre de la nueva categoría para componentes de producto:",
       );
       if (newCat && newCat.trim() !== "") {
         const cleanCat = newCat.trim();
@@ -985,7 +999,9 @@ export default function Inventario({
       .eq("business_id", businessId);
     if (error) {
       console.error("Error eliminando insumo:", error);
-      alert("No se puede eliminar un insumo usado en una receta.");
+      alert(
+        "No se puede eliminar un insumo usado en un componente de producto.",
+      );
       return;
     }
     setInventory((current) => current.filter((item) => item.id !== id));
@@ -1054,8 +1070,8 @@ export default function Inventario({
       : await supabase.from("recipes").insert(recipePayload).select().single();
 
     if (response.error) {
-      console.error("Error guardando receta:", response.error);
-      alert("No se pudo guardar la receta.");
+      console.error("Error guardando componente de producto:", response.error);
+      alert("No se pudo guardar el componente de producto.");
       return;
     }
 
@@ -1111,15 +1127,16 @@ export default function Inventario({
     setShowRecModal(false);
   };
   const deleteRec = async (id) => {
-    if (!businessId || !confirm("¿Eliminar esta receta?")) return;
+    if (!businessId || !confirm("¿Eliminar este componente de producto?"))
+      return;
     const { error } = await supabase
       .from("recipes")
       .delete()
       .eq("id", id)
       .eq("business_id", businessId);
     if (error) {
-      console.error("Error eliminando receta:", error);
-      alert("No se pudo eliminar la receta.");
+      console.error("Error eliminando componente de producto:", error);
+      alert("No se pudo eliminar el componente de producto.");
       return;
     }
     setRecipes((current) => current.filter((recipe) => recipe.id !== id));
@@ -1140,7 +1157,11 @@ export default function Inventario({
 
   const addIngredientFromInventory = (item) => {
     setRecForm((current) => {
-      if (current.ingredients.some((ingredient) => ingredient.inventoryId === item.id)) {
+      if (
+        current.ingredients.some(
+          (ingredient) => ingredient.inventoryId === item.id,
+        )
+      ) {
         return current;
       }
       return {
@@ -1162,7 +1183,7 @@ export default function Inventario({
           field === "quantity"
             ? parseFloat(val) || 0
             : field === "inventoryId"
-                ? val
+              ? val
               : val,
       };
       if (field === "inventoryId") {
@@ -1183,12 +1204,12 @@ export default function Inventario({
       <header className="max-w-7xl mx-auto mb-6 space-y-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-black tracking-tighter">
-            {isRecipesView ? "Recetas" : "Insumos"}
+            {isProductComponentsView ? "Componentes de producto" : "Insumos"}
           </h1>
           <p className="text-[10px] font-mono uppercase tracking-widest text-neutral-500">
             {loadingData
               ? "Cargando inventario..."
-              : isRecipesView
+              : isProductComponentsView
                 ? "Costos, porciones e ingredientes de producción"
                 : "Control de existencias y stock de insumos"}
           </p>
@@ -1196,10 +1217,10 @@ export default function Inventario({
 
         {/* STAT CARDS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-          {(isRecipesView
+          {(isProductComponentsView
             ? [
                 {
-                  label: "Recetas creadas",
+                  label: "Componentes creados",
                   value: stats.recipeCount,
                   color: "text-blue-400",
                 },
@@ -1215,7 +1236,7 @@ export default function Inventario({
                 },
                 {
                   label: "Costo de insumos",
-                  value: `$${stats.totalValue.toLocaleString("de-DE")}`,
+                  value: `$${stats.componentsCost.toLocaleString("de-DE")}`,
                   color: "text-white",
                 },
               ]
@@ -1270,9 +1291,9 @@ export default function Inventario({
                     label: "Insumos",
                   },
                   {
-                    id: "recetas",
+                    id: "componentes",
                     icon: <BookOpen size={14} />,
-                    label: "Recetas",
+                    label: "Componentes de producto",
                   },
                 ].map((t) => (
                   <button
@@ -1409,9 +1430,9 @@ export default function Inventario({
         )}
 
         {/* ════════════════════════════════════════════
-            TAB: RECETAS (Estructura Unificada)
+            TAB: COMPONENTES DE PRODUCTO (Estructura Unificada)
         ════════════════════════════════════════════ */}
-        {tab === "recetas" && (
+        {tab === "componentes" && (
           <div className="space-y-6">
             {/* 💻 CONTENEDOR FILA: TABS A LA IZQUIERDA + BUSCADOR A LA DERECHA */}
             <div className="flex flex-col lg:flex-row gap-4 items-stretch lg:items-center w-full">
@@ -1426,9 +1447,9 @@ export default function Inventario({
                     label: "Insumos",
                   },
                   {
-                    id: "recetas",
+                    id: "componentes",
                     icon: <BookOpen size={14} />,
-                    label: "Recetas",
+                    label: "Componentes de producto",
                   },
                 ].map((t) => (
                   <button
@@ -1446,7 +1467,7 @@ export default function Inventario({
                 ))}
               </div>
 
-              {/* Barra de Búsqueda de Recetas */}
+              {/* Barra de Búsqueda de Componentes de Producto */}
               <div className="relative flex-1">
                 <Search
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-600"
@@ -1454,7 +1475,7 @@ export default function Inventario({
                 />
                 <input
                   type="text"
-                  placeholder="Buscar receta..."
+                  placeholder="Buscar componente de producto..."
                   value={recSearch}
                   onChange={(e) => setRecSearch(e.target.value)}
                   className="w-full bg-neutral-900/50 border border-white/5 rounded-3xl py-3 pl-11 pr-10 text-[10px] font-mono outline-none focus:border-violet-500/40 transition-all uppercase placeholder:text-neutral-700"
@@ -1480,7 +1501,7 @@ export default function Inventario({
               </div>
             </div>
 
-            {/* Filtros Inferiores de Recetas */}
+            {/* Filtros Inferiores de Componentes de Producto */}
             <div className="flex flex-col sm:flex-row flex-wrap gap-4 bg-neutral-900/30 p-4 rounded-2xl border border-white/5 items-stretch sm:items-end">
               <TerminalSelect
                 label="Categoría"
@@ -1497,15 +1518,15 @@ export default function Inventario({
                 onClick={openNewRec}
                 className="sm:ml-auto w-full sm:w-auto bg-violet-500 hover:bg-violet-600 text-white px-6 py-3 rounded-3xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 transition-all active:scale-[0.98] h-[36px]"
               >
-                <Plus size={14} /> Nueva Receta
+                <Plus size={14} /> Nuevo componente
               </button>
             </div>
 
-            {/* Grid de Recetas */}
+            {/* Grid de Componentes de Producto */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {filteredRecipes.length === 0 ? (
                 <div className="col-span-3 text-center py-16 text-neutral-600 text-sm">
-                  No se encontraron recetas
+                  No se encontraron componentes de producto
                 </div>
               ) : (
                 filteredRecipes.map((recipe) => {
@@ -1513,6 +1534,9 @@ export default function Inventario({
                   const maxServs = calcMaxServings(recipe, inventory);
                   const costPerUnit =
                     recipe.servings > 0 ? cost / recipe.servings : 0;
+                  const linkedProducts = productComponents.filter(
+                    (link) => link.component_id === recipe.id,
+                  );
                   const expanded = expandedRec === recipe.id;
                   const missingIng = recipe.ingredients.some(
                     (ing) => !inventory.find((i) => i.id === ing.inventoryId),
@@ -1542,6 +1566,26 @@ export default function Inventario({
                                 {recipe.description}
                               </p>
                             )}
+                            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[8px] font-black uppercase tracking-widest text-neutral-600">
+                                Productos
+                              </span>
+                              {linkedProducts.length > 0 ? (
+                                linkedProducts.map((link) => (
+                                  <Badge key={link.product_id} color="blue">
+                                    {link.products?.name ||
+                                      "Producto sin nombre"}
+                                    {Number(link.quantity || 1) !== 1
+                                      ? ` x${link.quantity}`
+                                      : ""}
+                                  </Badge>
+                                ))
+                              ) : (
+                                <span className="text-[9px] font-bold text-orange-400">
+                                  Sin producto vinculado
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <div className="flex gap-1 shrink-0">
                             <button
@@ -1637,7 +1681,7 @@ export default function Inventario({
                               );
                             })}
                             <div className="flex justify-between text-[10px] uppercase font-black text-neutral-500 pt-1.5 border-t border-white/5">
-                              <span>Costo total receta</span>
+                              <span>Costo total del componente</span>
                               <span className="text-white">
                                 ${Math.round(cost).toLocaleString("de-DE")}
                               </span>
@@ -1668,7 +1712,8 @@ export default function Inventario({
               invForm.category !== editingInv.category ||
               invForm.unit !== editingInv.unit ||
               Number(invForm.stock || 0) !== Number(editingInv.stock || 0) ||
-              Number(invForm.minStock || 0) !== Number(editingInv.minStock || 0) ||
+              Number(invForm.minStock || 0) !==
+                Number(editingInv.minStock || 0) ||
               Number(invForm.price || 0) !== Number(editingInv.price || 0);
           }
 
@@ -1851,7 +1896,7 @@ export default function Inventario({
         })()}
 
       {/* ════════════════════════════════════════════
-          MODAL: RECETA
+          MODAL: COMPONENTE DE PRODUCTO
       ════════════════════════════════════════════ */}
       {showRecModal &&
         (() => {
@@ -1882,17 +1927,21 @@ export default function Inventario({
 
           return (
             <Modal
-              title={editingRec ? "Editar Receta" : "Nueva Receta"}
+              title={
+                editingRec
+                  ? "Editar componente de producto"
+                  : "Nuevo componente de producto"
+              }
               onClose={() => setShowRecModal(false)}
               wide
             >
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <Field label="Nombre de la Receta">
+                  <Field label="Nombre del componente de producto">
                     <input
                       type="text"
                       value={recForm.name}
-                      placeholder="Ej: Buñuelo Tradicional"
+                      placeholder="Ej: Buñuelo tradicional"
                       onChange={(e) =>
                         setRecForm({ ...recForm, name: e.target.value })
                       }
@@ -2019,7 +2068,8 @@ export default function Inventario({
                     </div>
                     {inventory.length === 0 ? (
                       <p className="py-3 text-center text-[10px] text-neutral-500">
-                        Primero crea insumos para usarlos en recetas.
+                        Primero crea insumos para usarlos en componentes de
+                        producto.
                       </p>
                     ) : (
                       <div className="grid max-h-36 gap-1.5 overflow-y-auto sm:grid-cols-2">
@@ -2054,7 +2104,7 @@ export default function Inventario({
                   {recForm.ingredients.length > 0 && (
                     <div className="mt-3 bg-violet-500/10 border border-violet-500/20 rounded-xl p-3 flex justify-between items-center">
                       <span className="text-[10px] font-black uppercase text-violet-400">
-                        Costo estimado de la receta
+                        Costo estimado del componente
                       </span>
                       <span className="font-black text-white">
                         $
@@ -2083,7 +2133,7 @@ export default function Inventario({
                       : "border-white/5 bg-neutral-800/50 text-neutral-600 cursor-not-allowed opacity-50"
                   }`}
                 >
-                  {editingRec ? "Actualizar" : "Crear Receta"}
+                  {editingRec ? "Actualizar" : "Crear componente de producto"}
                 </button>
               </div>
             </Modal>

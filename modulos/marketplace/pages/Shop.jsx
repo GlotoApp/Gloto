@@ -114,6 +114,8 @@ const Shop = () => {
   const [tiendaData, setTiendaData] = useState(TIENDA_INFO);
   const [categorias, setCategorias] = useState([]);
   const [productos, setProductosState] = useState([]);
+  const [shopBusinessId, setShopBusinessId] = useState(null);
+  const [, setAvailabilityByProduct] = useState({});
   const [isLoadingProductos, setIsLoadingProductos] = useState(true);
   const {
     carrito,
@@ -258,21 +260,26 @@ const Shop = () => {
           : 2500;
         const categoria = info?.categoria || "Restaurante";
 
-        const [categoriasRes, productosRes] = await Promise.all([
-          supabase
-            .from("categories")
-            .select("id,name")
-            .eq("business_id", data.id),
-          supabase
-            .from("products")
-            .select(
-              "id,name,description,price,stock,image_url,is_active,is_sold_out,category_id,order_index,created_at",
-            )
-            .eq("business_id", data.id)
-            .eq("is_active", true)
-            .order("order_index", { ascending: true })
-            .order("created_at", { ascending: true }),
-        ]);
+        const [categoriasRes, productosRes, availabilityRes] =
+          await Promise.all([
+            supabase
+              .from("categories")
+              .select("id,name")
+              .eq("business_id", data.id),
+            supabase
+              .from("products")
+              .select(
+                "id,name,description,price,stock,image_url,is_active,is_sold_out,category_id,order_index,created_at",
+              )
+              .eq("business_id", data.id)
+              .eq("is_active", true)
+              .order("order_index", { ascending: true })
+              .order("created_at", { ascending: true }),
+            supabase
+              .from("product_availability")
+              .select("product_id,is_available")
+              .eq("business_id", data.id),
+          ]);
 
         if (categoriasRes.error) {
           console.error("Error al obtener categorías:", categoriasRes.error);
@@ -280,6 +287,19 @@ const Shop = () => {
         if (productosRes.error) {
           console.error("Error al obtener productos:", productosRes.error);
         }
+        if (availabilityRes.error) {
+          console.error(
+            "Error al obtener disponibilidad de productos:",
+            availabilityRes.error,
+          );
+        }
+
+        const availabilityMap = (availabilityRes.data || []).reduce(
+          (acc, item) => ({ ...acc, [item.product_id]: item.is_available }),
+          {},
+        );
+        setAvailabilityByProduct(availabilityMap);
+        setShopBusinessId(data.id);
 
         const categoriasMapeadas = (categoriasRes.data || []).map(
           (categoria) => ({
@@ -448,6 +468,10 @@ const Shop = () => {
             precio: Number(producto.price) || 0,
             stock: producto.stock || 0,
             isSoldOut: producto.is_sold_out || producto.is_soldout || false,
+            isAvailable:
+              availabilityMap[producto.id] ??
+              (Number(producto.stock || 0) > 0 &&
+                !Boolean(producto.is_sold_out || producto.is_soldout)),
             orderIndex: Number(producto.order_index || 0),
             cat: categoria?.nombre || "Otros",
             image: producto.image_url,
@@ -527,6 +551,50 @@ const Shop = () => {
       obtenerTienda();
     }
   }, [slug, setNombreTienda, setLogoTienda, setBusinessWhatsapp]);
+
+  useEffect(() => {
+    if (!shopBusinessId) return undefined;
+
+    const channel = supabase
+      .channel(`shop-product-availability-${shopBusinessId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "product_availability",
+          filter: `business_id=eq.${shopBusinessId}`,
+        },
+        (payload) => {
+          const productId = payload.new?.product_id || payload.old?.product_id;
+          if (!productId) return;
+
+          const isAvailable =
+            payload.eventType === "DELETE"
+              ? false
+              : Boolean(payload.new?.is_available);
+
+          setAvailabilityByProduct((current) => ({
+            ...current,
+            [productId]: isAvailable,
+          }));
+          const updateAvailability = (current) =>
+            current.map((product) =>
+              product.id === productId ? { ...product, isAvailable } : product,
+            );
+          setProductosState(updateAvailability);
+          setProductos(updateAvailability);
+          setProductoDetalle((current) =>
+            current?.id === productId ? { ...current, isAvailable } : current,
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [shopBusinessId]);
 
   // Lleva la vista al punto exacto donde la barra de filtros queda fija
   // arriba, mostrando el primer producto del filtro justo debajo.
@@ -1494,7 +1562,8 @@ const Shop = () => {
                           </span>
                         )}
 
-                        {(p.isSoldOut ||
+                        {(p.isAvailable === false ||
+                          p.isSoldOut ||
                           (typeof p.stock === "number" && p.stock <= 0)) && (
                           <div
                             style={{

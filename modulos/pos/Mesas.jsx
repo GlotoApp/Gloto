@@ -67,8 +67,11 @@ const mapTableStatusToTableState = (tableStatus) =>
     .toLowerCase();
 
 const getTableStateFromOrder = (order) => {
-  const tableStatus = mapTableStatusToTableState(order.table_status);
-  if (tableStatus) return tableStatus;
+  // Un table_status vacio significa mesa limpia. Solo usamos status como
+  // respaldo para ordenes antiguas que realmente no tienen ese campo.
+  if (order.table_status !== null && order.table_status !== undefined) {
+    return mapTableStatusToTableState(order.table_status);
+  }
 
   const orderStatus = String(order.status ?? "")
     .trim()
@@ -516,65 +519,6 @@ function PanelBody({ mesa, onUpdate, onClose, onToast }) {
             <X size={16} className="text-slate-500" />
           </button>
         </div>
-
-        <div className="flex gap-1.5 mt-3 flex-wrap">
-          {/* BOTÓN 1: Ocupada */}
-          <button
-            onClick={() => handleEstado("ocupada")}
-            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
-              mesa.estado === "ocupada" ? "shadow-lg" : "opacity-45"
-            }`}
-            style={{
-              background: mesa.estado === "ocupada" ? "#f9731635" : "#f9731608",
-              borderColor: mesa.estado === "ocupada" ? "#f97316" : "#f9731640",
-              color: "#f97316",
-            }}
-          >
-            <Users size={9} /> Ocupada
-          </button>
-          {/* BOTÓN 2: Desocupar (ocupada → sucio) */}
-          <button
-            onClick={() => handleEstado("sucio")}
-            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
-              mesa.estado === "sucio" ? "shadow-lg" : "opacity-45"
-            }`}
-            style={{
-              background: mesa.estado === "sucio" ? "#ef444435" : "#ef444408",
-              borderColor: mesa.estado === "sucio" ? "#ef4444" : "#ef444440",
-              color: "#ef4444",
-            }}
-          >
-            <RotateCcw size={9} /> Desocupar
-          </button>
-          {/* BOTÓN 3: Limpia (sucio → vacío) */}
-          <button
-            onClick={() => handleEstado("")}
-            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
-              mesa.estado === "" ? "shadow-lg" : "opacity-45"
-            }`}
-            style={{
-              background: mesa.estado === "" ? "#22c55e35" : "#22c55e08",
-              borderColor: mesa.estado === "" ? "#22c55e" : "#22c55e40",
-              color: "#22c55e",
-            }}
-          >
-            <CheckCircle2 size={9} /> Limpia
-          </button>
-          {/* BOTÓN: Crear/Editar Reserva (solo si está vacío) */}
-          {mesa.estado === "" && (
-            <button
-              onClick={() => setShowReservaForm(true)}
-              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
-              style={{
-                background: "#3b82f615",
-                borderColor: "#3b82f640",
-                color: "#3b82f6",
-              }}
-            >
-              <Calendar size={9} /> Hacer Reserva
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Tabs */}
@@ -782,6 +726,63 @@ function PanelBody({ mesa, onUpdate, onClose, onToast }) {
             </span>
           </div>
         )}
+        <div className="flex gap-1.5 flex-wrap">
+          {/* BOTÓN 1: Ocupada */}
+          <button
+            onClick={() => handleEstado("ocupada")}
+            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
+              mesa.estado === "ocupada" ? "shadow-lg" : "opacity-45"
+            }`}
+            style={{
+              background: mesa.estado === "ocupada" ? "#f9731635" : "#f9731608",
+              borderColor: mesa.estado === "ocupada" ? "#f97316" : "#f9731640",
+              color: "#f97316",
+            }}
+          >
+            <Users size={9} /> Ocupada
+          </button>
+          {/* BOTÓN 2: Desocupar (ocupada → sucio) */}
+          <button
+            onClick={() => handleEstado("sucio")}
+            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
+              mesa.estado === "sucio" ? "shadow-lg" : "opacity-45"
+            }`}
+            style={{
+              background: mesa.estado === "sucio" ? "#ef444435" : "#ef444408",
+              borderColor: mesa.estado === "sucio" ? "#ef4444" : "#ef444440",
+              color: "#ef4444",
+            }}
+          >
+            <RotateCcw size={9} /> Desocupar
+          </button>
+          {/* BOTÓN 3: Limpia (sucio → vacío) */}
+          <button
+            onClick={() => handleEstado("")}
+            className={`px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1 ${
+              mesa.estado === "" ? "shadow-lg" : "opacity-45"
+            }`}
+            style={{
+              background: mesa.estado === "" ? "#22c55e35" : "#22c55e08",
+              borderColor: mesa.estado === "" ? "#22c55e" : "#22c55e40",
+              color: "#22c55e",
+            }}
+          >
+            <CheckCircle2 size={9} /> Limpia
+          </button>
+          {mesa.estado === "" && (
+            <button
+              onClick={() => setShowReservaForm(true)}
+              className="px-3 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-widest active:scale-95 transition-all flex items-center gap-1"
+              style={{
+                background: "#3b82f615",
+                borderColor: "#3b82f640",
+                color: "#3b82f6",
+              }}
+            >
+              <Calendar size={9} /> Hacer Reserva
+            </button>
+          )}
+        </div>
         <div className="grid grid-cols-1 gap-2">
           <button
             onClick={handleEditarEnPOS}
@@ -1290,8 +1291,15 @@ export default function MesasPOS() {
   // Actualizar mesa y sincronizar con Supabase
   const updateMesa = useCallback(
     async (updated) => {
-      // Actualizar estado local
-      setMesas((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+      // Una mesa limpia deja de ser una mesa activa y desaparece del tablero.
+      if (updated.estado === "") {
+        setMesas((prev) => prev.filter((m) => m.id !== updated.id));
+        setSelected((current) => (current?.id === updated.id ? null : current));
+      } else {
+        setMesas((prev) =>
+          prev.map((m) => (m.id === updated.id ? updated : m)),
+        );
+      }
 
       // Si tiene orderId, actualizar en Supabase
       if (updated.orderId && businessId) {
@@ -1299,6 +1307,7 @@ export default function MesasPOS() {
           const { error } = await supabase
             .from("orders")
             .update({
+              status: updated.estado === "" ? "pending" : updated.orderStatus,
               table_status: updated.estado,
               notes: updated.nota,
               personas: Number(updated.personas) || 0,

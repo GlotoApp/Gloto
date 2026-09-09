@@ -141,12 +141,24 @@ export const CartProvider = ({ children }) => {
     [productos, carrito],
   );
 
+  const itemsAgotados = useMemo(
+    () =>
+      productos.filter(
+        (producto) =>
+          carrito[producto.id] > 0 && producto.isAvailable === false,
+      ),
+    [productos, carrito],
+  );
+
   const totalPagado = metodoPago.reduce(
     (sum, item) => sum + (Number(item.monto) || 0),
     0,
   );
   const puedeHacerPedido =
-    totalItems > 0 && metodoPago.length > 0 && totalPagado === totalPrecio;
+    totalItems > 0 &&
+    itemsAgotados.length === 0 &&
+    metodoPago.length > 0 &&
+    totalPagado === totalPrecio;
 
   const agregarDivision = () => {
     setMetodoPago((prev) => {
@@ -404,23 +416,27 @@ export const CartProvider = ({ children }) => {
       }));
 
       const { data: rpcData, error: rpcError } = await supabase.rpc(
-        "create_order",
+        "create_order_with_inventory",
         {
           p_order: orderPayload,
           p_items: orderItemsPayload,
+          p_channel: "shop",
         },
       );
 
       if (rpcError) {
         console.error("Error guardando orden en Supabase:", rpcError);
+        const isUnavailable = rpcError.message?.includes("PRODUCT_UNAVAILABLE");
         throw new Error(
-          rpcError.message || "No se pudo guardar el pedido en Supabase.",
+          isUnavailable
+            ? "Este producto se agotó mientras estaba en tu carrito."
+            : rpcError.message || "No se pudo guardar el pedido en Supabase.",
         );
-      } else {
-        savedOrderId = rpcData?.id;
       }
+      savedOrderId = rpcData?.id;
     } catch (error) {
       console.error("Error guardando orden en Supabase:", error);
+      throw error;
     }
 
     // Construir mensaje legible para WhatsApp
@@ -639,6 +655,7 @@ export const CartProvider = ({ children }) => {
     businessId,
     setBusinessId,
     businessWhatsapp,
+    itemsAgotados,
     setBusinessWhatsapp,
     cartOpen,
     abrirCarrito,

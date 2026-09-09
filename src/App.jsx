@@ -24,8 +24,8 @@ const Horarios = lazy(() => import("../modulos/pos/Horarios"));
 const Reservas = lazy(() => import("../modulos/pos/Reservas"));
 const Productos = lazy(() => import("../modulos/pos/Productos"));
 const Inventario = lazy(() => import("../modulos/pos/inventario"));
-const InventarioRecetas = lazy(
-  () => import("../modulos/pos/InventarioRecetas"),
+const ComponentesProducto = lazy(
+  () => import("../modulos/pos/ComponentesProducto"),
 );
 const InventarioCategorias = lazy(
   () => import("../modulos/pos/InventarioCategorias"),
@@ -100,7 +100,16 @@ function App() {
               path="inventario"
               element={<Inventario initialTab="insumos" standalone />}
             />
-            <Route path="inventario/recetas" element={<InventarioRecetas />} />
+            <Route
+              path="inventario/componentes-producto"
+              element={<ComponentesProducto />}
+            />
+            <Route
+              path="inventario/recetas"
+              element={
+                <Navigate to="/pos/inventario/componentes-producto" replace />
+              }
+            />
             <Route
               path="inventario/categorias"
               element={<InventarioCategorias />}
